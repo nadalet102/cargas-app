@@ -559,7 +559,8 @@ function renderCargas(){
               </div>
               <div class="mini-acts">
                 <input type="number" class="order-input" value="${p.orden_carga||''}" placeholder="#" title="Orden en la carga" onchange="setOrden('${p.id}',this.value)" min="1">
-                <button class="mini-rm" onclick="removeFromCarga('${p.id}')" title="Quitar"><i class="ti ti-x"></i></button>
+                <button class="mini-rm" style="color:var(--blue);padding:2px 4px" onclick="openModal('pedido','${p.id}')" title="Editar"><i class="ti ti-pencil"></i></button>
+                <button class="mini-rm" onclick="removeFromCarga('${p.id}')" title="Quitar de la carga"><i class="ti ti-x"></i></button>
               </div>
             </div>`;
           }).join('')}
