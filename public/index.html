@@ -698,7 +698,7 @@ async function setOrden(pid, val){
 let _pdfCargaId=null;
 function openPdfModal(cid){_pdfCargaId=cid;document.getElementById('pdf-modal-overlay').classList.add('open');}
 function closePdfModal(){document.getElementById('pdf-modal-overlay').classList.remove('open');_pdfCargaId=null;}
-function doPrint(showPrices){closePdfModal();printCarga(_pdfCargaId,showPrices);}
+function doPrint(showPrices){var cid=_pdfCargaId;closePdfModal();printCarga(cid,showPrices);}
 
 function printCarga(cid, showPrices){
   if(showPrices===undefined) showPrices=true;
