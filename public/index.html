@@ -255,6 +255,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
   <div class="tab active" id="tab-plan" onclick="switchTab('plan')"><i class="ti ti-layout-columns"></i> Planificación</div>
   <div class="tab" id="tab-cal" onclick="switchTab('cal')"><i class="ti ti-calendar"></i> Calendario</div>
   <div class="tab" id="tab-trans" onclick="switchTab('trans')"><i class="ti ti-truck"></i> Transportistas</div>
+  <div class="tab" id="tab-hist" onclick="switchTab('hist')"><i class="ti ti-history"></i> Historial <span id="hist-badge" style="background:#EAF3DE;color:#27500A;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;margin-left:3px">0</span></div>
   <div class="tab" id="tab-dash" onclick="switchTab('dash')"><i class="ti ti-chart-bar"></i> Resumen</div>
 </div>
 
@@ -333,6 +334,31 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
     <div class="list-card"><div class="lc-hdr"><span><i class="ti ti-stack"></i> Cargas recientes</span></div><div id="dash-cargas"></div></div>
   </div>
   <div class="list-card"><div class="lc-hdr"><span><i class="ti ti-chart-bar"></i> Margen por carga</span></div><div id="dash-margenes" style="padding:12px 16px"></div></div>
+</div>
+</div>
+
+
+<!-- HISTORIAL -->
+<div class="view" id="view-hist">
+<div class="container">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="font-size:16px;font-weight:500">Historial de cargas entregadas</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px">Cargas marcadas como entregadas — solo lectura</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="hist-filter-mes" onchange="renderHist()" style="font-size:11px;padding:5px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);color:var(--text)">
+        <option value="">Todos los meses</option>
+      </select>
+      <select id="hist-filter-trans" onchange="renderHist()" style="font-size:11px;padding:5px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);color:var(--text)">
+        <option value="">Todos los transportistas</option>
+      </select>
+    </div>
+  </div>
+  <!-- KPIs historial -->
+  <div id="hist-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px"></div>
+  <!-- Lista de cargas entregadas -->
+  <div id="hist-list"></div>
 </div>
 </div>
 
@@ -420,13 +446,14 @@ async function loadAll(){
 function renderAll(){renderBCList();renderCargas();updateStats();}
 
 function switchTab(t){
-  ['plan','cal','trans','dash'].forEach(id=>{
+  ['plan','cal','trans','hist','dash'].forEach(id=>{
     document.getElementById('tab-'+id).classList.toggle('active',id===t);
     document.getElementById('view-'+id).classList.toggle('active',id===t);
   });
   if(t==='cal')renderCal();
   if(t==='dash')renderDash();
   if(t==='trans')renderTrans();
+  if(t==='hist')renderHist();
 }
 
 function onSearch(v){searchQ=v.toLowerCase();renderBCList();}
@@ -484,7 +511,9 @@ function renderBCList(){
 
 function renderCargas(){
   const filterVal=document.getElementById('filter-status').value;
-  const filtered=filterVal?cargas.filter(c=>c.status===filterVal):cargas;
+  // Entregadas siempre van al historial, nunca a la pantalla principal
+  const activeCargas=cargas.filter(c=>c.status!=='entregada');
+  const filtered=filterVal?activeCargas.filter(c=>c.status===filterVal):activeCargas;
   const grid=document.getElementById('cargas-grid');
   if(!filtered.length&&!filterVal){
     grid.innerHTML=`<button class="new-carga-btn" onclick="addCarga()"><i class="ti ti-plus" style="font-size:22px;opacity:.4"></i><span>Crear primera carga</span></button>`;
@@ -1022,6 +1051,94 @@ function updateStats(){
   const ms=document.getElementById('st-margen');
   ms.textContent=costesConoc>0?(m>=0?'+':'')+fmtN(m)+' €':'— €';
   ms.style.color=m>=0?'#9FE1CB':'#F5C4B3';
+  // Update historial badge
+  const entCount=cargas.filter(c=>c.status==='entregada').length;
+  const hb=document.getElementById('hist-badge');if(hb)hb.textContent=entCount;
+}
+
+
+// ── HISTORIAL ─────────────────────────────────────────────────────────────────
+function renderHist(){
+  const entregadas=cargas.filter(c=>c.status==='entregada');
+  // Update badge
+  document.getElementById('hist-badge').textContent=entregadas.length;
+  // Populate month filter
+  const meses=[...new Set(entregadas.map(c=>c.fecha?String(c.fecha).substring(0,7):'').filter(Boolean))].sort().reverse();
+  const selMes=document.getElementById('hist-filter-mes');
+  const curMes=selMes.value;
+  selMes.innerHTML='<option value="">Todos los meses</option>'+meses.map(m=>{
+    const[y,mo]=m.split('-'); return `<option value="${m}" ${m===curMes?'selected':''}>${MESES[+mo-1]} ${y}</option>`;
+  }).join('');
+  // Populate trans filter
+  const selTrans=document.getElementById('hist-filter-trans');
+  const curTrans=selTrans.value;
+  const usedTrans=[...new Set(entregadas.map(c=>String(c.truck_id)).filter(Boolean))];
+  selTrans.innerHTML='<option value="">Todos los transportistas</option>'+usedTrans.map(tid=>{
+    const t=getTrans(tid); return t?`<option value="${tid}" ${tid===curTrans?'selected':''}>${t.nombre}</option>`:'';
+  }).join('');
+  // Apply filters
+  let list=entregadas;
+  if(curMes) list=list.filter(c=>c.fecha&&String(c.fecha).substring(0,7)===curMes);
+  if(curTrans) list=list.filter(c=>String(c.truck_id)===curTrans);
+  list=list.sort((a,b)=>new Date(b.fecha||0)-new Date(a.fecha||0));
+  // KPIs
+  const totalPortes=list.reduce((s,c)=>s+cargaPortes(c.id),0);
+  const totalCostes=list.filter(c=>c.coste!=null).reduce((s,c)=>s+(+c.coste),0);
+  const totalMargen=totalPortes-totalCostes;
+  const totalKg=list.reduce((s,c)=>s+cargaKg(c.id),0);
+  document.getElementById('hist-kpis').innerHTML=`
+    <div class="dash-card"><div class="dash-lbl">Cargas entregadas</div><div class="dash-val">${list.length}</div><div class="dash-sub">viajes completados</div></div>
+    <div class="dash-card"><div class="dash-lbl">Kg transportados</div><div class="dash-val">${fmtN(totalKg)}</div><div class="dash-sub">en el periodo</div></div>
+    <div class="dash-card"><div class="dash-lbl">Portes cobrados</div><div class="dash-val" style="color:var(--green)">${fmtN(totalPortes)} €</div><div class="dash-sub">facturado al cliente</div></div>
+    <div class="dash-card"><div class="dash-lbl">Margen total</div><div class="dash-val" style="color:${totalMargen>=0?'var(--green)':'var(--red)'}">${totalMargen>=0?'+':''}${fmtN(totalMargen)} €</div><div class="dash-sub">portes − coste trans.</div></div>`;
+  // List
+  const el=document.getElementById('hist-list');
+  if(!list.length){
+    el.innerHTML=`<div class="empty-state"><i class="ti ti-history"></i>Sin cargas entregadas${curMes||curTrans?' con estos filtros':' aún'}</div>`;
+    return;
+  }
+  el.innerHTML=`<div class="list-card">
+    <div class="lc-hdr"><span>${list.length} carga${list.length>1?'s':''}</span><span style="font-size:11px;color:var(--text2)">ordenadas por fecha desc.</span></div>
+    ${list.map(c=>{
+      const ps=cargaPs(c.id).sort((a,b)=>(a.orden_carga||999)-(b.orden_carga||999));
+      const portes=cargaPortes(c.id),kg=cargaKg(c.id);
+      const coste=c.coste!=null?+c.coste:null;
+      const margen=coste!=null?portes-coste:null;
+      const t=getTrans(c.truck_id);
+      const col=CCOLS[Math.min(c.color_idx||0,CCOLS.length-1)];
+      const nPrep=ps.filter(p=>p.estado_prep==='preparado').length;
+      return `<div style="border-bottom:1px solid var(--border)">
+        <div style="padding:12px 16px;display:flex;align-items:flex-start;gap:12px">
+          <div style="width:10px;height:10px;border-radius:50%;background:${col.b};margin-top:4px;flex-shrink:0"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+              <span style="font-size:13px;font-weight:500">${c.name}</span>
+              ${c.codigo_orden?`<span style="font-size:10px;color:var(--text2);font-family:monospace;background:var(--surface2);padding:1px 6px;border-radius:4px">${c.codigo_orden}</span>`:''}
+              <span class="badge b-green"><i class="ti ti-check" style="font-size:10px"></i> Entregada</span>
+            </div>
+            <div style="font-size:11px;color:var(--text2);display:flex;gap:12px;flex-wrap:wrap">
+              <span><i class="ti ti-calendar" style="font-size:11px"></i> ${fmtDate(c.fecha)}</span>
+              <span><i class="ti ti-truck" style="font-size:11px"></i> ${t?t.nombre:'Sin transportista'}</span>
+              <span><i class="ti ti-stack" style="font-size:11px"></i> ${ps.length} pedidos</span>
+              <span><i class="ti ti-weight" style="font-size:11px"></i> ${fmtN(kg)} kg</span>
+              <span><i class="ti ti-check" style="font-size:11px;color:var(--green)"></i> ${nPrep}/${ps.length} preparados</span>
+            </div>
+            ${ps.length?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px">
+              ${ps.map(p=>`<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${p.estado_prep==='preparado'?'var(--green-l)':'var(--surface2)'};color:${p.estado_prep==='preparado'?'var(--green)':'var(--text2)'}">
+                ${p.orden_carga?p.orden_carga+'. ':''}${p.cliente}${p.ubicacion?' · <strong>'+p.ubicacion+'</strong>':''}
+              </span>`).join('')}
+            </div>`:''}
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:14px;font-weight:500;color:var(--green)">${fmtN(portes)} €</div>
+            ${coste!=null?`<div style="font-size:11px;color:var(--text2)">Coste: ${fmtN(coste)} €</div>
+            <div style="font-size:12px;font-weight:500;color:${margen>=0?'var(--green)':'var(--red)'}">${margen>=0?'+':''}${fmtN(margen)} € mg</div>`:'<div style="font-size:10px;color:var(--text2)">Coste no registrado</div>'}
+            <button onclick="printCarga('${c.id}')" style="margin-top:6px;background:var(--blue-d);color:#fff;border:none;border-radius:var(--radius-sm);padding:4px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif"><i class="ti ti-printer"></i> PDF</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 function log(msg,type=''){
@@ -1036,3 +1153,4 @@ loadAll();
 </script>
 </body>
 </html>
+
