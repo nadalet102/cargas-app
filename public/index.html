@@ -207,6 +207,20 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 .empty-state{text-align:center;padding:40px 20px;color:var(--text2)}
 .empty-state i{font-size:36px;display:block;margin-bottom:10px;opacity:.3}
 .loading{text-align:center;padding:40px;color:var(--text2);font-size:13px}
+.pdf-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:300}
+.pdf-modal-overlay.open{display:flex}
+.pdf-modal{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);width:340px;overflow:hidden}
+.pdf-modal-hdr{background:var(--blue-d);padding:11px 16px;display:flex;align-items:center;justify-content:space-between}
+.pdf-modal-title{font-size:13px;font-weight:500;color:#fff;display:flex;align-items:center;gap:6px}
+.pdf-modal-body{padding:16px;display:flex;flex-direction:column;gap:10px}
+.pdf-option{border:1px solid var(--border2);border-radius:var(--radius);padding:12px 14px;cursor:pointer;transition:all .12s;display:flex;align-items:center;gap:10px}
+.pdf-option:hover{border-color:var(--blue);background:var(--blue-l)}
+.pdf-option-icon{width:36px;height:36px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.pdf-option-title{font-size:13px;font-weight:500}
+.pdf-option-desc{font-size:11px;color:var(--text2);margin-top:2px}
+.mat-row{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:4px}
+.mat-input{font-size:11px;border:1px solid rgba(0,0,0,0.12);border-radius:4px;padding:3px 6px;background:rgba(255,255,255,0.6);color:inherit;font-family:'DM Mono',monospace;outline:none;width:100%}
+.mat-input::placeholder{opacity:.5}
 /* PDF PRINT */
 @media print{
   body{background:#fff}
@@ -381,6 +395,32 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 <!-- PDF HIDDEN DOC -->
 <div class="pdf-doc" id="pdf-doc"></div>
 
+<!-- PDF OPTIONS MODAL -->
+<div class="pdf-modal-overlay" id="pdf-modal-overlay">
+  <div class="pdf-modal">
+    <div class="pdf-modal-hdr">
+      <div class="pdf-modal-title"><i class="ti ti-printer"></i> Selecciona tipo de PDF</div>
+      <button class="modal-x" onclick="closePdfModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="pdf-modal-body">
+      <div class="pdf-option" onclick="doPrint(true)">
+        <div class="pdf-option-icon" style="background:var(--green-l);color:var(--green)"><i class="ti ti-file-invoice"></i></div>
+        <div>
+          <div class="pdf-option-title">PDF completo</div>
+          <div class="pdf-option-desc">Incluye coste del transportista y margen</div>
+        </div>
+      </div>
+      <div class="pdf-option" onclick="doPrint(false)">
+        <div class="pdf-option-icon" style="background:var(--blue-l);color:var(--blue-d)"><i class="ti ti-file-text"></i></div>
+        <div>
+          <div class="pdf-option-title">PDF para el chófer</div>
+          <div class="pdf-option-desc">Sin precios de transporte ni márgenes</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 const CCOLS=[
   {b:'#185FA5',bg:'#E6F1FB',t:'#0C447C'},
@@ -543,9 +583,13 @@ function renderCargas(){
               <i class="ti ti-barcode" style="font-size:11px;color:${col.t};opacity:.6"></i>
               <input type="text" placeholder="Cód. orden" value="${c.codigo_orden||''}" onchange="updateCargaField('${c.id}','codigo_orden',this.value)" style="color:${col.t}">
             </div>
+            <div class="mat-row">
+              <input class="mat-input" style="color:${col.t}" type="text" placeholder="Matrícula camión" value="${c.mat_camion||''}" onchange="updateCargaField('${c.id}','mat_camion',this.value)" title="Matrícula camión">
+              <input class="mat-input" style="color:${col.t}" type="text" placeholder="Matrícula remolque" value="${c.mat_remolque||''}" onchange="updateCargaField('${c.id}','mat_remolque',this.value)" title="Matrícula remolque">
+            </div>
           </div>
           <div class="cc-acts">
-            <button class="cc-btn" onclick="printCarga('${c.id}')" title="Generar PDF" style="color:${col.t}"><i class="ti ti-printer"></i></button>
+            <button class="cc-btn" onclick="openPdfModal('${c.id}')" title="Generar PDF" style="color:${col.t}"><i class="ti ti-printer"></i></button>
             <button class="cc-btn" onclick="confirmDelete('carga','${c.id}')" title="Eliminar" style="color:${col.t}"><i class="ti ti-x"></i></button>
           </div>
         </div>
@@ -617,7 +661,12 @@ async function setOrden(pid, val){
 }
 
 // ── PDF PRINT ─────────────────────────────────────────────────────────────────
-function printCarga(cid){
+let _pdfCargaId=null;
+function openPdfModal(cid){_pdfCargaId=cid;document.getElementById('pdf-modal-overlay').classList.add('open');}
+function closePdfModal(){document.getElementById('pdf-modal-overlay').classList.remove('open');_pdfCargaId=null;}
+function doPrint(showPrices){closePdfModal();printCarga(_pdfCargaId,showPrices);}
+
+function printCarga(cid,showPrices=true){
   const c=cargas.find(x=>String(x.id)===String(cid));
   if(!c)return;
   const ps=cargaPs(cid).sort((a,b)=>(a.orden_carga||999)-(b.orden_carga||999));
@@ -651,12 +700,12 @@ function printCarga(cid){
           <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Kg totales</div>
           <div style="font-size:20px;font-weight:500;margin-top:3px">${fmtN(cargaKg(cid))}</div>
         </div>
-        <div style="background:#f8f9fc;border-radius:8px;padding:10px 12px">
+        ${showPrices?`<div style="background:#f8f9fc;border-radius:8px;padding:10px 12px">
           <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Portes cliente</div>
           <div style="font-size:20px;font-weight:500;color:#3B6D11;margin-top:3px">${fmtN(portes)} €</div>
-        </div>
+        </div>`:''}
       </div>
-      ${coste!=null?`<div style="background:#EAF3DE;border-radius:8px;padding:8px 12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+      ${showPrices&&coste!=null?`<div style="background:#EAF3DE;border-radius:8px;padding:8px 12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:12px;color:#3B6D11">Coste transportista: <strong>${fmtN(coste)} €</strong></span>
         <span style="font-size:12px;color:${margen>=0?'#3B6D11':'#A32D2D'}">Margen: <strong>${margen>=0?'+':''}${fmtN(margen)} €</strong></span>
       </div>`:''}
@@ -669,6 +718,7 @@ function printCarga(cid){
             <th style="padding:8px 10px;text-align:left;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Cliente</th>
             <th style="padding:8px 10px;text-align:left;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Destino</th>
             <th style="padding:8px 10px;text-align:left;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Ubicación almacén</th>
+            ${showPrices?`<th style="padding:8px 10px;text-align:right;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Porte €</th>`:''}
             <th style="padding:8px 10px;text-align:right;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Kg</th>
             <th style="padding:8px 10px;text-align:center;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Estado</th>
           </tr>
@@ -685,6 +735,7 @@ function printCarga(cid){
               <td style="padding:8px 10px">
                 ${p.ubicacion?`<span style="background:#E6F1FB;color:#0C447C;padding:2px 8px;border-radius:10px;font-weight:500">${p.ubicacion}</span>`:'<span style="color:#9ca3af">—</span>'}
               </td>
+              ${showPrices?`<td style="padding:8px 10px;text-align:right;font-weight:500;color:#3B6D11">${fmtN(p.porte)} €</td>`:''}
               <td style="padding:8px 10px;text-align:right;font-weight:500">${fmtN(p.kg)}</td>
               <td style="padding:8px 10px;text-align:center">
                 <span style="background:${isPrep?'#EAF3DE':'#FCEBEB'};color:${isPrep?'#27500A':'#791F1F'};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500">${isPrep?'Preparado':'Sin preparar'}</span>
@@ -1131,9 +1182,15 @@ function renderHist(){
           </div>
           <div style="text-align:right;flex-shrink:0">
             <div style="font-size:14px;font-weight:500;color:var(--green)">${fmtN(portes)} €</div>
-            ${coste!=null?`<div style="font-size:11px;color:var(--text2)">Coste: ${fmtN(coste)} €</div>
-            <div style="font-size:12px;font-weight:500;color:${margen>=0?'var(--green)':'var(--red)'}">${margen>=0?'+':''}${fmtN(margen)} € mg</div>`:'<div style="font-size:10px;color:var(--text2)">Coste no registrado</div>'}
-            <button onclick="printCarga('${c.id}')" style="margin-top:6px;background:var(--blue-d);color:#fff;border:none;border-radius:var(--radius-sm);padding:4px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif"><i class="ti ti-printer"></i> PDF</button>
+            <div style="margin-top:4px">
+              <div style="font-size:10px;color:var(--text2);margin-bottom:2px">Coste transportista</div>
+              <div style="display:flex;align-items:center;gap:4px">
+                <input type="number" value="${c.coste!=null?+c.coste:''}" placeholder="—" style="width:80px;font-size:12px;font-weight:500;border:1px solid var(--border2);border-radius:4px;padding:2px 6px;font-family:'DM Mono',monospace;color:var(--text);background:var(--surface2);text-align:right" onchange="updateCargaField('${c.id}','coste',this.value);setTimeout(renderHist,300)" title="Editar coste">
+                <span style="font-size:11px;color:var(--text2)">€</span>
+              </div>
+              ${coste!=null?`<div style="font-size:12px;font-weight:500;color:${margen>=0?'var(--green)':'var(--red)'}">${margen>=0?'+':''}${fmtN(margen)} € margen</div>`:''}
+            </div>
+            <button onclick="openPdfModal('${c.id}')" style="margin-top:6px;background:var(--blue-d);color:#fff;border:none;border-radius:var(--radius-sm);padding:4px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif"><i class="ti ti-printer"></i> PDF</button>
           </div>
         </div>
       </div>`;
