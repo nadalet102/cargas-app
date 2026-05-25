@@ -666,7 +666,8 @@ function openPdfModal(cid){_pdfCargaId=cid;document.getElementById('pdf-modal-ov
 function closePdfModal(){document.getElementById('pdf-modal-overlay').classList.remove('open');_pdfCargaId=null;}
 function doPrint(showPrices){closePdfModal();printCarga(_pdfCargaId,showPrices);}
 
-function printCarga(cid,showPrices=true){
+function printCarga(cid, showPrices){
+  if(showPrices===undefined) showPrices=true;
   const c=cargas.find(x=>String(x.id)===String(cid));
   if(!c)return;
   const ps=cargaPs(cid).sort((a,b)=>(a.orden_carga||999)-(b.orden_carga||999));
@@ -676,82 +677,128 @@ function printCarga(cid,showPrices=true){
   const coste=c.coste!=null?+c.coste:null;
   const margen=coste!=null?portes-coste:null;
   const fecha=fmtDate(c.fecha)||'—';
-  const html=`
-    <div style="font-family:'DM Sans',sans-serif;max-width:700px;margin:0 auto;padding:20px;color:#1a1a2e">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;border-bottom:2px solid ${col.b};padding-bottom:14px;margin-bottom:16px">
-        <div>
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:${col.b};font-weight:500;margin-bottom:4px">Orden de Carga</div>
-          <div style="font-size:22px;font-weight:600;color:${col.t}">${c.name}</div>
-          ${c.codigo_orden?`<div style="font-size:13px;font-family:monospace;color:${col.b};margin-top:2px">Código: ${c.codigo_orden}</div>`:''}
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:11px;color:#6b7280">Fecha: ${fecha}</div>
-          <div style="font-size:11px;color:#6b7280;margin-top:2px">Transportista: ${t?t.nombre:'Sin asignar'}</div>
-          <div style="font-size:11px;color:#6b7280;margin-top:2px">${t&&t.telefono?'Tel: '+t.telefono:''}</div>
-          <div style="margin-top:6px"><span style="background:${col.bg};color:${col.t};padding:3px 10px;border-radius:12px;font-size:11px;font-weight:500">${STATUS_CFG[c.status]?.label||c.status}</span></div>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
-        <div style="background:#f8f9fc;border-radius:8px;padding:10px 12px">
-          <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Pedidos</div>
-          <div style="font-size:20px;font-weight:500;margin-top:3px">${ps.length}</div>
-        </div>
-        <div style="background:#f8f9fc;border-radius:8px;padding:10px 12px">
-          <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Kg totales</div>
-          <div style="font-size:20px;font-weight:500;margin-top:3px">${fmtN(cargaKg(cid))}</div>
-        </div>
-        ${showPrices?`<div style="background:#f8f9fc;border-radius:8px;padding:10px 12px">
-          <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Portes cliente</div>
-          <div style="font-size:20px;font-weight:500;color:#3B6D11;margin-top:3px">${fmtN(portes)} €</div>
-        </div>`:''}
-      </div>
-      ${showPrices&&coste!=null?`<div style="background:#EAF3DE;border-radius:8px;padding:8px 12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:12px;color:#3B6D11">Coste transportista: <strong>${fmtN(coste)} €</strong></span>
-        <span style="font-size:12px;color:${margen>=0?'#3B6D11':'#A32D2D'}">Margen: <strong>${margen>=0?'+':''}${fmtN(margen)} €</strong></span>
-      </div>`:''}
-      <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:8px">Orden de entrega y ubicaciones</div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead>
-          <tr style="background:${col.bg}">
-            <th style="padding:8px 10px;text-align:left;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b};width:40px">#</th>
-            <th style="padding:8px 10px;text-align:left;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Pedido</th>
-            <th style="padding:8px 10px;text-align:left;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Cliente</th>
-            <th style="padding:8px 10px;text-align:left;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Destino</th>
-            <th style="padding:8px 10px;text-align:left;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Ubicación almacén</th>
-            ${showPrices?`<th style="padding:8px 10px;text-align:right;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Porte €</th>`:''}
-            <th style="padding:8px 10px;text-align:right;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Kg</th>
-            <th style="padding:8px 10px;text-align:center;color:${col.t};font-weight:500;border-bottom:1px solid ${col.b}">Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${ps.map((p,i)=>{
-            const isPrep=p.estado_prep==='preparado';
-            const rowBg=isPrep?'#f0fdf4':'#fff5f5';
-            return `<tr style="background:${rowBg};border-bottom:1px solid #e5e7eb">
-              <td style="padding:8px 10px;font-weight:500;font-family:monospace;color:${col.b}">${p.orden_carga||i+1}</td>
-              <td style="padding:8px 10px;color:#185FA5;font-weight:500">${p.num}</td>
-              <td style="padding:8px 10px;font-weight:500">${p.cliente}</td>
-              <td style="padding:8px 10px;color:#6b7280">${p.destino}</td>
-              <td style="padding:8px 10px">
-                ${p.ubicacion?`<span style="background:#E6F1FB;color:#0C447C;padding:2px 8px;border-radius:10px;font-weight:500">${p.ubicacion}</span>`:'<span style="color:#9ca3af">—</span>'}
-              </td>
-              ${showPrices?`<td style="padding:8px 10px;text-align:right;font-weight:500;color:#3B6D11">${fmtN(p.porte)} €</td>`:''}
-              <td style="padding:8px 10px;text-align:right;font-weight:500">${fmtN(p.kg)}</td>
-              <td style="padding:8px 10px;text-align:center">
-                <span style="background:${isPrep?'#EAF3DE':'#FCEBEB'};color:${isPrep?'#27500A':'#791F1F'};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500">${isPrep?'Preparado':'Sin preparar'}</span>
-              </td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      ${ps.some(p=>p.obs)?`<div style="margin-top:14px;font-size:11px;color:#6b7280"><strong>Observaciones:</strong><br>${ps.filter(p=>p.obs).map(p=>`<span style="color:#185FA5">${p.num}</span>: ${p.obs}`).join(' · ')}</div>`:''}
-      <div style="margin-top:20px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;display:flex;justify-content:space-between">
-        <span>Generado: ${new Date().toLocaleString('es-ES')}</span>
-        <span>${c.name}${c.codigo_orden?' · '+c.codigo_orden:''}</span>
-      </div>
-    </div>`;
-  const w=window.open('','_blank','width=800,height:600');
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Orden de Carga - ${c.name}</title><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;padding:20px;background:#fff}@media print{body{padding:0}}</style></head><body>${html}<script>window.onload=()=>window.print()<\/script></body></html>`);
+
+  // Build table rows safely
+  let rows='';
+  ps.forEach(function(p,i){
+    const isPrep=p.estado_prep==='preparado';
+    const rowBg=isPrep?'#f0fdf4':'#fff5f5';
+    const ubicCell=p.ubicacion
+      ? '<span style="background:#E6F1FB;color:#0C447C;padding:2px 8px;border-radius:10px;font-weight:500">'+p.ubicacion+'</span>'
+      : '<span style="color:#9ca3af">—</span>';
+    const portCell=showPrices
+      ? '<td style="padding:8px 10px;text-align:right;font-weight:500;color:#3B6D11">'+fmtN(p.porte)+' \u20AC</td>'
+      : '';
+    const prepLabel=isPrep?'Preparado':'Sin preparar';
+    const prepBg=isPrep?'#EAF3DE':'#FCEBEB';
+    const prepColor=isPrep?'#27500A':'#791F1F';
+    rows+='<tr style="background:'+rowBg+';border-bottom:1px solid #e5e7eb">'
+      +'<td style="padding:8px 10px;font-weight:500;font-family:monospace;color:'+col.b+'">'+(p.orden_carga||i+1)+'</td>'
+      +'<td style="padding:8px 10px;color:#185FA5;font-weight:500">'+p.num+'</td>'
+      +'<td style="padding:8px 10px;font-weight:500">'+p.cliente+'</td>'
+      +'<td style="padding:8px 10px;color:#6b7280">'+p.destino+'</td>'
+      +'<td style="padding:8px 10px">'+ubicCell+'</td>'
+      +portCell
+      +'<td style="padding:8px 10px;text-align:right;font-weight:500">'+fmtN(p.kg)+'</td>'
+      +'<td style="padding:8px 10px;text-align:center"><span style="background:'+prepBg+';color:'+prepColor+';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500">'+prepLabel+'</span></td>'
+      +'</tr>';
+  });
+
+  // Build obs
+  const obsPs=ps.filter(function(p){return p.obs;});
+  const obsHtml=obsPs.length
+    ? '<div style="margin-top:14px;font-size:11px;color:#6b7280"><strong>Observaciones:</strong><br>'
+      +obsPs.map(function(p){return '<span style="color:#185FA5">'+p.num+'</span>: '+p.obs;}).join(' &middot; ')
+      +'</div>'
+    : '';
+
+  // Matriculas
+  const matHtml=(c.mat_camion||c.mat_remolque)
+    ? '<div style="font-size:11px;color:#6b7280;margin-top:2px;font-family:monospace">'
+      +(c.mat_camion?'&#x1F69B; '+c.mat_camion:'')
+      +(c.mat_camion&&c.mat_remolque?' &middot; ':'')
+      +(c.mat_remolque?'&#x1F69C; '+c.mat_remolque:'')
+      +'</div>'
+    : '';
+
+  // Coste/margen block
+  const costeHtml=(showPrices&&coste!=null)
+    ? '<div style="background:#EAF3DE;border-radius:8px;padding:8px 12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">'
+      +'<span style="font-size:12px;color:#3B6D11">Coste transportista: <strong>'+fmtN(coste)+' \u20AC</strong></span>'
+      +'<span style="font-size:12px;color:'+(margen>=0?'#3B6D11':'#A32D2D')+'">Margen: <strong>'+(margen>=0?'+':'')+fmtN(margen)+' \u20AC</strong></span>'
+      +'</div>'
+    : '';
+
+  // Portes KPI
+  const portesKpiHtml=showPrices
+    ? '<div style="background:#f8f9fc;border-radius:8px;padding:10px 12px">'
+      +'<div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Portes cliente</div>'
+      +'<div style="font-size:20px;font-weight:500;color:#3B6D11;margin-top:3px">'+fmtN(portes)+' \u20AC</div>'
+      +'</div>'
+    : '';
+
+  // Porte column header
+  const porteThHtml=showPrices
+    ? '<th style="padding:8px 10px;text-align:right;color:'+col.t+';font-weight:500;border-bottom:1px solid '+col.b+'">Porte \u20AC</th>'
+    : '';
+
+  const html=''
+    +'<div style="font-family:\'DM Sans\',sans-serif;max-width:700px;margin:0 auto;padding:20px;color:#1a1a2e">'
+    +'<div style="display:flex;align-items:flex-start;justify-content:space-between;border-bottom:2px solid '+col.b+';padding-bottom:14px;margin-bottom:16px">'
+    +'<div>'
+    +'<div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:'+col.b+';font-weight:500;margin-bottom:4px">Orden de Carga</div>'
+    +'<div style="font-size:22px;font-weight:600;color:'+col.t+'">'+c.name+'</div>'
+    +(c.codigo_orden?'<div style="font-size:13px;font-family:monospace;color:'+col.b+';margin-top:2px">C\u00f3digo: '+c.codigo_orden+'</div>':'')
+    +'</div>'
+    +'<div style="text-align:right">'
+    +'<div style="font-size:11px;color:#6b7280">Fecha: '+fecha+'</div>'
+    +'<div style="font-size:11px;color:#6b7280;margin-top:2px">Transportista: '+(t?t.nombre:'Sin asignar')+'</div>'
+    +(t&&t.telefono?'<div style="font-size:11px;color:#6b7280;margin-top:2px">Tel: '+t.telefono+'</div>':'')
+    +matHtml
+    +'<div style="margin-top:6px"><span style="background:'+col.bg+';color:'+col.t+';padding:3px 10px;border-radius:12px;font-size:11px;font-weight:500">'+(STATUS_CFG[c.status]?STATUS_CFG[c.status].label:c.status)+'</span></div>'
+    +'</div>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:'+(showPrices?'repeat(3,1fr)':'repeat(2,1fr)')+';gap:10px;margin-bottom:16px">'
+    +'<div style="background:#f8f9fc;border-radius:8px;padding:10px 12px">'
+    +'<div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Pedidos</div>'
+    +'<div style="font-size:20px;font-weight:500;margin-top:3px">'+ps.length+'</div>'
+    +'</div>'
+    +'<div style="background:#f8f9fc;border-radius:8px;padding:10px 12px">'
+    +'<div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Kg totales</div>'
+    +'<div style="font-size:20px;font-weight:500;margin-top:3px">'+fmtN(cargaKg(cid))+'</div>'
+    +'</div>'
+    +portesKpiHtml
+    +'</div>'
+    +costeHtml
+    +'<div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:8px">Orden de entrega y ubicaciones</div>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:12px">'
+    +'<thead><tr style="background:'+col.bg+'">'
+    +'<th style="padding:8px 10px;text-align:left;color:'+col.t+';font-weight:500;border-bottom:1px solid '+col.b+';width:40px">#</th>'
+    +'<th style="padding:8px 10px;text-align:left;color:'+col.t+';font-weight:500;border-bottom:1px solid '+col.b+'">Pedido</th>'
+    +'<th style="padding:8px 10px;text-align:left;color:'+col.t+';font-weight:500;border-bottom:1px solid '+col.b+'">Cliente</th>'
+    +'<th style="padding:8px 10px;text-align:left;color:'+col.t+';font-weight:500;border-bottom:1px solid '+col.b+'">Destino</th>'
+    +'<th style="padding:8px 10px;text-align:left;color:'+col.t+';font-weight:500;border-bottom:1px solid '+col.b+'">Ubicaci\u00f3n</th>'
+    +porteThHtml
+    +'<th style="padding:8px 10px;text-align:right;color:'+col.t+';font-weight:500;border-bottom:1px solid '+col.b+'">Kg</th>'
+    +'<th style="padding:8px 10px;text-align:center;color:'+col.t+';font-weight:500;border-bottom:1px solid '+col.b+'">Estado</th>'
+    +'</tr></thead>'
+    +'<tbody>'+rows+'</tbody>'
+    +'</table>'
+    +obsHtml
+    +'<div style="margin-top:20px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;display:flex;justify-content:space-between">'
+    +'<span>Generado: '+new Date().toLocaleString('es-ES')+'</span>'
+    +'<span>'+c.name+(c.codigo_orden?' \u00b7 '+c.codigo_orden:'')+(showPrices?'':' \u00b7 Sin precios')+'</span>'
+    +'</div>'
+    +'</div>';
+
+  const w=window.open('','_blank','width=820,height=600');
+  if(!w){log('Activa las ventanas emergentes para imprimir','warn');return;}
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+c.name+'</title>'
+    +'<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">'
+    +'<style>body{margin:0;padding:20px;background:#fff}@media print{body{padding:0}}</style>'
+    +'</head><body>'+html
+    +'<script>window.onload=function(){window.print();}<\/script>'
+    +'</body></html>');
   w.document.close();
 }
 
@@ -1210,4 +1257,3 @@ loadAll();
 </script>
 </body>
 </html>
-
