@@ -38,6 +38,8 @@ async function initDB() {
       color_idx INTEGER DEFAULT 0,
       coste NUMERIC,
       coste_modo TEXT DEFAULT 'pendiente',
+      mat_camion TEXT,
+      mat_remolque TEXT,
       notas TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
@@ -62,6 +64,8 @@ async function initDB() {
     ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS ubicacion TEXT;
     ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS estado_prep TEXT DEFAULT 'sin_preparar';
     ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS orden_carga INTEGER;
+    ALTER TABLE cargas ADD COLUMN IF NOT EXISTS mat_camion TEXT;
+    ALTER TABLE cargas ADD COLUMN IF NOT EXISTS mat_remolque TEXT;
   `);
   console.log('DB ready');
 }
@@ -110,8 +114,8 @@ app.post('/api/cargas', async (req, res) => {
   const { name, codigo_orden, truck_id, fecha, status, color_idx, coste, coste_modo, notas } = req.body;
   try {
     const r = await pool.query(
-      `INSERT INTO cargas (name,codigo_orden,truck_id,fecha,status,color_idx,coste,coste_modo,notas) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [name,codigo_orden||null,truck_id||null,fecha||null,status||'pendiente',color_idx||0,coste||null,coste_modo||'pendiente',notas]
+      `INSERT INTO cargas (name,codigo_orden,truck_id,fecha,status,color_idx,coste,coste_modo,mat_camion,mat_remolque,notas) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [name,codigo_orden||null,truck_id||null,fecha||null,status||'pendiente',color_idx||0,coste||null,coste_modo||'pendiente',req.body.mat_camion||null,req.body.mat_remolque||null,notas]
     );
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -120,8 +124,8 @@ app.put('/api/cargas/:id', async (req, res) => {
   const { name, codigo_orden, truck_id, fecha, status, color_idx, coste, coste_modo, notas } = req.body;
   try {
     const r = await pool.query(
-      `UPDATE cargas SET name=$1,codigo_orden=$2,truck_id=$3,fecha=$4,status=$5,color_idx=$6,coste=$7,coste_modo=$8,notas=$9 WHERE id=$10 RETURNING *`,
-      [name,codigo_orden||null,truck_id||null,fecha||null,status,color_idx,coste||null,coste_modo,notas,req.params.id]
+      `UPDATE cargas SET name=$1,codigo_orden=$2,truck_id=$3,fecha=$4,status=$5,color_idx=$6,coste=$7,coste_modo=$8,mat_camion=$9,mat_remolque=$10,notas=$11 WHERE id=$12 RETURNING *`,
+      [name,codigo_orden||null,truck_id||null,fecha||null,status,color_idx,coste||null,coste_modo,req.body.mat_camion||null,req.body.mat_remolque||null,notas,req.params.id]
     );
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
