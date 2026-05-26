@@ -16,15 +16,6 @@ const pool = new Pool({
 
 async function initDB() {
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS categorias (
-      id SERIAL PRIMARY KEY,
-      nombre TEXT NOT NULL,
-      color TEXT DEFAULT '#334155',
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    ALTER TABLE cargas ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL;
-    ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL;
-
     CREATE TABLE IF NOT EXISTS transportistas (
       id SERIAL PRIMARY KEY,
       nombre TEXT NOT NULL,
@@ -40,7 +31,6 @@ async function initDB() {
     CREATE TABLE IF NOT EXISTS cargas (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
-      codigo_orden TEXT,
       truck_id INTEGER REFERENCES transportistas(id) ON DELETE SET NULL,
       fecha DATE,
       status TEXT DEFAULT 'pendiente',
@@ -55,8 +45,6 @@ async function initDB() {
       num TEXT NOT NULL,
       cliente TEXT NOT NULL,
       destino TEXT NOT NULL,
-      ubicacion TEXT,
-      estado_prep TEXT DEFAULT 'sin_preparar',
       fecha DATE,
       kg NUMERIC DEFAULT 0,
       porte NUMERIC DEFAULT 0,
@@ -66,43 +54,47 @@ async function initDB() {
       carga_id INTEGER REFERENCES cargas(id) ON DELETE SET NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
-    ALTER TABLE cargas ADD COLUMN IF NOT EXISTS codigo_orden TEXT;
-    ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS ubicacion TEXT;
-    ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS estado_prep TEXT DEFAULT 'sin_preparar';
   `);
   console.log('DB ready');
 }
 
 // ── TRANSPORTISTAS ────────────────────────────────────────────────────────────
 app.get('/api/transportistas', async (req, res) => {
-  try { res.json((await pool.query('SELECT * FROM transportistas ORDER BY nombre')).rows); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+  try {
+    const r = await pool.query('SELECT * FROM transportistas ORDER BY nombre');
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
 app.post('/api/transportistas', async (req, res) => {
   const { nombre, contacto, telefono, email, nif, color, tarifas, notas } = req.body;
   try {
     const r = await pool.query(
-      `INSERT INTO transportistas (nombre,contacto,telefono,email,nif,color,tarifas,notas)
+      `INSERT INTO transportistas (nombre, contacto, telefono, email, nif, color, tarifas, notas)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [nombre,contacto,telefono,email,nif,color||'#185FA5',JSON.stringify(tarifas||[]),notas]
+      [nombre, contacto, telefono, email, nif, color||'#185FA5', JSON.stringify(tarifas||[]), notas]
     );
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
 app.put('/api/transportistas/:id', async (req, res) => {
   const { nombre, contacto, telefono, email, nif, color, tarifas, notas } = req.body;
   try {
     const r = await pool.query(
-      `UPDATE transportistas SET nombre=$1,contacto=$2,telefono=$3,email=$4,
-       nif=$5,color=$6,tarifas=$7,notas=$8 WHERE id=$9 RETURNING *`,
-      [nombre,contacto,telefono,email,nif,color,JSON.stringify(tarifas||[]),notas,req.params.id]
+      `UPDATE transportistas SET nombre=$1, contacto=$2, telefono=$3, email=$4,
+       nif=$5, color=$6, tarifas=$7, notas=$8 WHERE id=$9 RETURNING *`,
+      [nombre, contacto, telefono, email, nif, color, JSON.stringify(tarifas||[]), notas, req.params.id]
     );
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
 app.delete('/api/transportistas/:id', async (req, res) => {
-  try { await pool.query('DELETE FROM transportistas WHERE id=$1',[req.params.id]); res.json({ok:true}); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+  try {
+    await pool.query('DELETE FROM transportistas WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── CARGAS ────────────────────────────────────────────────────────────────────
@@ -110,102 +102,95 @@ app.get('/api/cargas', async (req, res) => {
   try {
     const r = await pool.query(`
       SELECT c.*, t.nombre as truck_nombre, t.color as truck_color
-      FROM cargas c LEFT JOIN transportistas t ON c.truck_id=t.id
-      ORDER BY c.created_at DESC`);
+      FROM cargas c
+      LEFT JOIN transportistas t ON c.truck_id = t.id
+      ORDER BY c.created_at DESC
+    `);
     res.json(r.rows);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
 app.post('/api/cargas', async (req, res) => {
-  const { name, codigo_orden, truck_id, fecha, status, color_idx, coste, coste_modo, notas } = req.body;
+  const { name, truck_id, fecha, status, color_idx, coste, coste_modo, notas } = req.body;
   try {
     const r = await pool.query(
-      `INSERT INTO cargas (name,codigo_orden,truck_id,fecha,status,color_idx,coste,coste_modo,notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [name,codigo_orden||null,truck_id||null,fecha||null,status||'pendiente',color_idx||0,coste||null,coste_modo||'pendiente',notas]
+      `INSERT INTO cargas (name, truck_id, fecha, status, color_idx, coste, coste_modo, notas)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [name, truck_id||null, fecha||null, status||'pendiente', color_idx||0, coste||null, coste_modo||'pendiente', notas]
     );
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
 app.put('/api/cargas/:id', async (req, res) => {
-  const { name, codigo_orden, truck_id, fecha, status, color_idx, coste, coste_modo, notas } = req.body;
+  const { name, truck_id, fecha, status, color_idx, coste, coste_modo, notas } = req.body;
   try {
     const r = await pool.query(
-      `UPDATE cargas SET name=$1,codigo_orden=$2,truck_id=$3,fecha=$4,status=$5,
-       color_idx=$6,coste=$7,coste_modo=$8,notas=$9 WHERE id=$10 RETURNING *`,
-      [name,codigo_orden||null,truck_id||null,fecha||null,status,color_idx,coste||null,coste_modo,notas,req.params.id]
+      `UPDATE cargas SET name=$1, truck_id=$2, fecha=$3, status=$4,
+       color_idx=$5, coste=$6, coste_modo=$7, notas=$8 WHERE id=$9 RETURNING *`,
+      [name, truck_id||null, fecha||null, status, color_idx, coste||null, coste_modo, notas, req.params.id]
     );
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
 app.delete('/api/cargas/:id', async (req, res) => {
   try {
-    await pool.query('UPDATE pedidos SET carga_id=NULL WHERE carga_id=$1',[req.params.id]);
-    await pool.query('DELETE FROM cargas WHERE id=$1',[req.params.id]);
-    res.json({ok:true});
+    await pool.query('UPDATE pedidos SET carga_id=NULL WHERE carga_id=$1', [req.params.id]);
+    await pool.query('DELETE FROM cargas WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── PEDIDOS ───────────────────────────────────────────────────────────────────
 app.get('/api/pedidos', async (req, res) => {
-  try { res.json((await pool.query('SELECT * FROM pedidos ORDER BY created_at DESC')).rows); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+  try {
+    const r = await pool.query('SELECT * FROM pedidos ORDER BY created_at DESC');
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
 app.post('/api/pedidos', async (req, res) => {
-  const { num, cliente, destino, ubicacion, estado_prep, fecha, kg, porte, prio, paradas, obs, carga_id } = req.body;
+  const { num, cliente, destino, fecha, kg, porte, prio, paradas, obs, carga_id } = req.body;
   try {
     const r = await pool.query(
-      `INSERT INTO pedidos (num,cliente,destino,ubicacion,estado_prep,fecha,kg,porte,prio,paradas,obs,carga_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [num,cliente,destino,ubicacion||null,estado_prep||'sin_preparar',fecha||null,kg||0,porte||0,prio||'normal',paradas||1,obs,carga_id||null]
+      `INSERT INTO pedidos (num, cliente, destino, fecha, kg, porte, prio, paradas, obs, carga_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [num, cliente, destino, fecha||null, kg||0, porte||0, prio||'normal', paradas||1, obs, carga_id||null]
     );
-    res.json(r.rows[0]);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-app.put('/api/pedidos/:id', async (req, res) => {
-  const { num, cliente, destino, ubicacion, estado_prep, fecha, kg, porte, prio, paradas, obs, carga_id } = req.body;
-  try {
-    const r = await pool.query(
-      `UPDATE pedidos SET num=$1,cliente=$2,destino=$3,ubicacion=$4,estado_prep=$5,
-       fecha=$6,kg=$7,porte=$8,prio=$9,paradas=$10,obs=$11,carga_id=$12 WHERE id=$13 RETURNING *`,
-      [num,cliente,destino,ubicacion||null,estado_prep||'sin_preparar',fecha||null,kg||0,porte||0,prio||'normal',paradas||1,obs,carga_id||null,req.params.id]
-    );
-    res.json(r.rows[0]);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-app.delete('/api/pedidos/:id', async (req, res) => {
-  try { await pool.query('DELETE FROM pedidos WHERE id=$1',[req.params.id]); res.json({ok:true}); }
-  catch(e) { res.status(500).json({ error: e.message }); }
-});
-app.patch('/api/pedidos/:id/carga', async (req, res) => {
-  const { carga_id } = req.body;
-  try {
-    const r = await pool.query('UPDATE pedidos SET carga_id=$1 WHERE id=$2 RETURNING *',[carga_id||null,req.params.id]);
-    res.json(r.rows[0]);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-app.patch('/api/pedidos/:id/prep', async (req, res) => {
-  const { estado_prep } = req.body;
-  try {
-    const r = await pool.query('UPDATE pedidos SET estado_prep=$1 WHERE id=$2 RETURNING *',[estado_prep,req.params.id]);
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/categorias', async (req, res) => {
-  try { res.json((await pool.query('SELECT * FROM categorias ORDER BY nombre')).rows); }
-  catch(e) { res.status(500).json({error:e.message}); }
+app.put('/api/pedidos/:id', async (req, res) => {
+  const { num, cliente, destino, fecha, kg, porte, prio, paradas, obs, carga_id } = req.body;
+  try {
+    const r = await pool.query(
+      `UPDATE pedidos SET num=$1, cliente=$2, destino=$3, fecha=$4, kg=$5,
+       porte=$6, prio=$7, paradas=$8, obs=$9, carga_id=$10 WHERE id=$11 RETURNING *`,
+      [num, cliente, destino, fecha||null, kg||0, porte||0, prio||'normal', paradas||1, obs, carga_id||null, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/categorias', async (req, res) => {
-  try { res.json((await pool.query('INSERT INTO categorias (nombre,color) VALUES ($1,$2) RETURNING *',[req.body.nombre,req.body.color||'#334155'])).rows[0]); }
-  catch(e) { res.status(500).json({error:e.message}); }
+
+app.delete('/api/pedidos/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM pedidos WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/categorias/:id', async (req, res) => {
-  try { res.json((await pool.query('UPDATE categorias SET nombre=$1,color=$2 WHERE id=$3 RETURNING *',[req.body.nombre,req.body.color,req.params.id])).rows[0]); }
-  catch(e) { res.status(500).json({error:e.message}); }
-});
-app.delete('/api/categorias/:id', async (req, res) => {
-  try { await pool.query('DELETE FROM categorias WHERE id=$1',[req.params.id]); res.json({ok:true}); }
-  catch(e) { res.status(500).json({error:e.message}); }
+
+// Assign pedido to carga
+app.patch('/api/pedidos/:id/carga', async (req, res) => {
+  const { carga_id } = req.body;
+  try {
+    const r = await pool.query(
+      'UPDATE pedidos SET carga_id=$1 WHERE id=$2 RETURNING *',
+      [carga_id||null, req.params.id]
+    );
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
