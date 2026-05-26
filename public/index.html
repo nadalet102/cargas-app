@@ -307,6 +307,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
         <button class="filter-btn" id="fb-prep" onclick="setFilter('preparado')"><i class="ti ti-check" style="font-size:10px"></i> Preparados</button>
         <button class="filter-btn" id="fb-noprep" onclick="setFilter('sin_preparar')"><i class="ti ti-clock" style="font-size:10px"></i> Sin preparar</button>
       </div>
+      <div style="padding:5px 8px;border-bottom:1px solid var(--border)">
+        <select id="filter-cat-ped" onchange="catFilter=this.value;renderBCList();renderCargas()" style="width:100%;font-size:11px;padding:4px 7px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text)">
+          <option value="">Todas las categorías</option>
+        </select>
+      </div>
       <div class="panel-list" id="bc-list"><div class="loading">Cargando...</div></div>
     </div>
     <div>
@@ -485,7 +490,7 @@ const DOWS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 const TRANS_COLORS=['#185FA5','#0F6E56','#854F0B','#712B13','#534AB7','#A32D2D'];
 
 let pedidos=[],cargas=[],transportistas=[],categorias=[];
-let dragId=null,searchQ='',prepFilter='all',editId=null,modalType=null,cargaN=0;
+let dragId=null,searchQ='',prepFilter='all',catFilter='',editId=null,modalType=null,cargaN=0;
 let calY=new Date().getFullYear(),calM=new Date().getMonth();
 
 const fmtN=n=>Math.round(n||0).toLocaleString('es-ES');
@@ -496,6 +501,7 @@ const cargaPortes=id=>cargaPs(id).reduce((s,p)=>s+(+p.porte||0),0);
 const freePs=()=>pedidos.filter(p=>{
   if(p.carga_id) return false;
   if(prepFilter!=='all'&&p.estado_prep!==prepFilter) return false;
+  if(catFilter&&String(p.categoria_id)!==catFilter) return false;
   if(searchQ&&!p.cliente.toLowerCase().includes(searchQ)&&!p.destino.toLowerCase().includes(searchQ)&&!p.num.toLowerCase().includes(searchQ)) return false;
   return true;
 });
@@ -528,7 +534,14 @@ async function loadAll(){
   }catch(e){setSyncStatus('err');log('Error al cargar: '+e.message,'warn');}
 }
 
-function renderAll(){renderBCList();renderCargas();updateStats();}
+function updateCatDropdowns(){
+  const opts='<option value="">Todas las categorías</option>'+categorias.map(c=>`<option value="${c.id}" ${catFilter===String(c.id)?'selected':''}>${c.nombre}</option>`).join('');
+  ['filter-cat-ped','filter-cat-cal'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){const cur=el.value;el.innerHTML=opts;el.value=cur;}
+  });
+}
+function renderAll(){renderBCList();renderCargas();updateStats();updateCatDropdowns();}
 
 function switchTab(t){
   ['plan','cal','trans','cats','hist','dash'].forEach(id=>{
@@ -568,7 +581,7 @@ function renderBCList(){
   document.getElementById('bc-count').textContent=allFree.length;
   const el=document.getElementById('bc-list');
   if(!fp.length){
-    el.innerHTML=`<div class="empty-state"><i class="ti ti-check-circle"></i>${searchQ||prepFilter!=='all'?'Sin resultados':'Todos los pedidos asignados'}</div>`;
+    el.innerHTML=`<div class="empty-state"><i class="ti ti-check-circle"></i>${searchQ||prepFilter!=='all'||catFilter?'Sin resultados':'Todos los pedidos asignados'}</div>`;
     return;
   }
   el.innerHTML=fp.map(p=>{
@@ -601,7 +614,7 @@ function renderCargas(){
   const filterVal=document.getElementById('filter-status').value;
   // Entregadas siempre van al historial, nunca a la pantalla principal
   const activeCargas=cargas.filter(c=>c.status!=='entregada');
-  const filtered=filterVal?activeCargas.filter(c=>c.status===filterVal):activeCargas;
+  const filtered=activeCargas.filter(c=>(!filterVal||c.status===filterVal)&&(!catFilter||String(c.categoria_id)===catFilter));
   const grid=document.getElementById('cargas-grid');
   if(!filtered.length&&!filterVal){
     grid.innerHTML=`<button class="new-carga-btn" onclick="addCarga()"><i class="ti ti-plus" style="font-size:22px;opacity:.4"></i><span>Crear primera carga</span></button>`;
@@ -1115,11 +1128,11 @@ function renderCal(){
   for(let d=1;d<=dim;d++){
     const ds=calY+'-'+String(calM+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     const isToday=today.getFullYear()===calY&&today.getMonth()===calM&&today.getDate()===d;
-    const dc=cargas.filter(c=>c.fecha&&String(c.fecha).substring(0,10)===ds);
+    const dc=cargas.filter(c=>c.fecha&&String(c.fecha).substring(0,10)===ds&&(!catFilter||String(c.categoria_id)===catFilter));
     html+=`<div class="cal-day${isToday?' today':''}"><div class="cal-dn">${d}</div>${dc.map(c=>{const col=CCOLS[Math.min(c.color_idx||0,CCOLS.length-1)];return`<div class="cal-ev" style="background:${col.bg};color:${col.t}">${c.name}</div>`;}).join('')}</div>`;
   }
   document.getElementById('cal-grid').innerHTML=html;
-  const mc=cargas.filter(c=>c.fecha&&String(c.fecha).substring(0,7)===(calY+'-'+String(calM+1).padStart(2,'0')));
+  const mc=cargas.filter(c=>c.fecha&&String(c.fecha).substring(0,7)===(calY+'-'+String(calM+1).padStart(2,'0'))&&(!catFilter||String(c.categoria_id)===catFilter));
   document.getElementById('cal-count').textContent=mc.length;
   document.getElementById('cal-list').innerHTML=mc.length===0?`<div style="padding:14px;font-size:11px;color:var(--text2);text-align:center">Sin cargas este mes</div>`:mc.map(c=>{
     const ps=cargaPs(c.id),sc=STATUS_CFG[c.status]||STATUS_CFG.pendiente;
