@@ -780,10 +780,10 @@ async function printCarga(cid, showPrices){
     const isPrep=p.estado_prep==='preparado';
     const rowBg=isPrep?'#f0fdf4':'#fff5f5';
     const ubicCell=p.ubicacion
-      ? '<span style="background:#E6F1FB;color:#0C447C;padding:2px 8px;border-radius:10px;font-weight:500">'+p.ubicacion+'</span>'
+      ? '<span style="background:#E6F1FB;color:#0C447C;padding:4px 10px;border-radius:10px;font-weight:500">'+p.ubicacion+'</span>'
       : '<span style="color:#9ca3af">—</span>';
     const portCell=showPrices
-      ? '<td style="padding:8px 10px;text-align:right;font-weight:500;color:#3B6D11">'+fmtN(p.porte)+' \u20AC</td>'
+      ? '<td style="padding:14px 10px;text-align:right;font-weight:500;color:#3B6D11">'+fmtN(p.porte)+' \u20AC</td>'
       : '';
     const prepLabel=isPrep?'Preparado':'Sin preparar';
     const prepBg=isPrep?'#EAF3DE':'#FCEBEB';
@@ -792,22 +792,22 @@ async function printCarga(cid, showPrices){
     var qrCell='';
     if(!showPrices){
       if(p.maps_url){
-        var qrDataUri=makeQRDataUri(p.maps_url,80);
-        qrCell='<td style="padding:4px 8px;text-align:center"><img src="'+qrDataUri+'" width="72" height="72" style="display:block;margin:0 auto"></td>';
+        var qrDataUri=makeQRDataUri(p.maps_url,110);
+        qrCell='<td style="padding:8px 10px;text-align:center"><img src="'+qrDataUri+'" width="100" height="100" style="display:block;margin:0 auto"></td>';
       } else {
-        qrCell='<td style="padding:4px 8px;text-align:center;color:#d1d5db;font-size:10px">—</td>';
+        qrCell='<td style="padding:8px 10px;text-align:center;color:#d1d5db;font-size:10px">—</td>';
       }
     }
-    rows+='<tr style="background:'+rowBg+';border-bottom:1px solid #e5e7eb">'
-      +'<td style="padding:8px 10px;font-weight:500;font-family:monospace;color:'+col.b+'">'+(p.orden_carga||i+1)+'</td>'
-      +'<td style="padding:8px 10px;color:#185FA5;font-weight:500">'+p.num+'</td>'
-      +'<td style="padding:8px 10px;font-weight:500">'+p.cliente+'</td>'
-      +'<td style="padding:8px 10px;color:#6b7280">'+p.destino+'</td>'
-      +'<td style="padding:8px 10px">'+ubicCell+'</td>'
+    rows+='<tr style="background:'+rowBg+';border-bottom:2px solid #e5e7eb">'
+      +'<td style="padding:14px 10px;font-weight:500;font-family:monospace;color:'+col.b+';font-size:14px">'+(p.orden_carga||i+1)+'</td>'
+      +'<td style="padding:14px 10px;color:#185FA5;font-weight:500">'+p.num+'</td>'
+      +'<td style="padding:14px 10px;font-weight:500">'+p.cliente+'</td>'
+      +'<td style="padding:14px 10px;color:#6b7280">'+p.destino+'</td>'
+      +'<td style="padding:14px 10px">'+ubicCell+'</td>'
       +portCell
       +((!showPrices)?qrCell:'')
-      +'<td style="padding:8px 10px;text-align:right;font-weight:500">'+fmtN(p.kg)+'</td>'
-      +'<td style="padding:8px 10px;text-align:center"><span style="background:'+prepBg+';color:'+prepColor+';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500">'+prepLabel+'</span></td>'
+      +'<td style="padding:14px 10px;text-align:right;font-weight:500">'+fmtN(p.kg)+'</td>'
+      +'<td style="padding:14px 10px;text-align:center"><span style="background:'+prepBg+';color:'+prepColor+';padding:4px 10px;border-radius:10px;font-size:11px;font-weight:500">'+prepLabel+'</span></td>'
       +'</tr>';
   });
 
