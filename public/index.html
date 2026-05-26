@@ -527,7 +527,7 @@ async function api(method,path,body){
 async function loadAll(){
   setSyncStatus('loading');
   try{
-    [transportistas,cargas,pedidos]=await Promise.all([api('GET','/transportistas'),api('GET','/cargas'),api('GET','/pedidos')]);
+    [transportistas,cargas,pedidos,categorias]=await Promise.all([api('GET','/transportistas'),api('GET','/cargas'),api('GET','/pedidos'),api('GET','/categorias')]);
     cargaN=cargas.length;
     setSyncStatus('ok');
     renderAll();
@@ -614,7 +614,14 @@ function renderCargas(){
   const filterVal=document.getElementById('filter-status').value;
   // Entregadas siempre van al historial, nunca a la pantalla principal
   const activeCargas=cargas.filter(c=>c.status!=='entregada');
-  const filtered=activeCargas.filter(c=>(!filterVal||c.status===filterVal)&&(!catFilter||String(c.categoria_id)===catFilter));
+  const filtered=activeCargas.filter(c=>{
+    if(filterVal&&c.status!==filterVal) return false;
+    if(!catFilter) return true;
+    // Show if carga has the category assigned
+    if(String(c.categoria_id)===catFilter) return true;
+    // Also show if any pedido inside the carga has the category
+    return cargaPs(c.id).some(p=>String(p.categoria_id)===catFilter);
+  });
   const grid=document.getElementById('cargas-grid');
   if(!filtered.length&&!filterVal){
     grid.innerHTML=`<button class="new-carga-btn" onclick="addCarga()"><i class="ti ti-plus" style="font-size:22px;opacity:.4"></i><span>Crear primera carga</span></button>`;
