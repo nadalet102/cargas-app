@@ -284,6 +284,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
   <div class="tab active" id="tab-plan" onclick="switchTab('plan')"><i class="ti ti-layout-columns"></i> Planificación</div>
   <div class="tab" id="tab-cal" onclick="switchTab('cal')"><i class="ti ti-calendar"></i> Calendario</div>
   <div class="tab" id="tab-trans" onclick="switchTab('trans')"><i class="ti ti-truck"></i> Transportistas</div>
+  <div class="tab" id="tab-cats" onclick="switchTab('cats')"><i class="ti ti-tag"></i> Categorías</div>
   <div class="tab" id="tab-hist" onclick="switchTab('hist')"><i class="ti ti-history"></i> Historial <span id="hist-badge" style="background:#EAF3DE;color:#27500A;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;margin-left:3px">0</span></div>
   <div class="tab" id="tab-dash" onclick="switchTab('dash')"><i class="ti ti-chart-bar"></i> Resumen</div>
 </div>
@@ -351,6 +352,16 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
     <button class="btn-primary" onclick="openModal('trans',null)"><i class="ti ti-plus"></i> Nuevo transportista</button>
   </div>
   <div id="trans-list"><div class="loading">Cargando...</div></div>
+</div>
+</div>
+
+<!-- CATEGORÍAS -->
+<div class="view" id="view-cats">
+<div class="container" style="max-width:560px">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+    <button class="btn-primary" onclick="openCatModal(null)"><i class="ti ti-plus"></i> Nueva categoría</button>
+  </div>
+  <div id="cats-list"></div>
 </div>
 </div>
 
@@ -473,7 +484,7 @@ const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 const DOWS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 const TRANS_COLORS=['#185FA5','#0F6E56','#854F0B','#712B13','#534AB7','#A32D2D'];
 
-let pedidos=[],cargas=[],transportistas=[];
+let pedidos=[],cargas=[],transportistas=[],categorias=[];
 let dragId=null,searchQ='',prepFilter='all',editId=null,modalType=null,cargaN=0;
 let calY=new Date().getFullYear(),calM=new Date().getMonth();
 
@@ -520,13 +531,14 @@ async function loadAll(){
 function renderAll(){renderBCList();renderCargas();updateStats();}
 
 function switchTab(t){
-  ['plan','cal','trans','hist','dash'].forEach(id=>{
+  ['plan','cal','trans','cats','hist','dash'].forEach(id=>{
     document.getElementById('tab-'+id).classList.toggle('active',id===t);
     document.getElementById('view-'+id).classList.toggle('active',id===t);
   });
   if(t==='cal')renderCal();
   if(t==='dash')renderDash();
   if(t==='trans')renderTrans();
+  if(t==='cats')renderCats();
   if(t==='hist')renderHist();
 }
 
@@ -574,6 +586,8 @@ function renderBCList(){
       <div class="pc-client">${p.cliente}</div>
       <div class="pc-dest"><i class="ti ti-map-pin" style="font-size:11px"></i>${p.destino}</div>
       ${p.ubicacion?`<div class="pc-ubic has-ubic"><i class="ti ti-box" style="font-size:10px"></i>${p.ubicacion}</div>`:''}
+      ${p.obs?`<div style="font-size:10px;color:var(--text2);margin-top:3px;padding:3px 4px;background:rgba(0,0,0,.04);border-radius:3px;line-height:1.35"><i class="ti ti-message" style="font-size:9px"></i> ${p.obs}</div>`:''}
+      ${p.categoria_nombre?`<div style="display:inline-block;margin-top:3px;background:${p.categoria_color}22;color:${p.categoria_color};font-size:9px;padding:1px 6px;border-radius:8px;font-weight:600;border:1px solid ${p.categoria_color}44">${p.categoria_nombre}</div>`:''}
       <div class="pc-footer">
         <span class="pc-kg"><i class="ti ti-weight" style="font-size:11px"></i> ${fmtN(p.kg)} kg</span>
         <span class="pc-porte">${fmtN(p.porte)} €</span>
@@ -662,7 +676,8 @@ function renderCargas(){
               <div class="mini-body">
                 <div class="mini-client">${p.cliente}${p.prio==='urgente'?' <span class="badge b-red" style="font-size:9px">U</span>':''}</div>
                 ${p.ubicacion?`<div class="mini-ubic"><i class="ti ti-box" style="font-size:10px"></i>${p.ubicacion}</div>`:''}
-                <div class="mini-meta"><span>${p.destino.split(',')[0]}</span><span>·</span><span>${fmtN(p.kg)} kg</span><span>·</span><span style="color:var(--green)">${fmtN(p.porte)} €</span></div>
+                <div class="mini-meta"><span>${p.destino.split(',')[0]}</span><span>·</span><span>${fmtN(p.kg)} kg</span><span>·</span><span style="color:var(--green)">${fmtN(p.porte)} €</span>${p.categoria_nombre?`<span>·</span><span style="background:${p.categoria_color}22;color:${p.categoria_color};font-size:9px;padding:1px 5px;border-radius:6px;font-weight:600">${p.categoria_nombre}</span>`:''}</div>
+                ${p.obs?`<div style="font-size:10px;color:var(--text2);margin-top:2px"><i class="ti ti-message" style="font-size:9px"></i> ${p.obs}</div>`:''}
               </div>
               <div class="mini-acts">
                 <input type="number" class="order-input" value="${p.orden_carga||''}" placeholder="#" title="Orden en la carga" onchange="setOrden('${p.id}',this.value)" min="1">
@@ -676,6 +691,10 @@ function renderCargas(){
         <select class="cc-sel" onchange="updateCargaField('${c.id}','truck_id',this.value)">
           <option value="">Sin transportista</option>
           ${transportistas.map(tr=>`<option value="${tr.id}" ${String(c.truck_id)===String(tr.id)?'selected':''}>${tr.nombre}</option>`).join('')}
+        </select>
+        <select class="cc-sel" onchange="updateCargaField('${c.id}','categoria_id',this.value)">
+          <option value="">Sin categoría</option>
+          ${categorias.map(cat=>`<option value="${cat.id}" ${String(c.categoria_id)===String(cat.id)?'selected':''}>${cat.nombre}</option>`).join('')}
         </select>
         <select class="cc-sel" onchange="updateCargaField('${c.id}','status',this.value)">
           ${Object.entries(STATUS_CFG).map(([k,v])=>`<option value="${k}" ${c.status===k?'selected':''}>${v.label}</option>`).join('')}
@@ -957,6 +976,11 @@ function openModal(type,id){
         </div>
         <div class="field"><label>Nº paradas</label><input type="number" id="f-paradas" value="${p?p.paradas||1:1}" min="1"></div>
       </div>
+      <div class="field"><label>Categoría</label>
+        <select id="f-cat">
+          <option value="">Sin categoría</option>
+          ${categorias.map(cat=>`<option value="${cat.id}" ${p&&String(p.categoria_id)===String(cat.id)?'selected':''}>${cat.nombre}</option>`).join('')}
+        </select></div>
       <div class="field"><label>Observaciones</label><textarea id="f-obs">${p?p.obs||'':''}</textarea></div>`;
     document.getElementById('modal-foot').innerHTML=`${id?`<button class="btn-del" onclick="closeModal();confirmDelete('pedido','${id}')"><i class="ti ti-trash"></i></button>`:''}<button class="btn-sec" onclick="closeModal()">Cancelar</button><button class="btn-primary" onclick="savePedido()"><i class="ti ti-device-floppy"></i> Guardar</button>`;
   }else{
@@ -1285,6 +1309,82 @@ function log(msg,type=''){
   const icon=type==='ok'?'ti-circle-check':type==='warn'?'ti-alert-triangle':'ti-info-circle';
   el.innerHTML=`<i class="ti ${icon}"></i> ${msg}`;
   el.className='sb-msg'+(type?' '+type:'');
+}
+
+// ── CATEGORÍAS ──────────────────────────────────────────────────────────────
+const CAT_COLORS=['#334155','#1d6fa4','#2d7a3a','#8a5200','#b91c1c','#5b21b6','#0891b2','#be185d','#065f46','#92400e'];
+
+function renderCats(){
+  const el=document.getElementById('cats-list');
+  if(!el)return;
+  if(!categorias.length){
+    el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--text2)"><i class="ti ti-tag" style="font-size:28px;opacity:.3;display:block;margin-bottom:8px"></i>Sin categorías. Crea la primera.</div>`;
+    return;
+  }
+  el.innerHTML=`<div class="list-card">`+categorias.map(c=>{
+    const nC=cargas.filter(x=>String(x.categoria_id)===String(c.id)).length;
+    const nP=pedidos.filter(x=>String(x.categoria_id)===String(c.id)).length;
+    return `<div class="list-row">
+      <div style="width:14px;height:14px;border-radius:50%;background:${c.color};flex-shrink:0"></div>
+      <div class="list-main">
+        <div class="list-name">${c.nombre}</div>
+        <div class="list-meta">${nC} carga${nC!==1?'s':''} · ${nP} pedido${nP!==1?'s':''}</div>
+      </div>
+      <button class="ico" onclick="openCatModal('${c.id}')" title="Editar"><i class="ti ti-pencil"></i></button>
+      <button class="ico del" onclick="deleteCat('${c.id}')" title="Eliminar"><i class="ti ti-trash"></i></button>
+    </div>`;
+  }).join('')+`</div>`;
+}
+
+function openCatModal(id){
+  const c=id?categorias.find(x=>String(x.id)===String(id)):null;
+  const box=document.getElementById('modal-box');
+  box.className='modal';
+  document.getElementById('modal-title').innerHTML=`<i class="ti ti-tag"></i> ${id?'Editar':'Nueva'} categoría`;
+  document.getElementById('modal-body').innerHTML=
+    `<div class="field"><label>Nombre</label><input type="text" id="cat-nombre" value="${c?c.nombre:''}" placeholder="Ej: Urgente, Zona Norte..."></div>`+
+    `<div class="field"><label>Color</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">`+
+    CAT_COLORS.map(col=>`<div data-col="${col}" onclick="pickCol(this)" style="width:26px;height:26px;border-radius:50%;background:${col};cursor:pointer;box-sizing:border-box;border:3px solid ${c&&c.color===col?'#fff':'transparent'};box-shadow:${c&&c.color===col?'0 0 0 2px '+col:'none'}"></div>`).join('')+
+    `</div><input type="hidden" id="cat-color" value="${c?c.color:CAT_COLORS[0]}"></div>`;
+  document.getElementById('modal-foot').innerHTML=
+    (id?`<button class="btn-del" style="margin-right:auto" onclick="deleteCat('${id}');closeModal()"><i class="ti ti-trash"></i></button>`:'')+ 
+    `<button class="btn-sec" onclick="closeModal()">Cancelar</button>`+
+    `<button class="btn-primary" onclick="saveCat('${id||''}')"><i class="ti ti-device-floppy"></i> Guardar</button>`;
+  document.getElementById('overlay').classList.add('open');
+}
+
+function pickCol(el){
+  document.querySelectorAll('[data-col]').forEach(d=>{d.style.border='3px solid transparent';d.style.boxShadow='none';});
+  el.style.border='3px solid #fff'; el.style.boxShadow='0 0 0 2px '+el.dataset.col;
+  document.getElementById('cat-color').value=el.dataset.col;
+}
+
+async function saveCat(id){
+  const nombre=document.getElementById('cat-nombre').value.trim();
+  const color=document.getElementById('cat-color').value||CAT_COLORS[0];
+  if(!nombre){log('Introduce un nombre','warn');return;}
+  try{
+    if(id){
+      const u=await api('PUT','/categorias/'+id,{nombre,color});
+      Object.assign(categorias.find(x=>String(x.id)===String(id)),u);
+    }else{
+      categorias.push(await api('POST','/categorias',{nombre,color}));
+    }
+    closeModal(); renderCats(); renderCargas(); renderBCList();
+    log('Categoría guardada','ok');
+  }catch(e){log('Error: '+e.message,'warn');}
+}
+
+async function deleteCat(id){
+  if(!confirm('¿Eliminar esta categoría?'))return;
+  try{
+    await api('DELETE','/categorias/'+id);
+    categorias=categorias.filter(x=>String(x.id)!==String(id));
+    cargas.forEach(c=>{if(String(c.categoria_id)===String(id))c.categoria_id=null;});
+    pedidos.forEach(p=>{if(String(p.categoria_id)===String(id))p.categoria_id=null;});
+    renderCats(); renderCargas(); renderBCList();
+    log('Categoría eliminada');
+  }catch(e){log('Error','warn');}
 }
 
 setInterval(loadAll,30000);
