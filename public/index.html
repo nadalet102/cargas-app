@@ -1396,8 +1396,6 @@ function renderCats(){
 
 function openCatModal(id){
   const c=id?categorias.find(x=>String(x.id)===String(id)):null;
-  const box=document.getElementById('modal-box');
-  box.className='modal';
   document.getElementById('modal-title').innerHTML=`<i class="ti ti-tag"></i> ${id?'Editar':'Nueva'} categoría`;
   document.getElementById('modal-body').innerHTML=
     `<div class="field"><label>Nombre</label><input type="text" id="cat-nombre" value="${c?c.nombre:''}" placeholder="Ej: Urgente, Zona Norte..."></div>`+
