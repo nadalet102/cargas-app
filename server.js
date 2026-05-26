@@ -50,6 +50,11 @@ async function initDB() {
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS maps_url TEXT`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS direccion_descarga TEXT`,
+    `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cif TEXT`,
+    `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS direccion TEXT`,
+    `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cp TEXT`,
+    `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS ciudad TEXT`,
+    `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS pais TEXT DEFAULT 'España'`,
   ];
   for (const sql of stmts) {
     try { await pool.query(sql); }
