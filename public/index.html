@@ -1148,7 +1148,7 @@ function openModal(type,id){
   modalType=type;editId=id;
   const p=id&&type==='pedido'?pedidos.find(x=>String(x.id)===String(id)):null;
   const t=id&&type==='trans'?transportistas.find(x=>String(x.id)===String(id)):null;
-  document.getElementById('modal-title').innerHTML=id?`<i class="ti ti-pencil"></i> Editar ${type==='pedido'?'pedido':'transportista'}`:`<i class="ti ti-plus"></i> Nuevo ${type==='pedido'?'pedido':'transportista'}`+(type==='pedido'&&!id?` <button onclick="triggerPDFImport()" style="margin-left:10px;background:none;border:1px solid var(--border2);border-radius:var(--radius-sm);padding:3px 10px;font-size:11px;cursor:pointer;color:var(--blue-d)"><i class="ti ti-file-import"></i> Importar PDF BC</button>`:'');
+  document.getElementById('modal-title').innerHTML=id?`<i class="ti ti-pencil"></i> Editar ${type==='pedido'?'pedido':'transportista'}`:`<i class="ti ti-plus"></i> Nuevo ${type==='pedido'?'pedido':'transportista'}`+(type==='pedido'&&!id?` <button onclick="triggerPDFImport()" style="margin-left:10px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);border-radius:var(--radius-sm);padding:3px 10px;font-size:11px;cursor:pointer;color:#fff"><i class="ti ti-file-import"></i> Importar PDF BC</button>`:'');
   if(type==='pedido'){
     document.getElementById('modal-body').innerHTML=`
       ${!id?'<input type="file" id="pdf-import-file" accept=".pdf" style="display:none" onchange="procesarPDFPedido(this)">':''}
@@ -1259,18 +1259,25 @@ async function procesarPDFPedido(input){
     try{datos=JSON.parse(raw);}
     catch(e){throw new Error('Respuesta inválida: '+raw.substring(0,100));}
 
-    // Fill form fields
-    if(datos.num) document.getElementById('f-num').value=datos.num;
-    if(datos.cliente_nombre) document.getElementById('f-cliente').value=datos.cliente_nombre;
-    if(datos.destino_texto) document.getElementById('f-destino').value=datos.destino_texto;
-    if(datos.direccion_descarga) document.getElementById('f-dir-desc').value=datos.direccion_descarga;
-    if(datos.kg) document.getElementById('f-kg').value=datos.kg;
-    if(datos.porte) document.getElementById('f-porte').value=datos.porte;
-    if(datos.fecha_pedido) document.getElementById('f-fecha').value=datos.fecha_pedido;
-    if(datos.obs) document.getElementById('f-obs').value=datos.obs;
+    // Fill form fields — modal stays open for review
+    if(datos.num){const el=document.getElementById('f-num');if(el)el.value=datos.num;}
+    if(datos.cliente_nombre){const el=document.getElementById('f-cliente');if(el)el.value=datos.cliente_nombre;}
+    if(datos.destino_texto){const el=document.getElementById('f-destino');if(el)el.value=datos.destino_texto;}
+    if(datos.direccion_descarga){const el=document.getElementById('f-dir-desc');if(el)el.value=datos.direccion_descarga;}
+    if(datos.kg){const el=document.getElementById('f-kg');if(el)el.value=datos.kg;}
+    if(datos.porte){const el=document.getElementById('f-porte');if(el)el.value=datos.porte;}
+    if(datos.fecha_pedido){const el=document.getElementById('f-fecha');if(el)el.value=datos.fecha_pedido;}
+    if(datos.obs){const el=document.getElementById('f-obs');if(el)el.value=datos.obs;}
 
+    // Restore title and show success banner
     titleEl.innerHTML=origTitle;
-    log('PDF importado: '+datos.num,'ok');
+    // Show green banner inside modal body
+    const banner=document.createElement('div');
+    banner.style.cssText='background:#e6f5ea;border:1px solid #2d7a3a;border-radius:6px;padding:8px 12px;font-size:12px;color:#2d7a3a;margin-bottom:10px;display:flex;align-items:center;gap:6px';
+    banner.innerHTML='<i class="ti ti-check"></i> PDF importado: <strong>'+(datos.num||'')+'</strong> — Revisa y guarda';
+    const body=document.getElementById('modal-body');
+    if(body){body.insertBefore(banner,body.firstChild);}
+    log('PDF importado correctamente','ok');
   }catch(e){
     titleEl.innerHTML=origTitle;
     log('Error leyendo PDF: '+e.message,'warn');
