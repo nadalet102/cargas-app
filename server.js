@@ -15,66 +15,44 @@ const pool = new Pool({
 });
 
 async function initDB() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS transportistas (
-      id SERIAL PRIMARY KEY,
-      nombre TEXT NOT NULL,
-      contacto TEXT,
-      telefono TEXT,
-      email TEXT,
-      nif TEXT,
-      color TEXT DEFAULT '#185FA5',
-      tarifas JSONB DEFAULT '[]',
-      notas TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    CREATE TABLE IF NOT EXISTS cargas (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
-      codigo_orden TEXT,
+  const stmts = [
+    `CREATE TABLE IF NOT EXISTS transportistas (
+      id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, contacto TEXT, telefono TEXT,
+      email TEXT, nif TEXT, color TEXT DEFAULT '#185FA5', tarifas JSONB DEFAULT '[]',
+      notas TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS cargas (
+      id SERIAL PRIMARY KEY, name TEXT NOT NULL, codigo_orden TEXT,
       truck_id INTEGER REFERENCES transportistas(id) ON DELETE SET NULL,
-      fecha DATE,
-      status TEXT DEFAULT 'pendiente',
-      color_idx INTEGER DEFAULT 0,
-      coste NUMERIC,
-      coste_modo TEXT DEFAULT 'pendiente',
-      mat_camion TEXT,
-      mat_remolque TEXT,
-      notas TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    CREATE TABLE IF NOT EXISTS pedidos (
-      id SERIAL PRIMARY KEY,
-      num TEXT NOT NULL,
-      cliente TEXT NOT NULL,
-      destino TEXT NOT NULL,
-      ubicacion TEXT,
-      estado_prep TEXT DEFAULT 'sin_preparar',
-      fecha DATE,
-      kg NUMERIC DEFAULT 0,
-      porte NUMERIC DEFAULT 0,
-      prio TEXT DEFAULT 'normal',
-      paradas INTEGER DEFAULT 1,
-      obs TEXT,
+      fecha DATE, status TEXT DEFAULT 'pendiente', color_idx INTEGER DEFAULT 0,
+      coste NUMERIC, coste_modo TEXT DEFAULT 'pendiente',
+      mat_camion TEXT, mat_remolque TEXT, notas TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS pedidos (
+      id SERIAL PRIMARY KEY, num TEXT NOT NULL, cliente TEXT NOT NULL,
+      destino TEXT NOT NULL, ubicacion TEXT, estado_prep TEXT DEFAULT 'sin_preparar',
+      fecha DATE, kg NUMERIC DEFAULT 0, porte NUMERIC DEFAULT 0,
+      prio TEXT DEFAULT 'normal', paradas INTEGER DEFAULT 1, obs TEXT,
       carga_id INTEGER REFERENCES cargas(id) ON DELETE SET NULL,
-      orden_carga INTEGER,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    ALTER TABLE cargas ADD COLUMN IF NOT EXISTS codigo_orden TEXT;
-    ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS ubicacion TEXT;
-    ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS estado_prep TEXT DEFAULT 'sin_preparar';
-    ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS orden_carga INTEGER;
-    ALTER TABLE cargas ADD COLUMN IF NOT EXISTS mat_camion TEXT;
-    ALTER TABLE cargas ADD COLUMN IF NOT EXISTS mat_remolque TEXT;
-    CREATE TABLE IF NOT EXISTS categorias (
-      id SERIAL PRIMARY KEY,
-      nombre TEXT NOT NULL,
-      color TEXT DEFAULT '#334155'
-    );
-    ALTER TABLE cargas ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL;
-    ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS maps_url TEXT;
-    ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL;
-  `);
+      orden_carga INTEGER, created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS categorias (
+      id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, color TEXT DEFAULT '#334155'
+    )`,
+    `ALTER TABLE cargas ADD COLUMN IF NOT EXISTS codigo_orden TEXT`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS ubicacion TEXT`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS estado_prep TEXT DEFAULT 'sin_preparar'`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS orden_carga INTEGER`,
+    `ALTER TABLE cargas ADD COLUMN IF NOT EXISTS mat_camion TEXT`,
+    `ALTER TABLE cargas ADD COLUMN IF NOT EXISTS mat_remolque TEXT`,
+    `ALTER TABLE cargas ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS maps_url TEXT`,
+  ];
+  for (const sql of stmts) {
+    try { await pool.query(sql); }
+    catch(e) { console.warn('initDB warning:', e.message); }
+  }
   console.log('DB ready');
 }
 
