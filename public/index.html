@@ -467,6 +467,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
           <div class="pdf-option-desc">Sin precios de transporte ni márgenes</div>
         </div>
       </div>
+      <div class="pdf-option" onclick="doOrdenTransportista()">
+        <div class="pdf-option-icon" style="background:#f5f0ff;color:#5b21b6"><i class="ti ti-truck-delivery"></i></div>
+        <div>
+          <div class="pdf-option-title">Orden de carga transportista</div>
+          <div class="pdf-option-desc">Para el jefe: ref, precio, fechas y obligaciones</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -738,6 +745,131 @@ let _pdfCargaId=null;
 function openPdfModal(cid){_pdfCargaId=cid;document.getElementById('pdf-modal-overlay').classList.add('open');}
 function closePdfModal(){document.getElementById('pdf-modal-overlay').classList.remove('open');_pdfCargaId=null;}
 function doPrint(showPrices){var cid=_pdfCargaId;closePdfModal();printCarga(cid,showPrices);}
+function doOrdenTransportista(){var cid=_pdfCargaId;closePdfModal();printOrdenTransportista(cid);}
+
+function printOrdenTransportista(cid){
+  const c=cargas.find(x=>String(x.id)===String(cid));
+  if(!c) return;
+  const ps=cargaPs(c.id).sort((a,b)=>(a.orden_carga||999)-(b.orden_carga||999));
+  const tr=transportistas.find(x=>String(x.id)===String(c.truck_id));
+  const kg=cargaKg(c.id);
+  const fmtFecha=d=>{if(!d)return '—';const s=String(d).substring(0,10);const[y,m,dd]=s.split('-');return dd+'-'+m+'-'+y.slice(2);};
+
+  // Build destinos list
+  const destinos=ps.map((p,i)=>`
+    <tr>
+      <td style="padding:6px 10px;font-weight:500;color:#185FA5">${p.num}</td>
+      <td style="padding:6px 10px;font-weight:500">${p.cliente}</td>
+      <td style="padding:6px 10px;color:#444">${p.destino}</td>
+      <td style="padding:6px 10px;text-align:right">${fmtN(p.kg)} kg</td>
+    </tr>`).join('');
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;font-size:12px;color:#111;background:#fff}
+    @page{size:A4;margin:1.5cm}
+    @media print{body{padding:0}}
+    .page{max-width:700px;margin:0 auto;padding:20px}
+    .title{font-size:28px;font-weight:700;text-align:center;letter-spacing:.02em;border-top:3px solid #111;border-bottom:3px solid #111;padding:10px 0;margin-bottom:18px}
+    .hdr-table{width:100%;border-collapse:collapse;margin-bottom:14px}
+    .hdr-table td{padding:5px 8px;border:1px solid #ccc;vertical-align:top}
+    .hdr-table .lbl{font-weight:700;font-size:11px}
+    .hdr-table .val{font-size:13px}
+    .ref-box{border:2px solid #111;padding:8px 14px;margin:14px 0;font-size:13px}
+    .ref-box strong{font-size:15px}
+    .precio{text-align:right;font-size:14px;font-weight:700;margin-top:14px;padding:8px 12px;border-top:2px solid #111}
+    .destinos-table{width:100%;border-collapse:collapse;margin:14px 0;font-size:12px}
+    .destinos-table th{background:#111;color:#fff;padding:7px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+    .destinos-table td{border-bottom:1px solid #ddd}
+    .obligaciones{margin-top:20px;border-top:2px solid #111;padding-top:12px}
+    .obligaciones h3{font-size:14px;text-align:center;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em}
+    .obligaciones p{font-size:10.5px;margin-bottom:5px;line-height:1.5}
+    .obligaciones strong{font-weight:700}
+    .footer{margin-top:18px;font-size:9px;color:#666;text-align:center;border-top:1px solid #ddd;padding-top:6px}
+    .logo-area{text-align:right;font-size:10px;color:#555;margin-bottom:4px}
+    .empresa{font-size:10px;color:#555;margin-bottom:14px}
+  </style>
+  </head><body><div class="page">
+  <div class="logo-area">Envasados Arisac, S.L. · CIF: B53779021</div>
+  <div class="empresa">Partida Collaet, s/n Junto a Cantera A.Forna · 03786 Forna-Alicante · tf. 966400882</div>
+  <div class="title">ORDEN DE CARGA</div>
+
+  <table class="hdr-table">
+    <tr>
+      <td style="width:50%">
+        <div class="lbl">TRANSPORTISTA</div>
+        <div class="val" style="font-size:15px;font-weight:700">${tr?tr.nombre.toUpperCase():'SIN ASIGNAR'}</div>
+      </td>
+      <td>
+        <div class="lbl">FECHA DE CARGA</div>
+        <div class="val">${fmtFecha(c.fecha)}</div>
+      </td>
+      <td>
+        <div class="lbl">Nº DE PEDIDO</div>
+        <div class="val" style="font-weight:700">${c.codigo_orden||c.name}</div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <div class="lbl">Matrículas</div>
+        <div class="val">${[c.mat_camion,c.mat_remolque].filter(Boolean).join(' / ')||'—'}</div>
+      </td>
+      <td>
+        <div class="lbl">Mercancía</div>
+        <div class="val">${fmtN(kg)} kg</div>
+      </td>
+      <td>
+        <div class="lbl">Fecha de descarga</div>
+        <div class="val">—</div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="3">
+        <div class="lbl">Lugar de carga</div>
+        <div class="val">Envasados Arisac S.L. · Partida Collaet s/n, Junto a Cantera A.Forna · 03786 FORNA, ALICANTE</div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="3">
+        <div class="lbl">Lugar de descarga</div>
+        <div class="val">${ps.map(p=>p.destino).filter((v,i,a)=>a.indexOf(v)===i).join(' / ')}</div>
+      </td>
+    </tr>
+  </table>
+
+  ${ps.length>1?`<table class="destinos-table">
+    <thead><tr><th>Pedido</th><th>Cliente</th><th>Destino</th><th style="text-align:right">Kg</th></tr></thead>
+    <tbody>${destinos}</tbody>
+  </table>`:''}
+
+  <div class="ref-box">
+    Ref. carga: <strong>${ps.map(p=>p.num).join(' / ')}</strong>
+  </div>
+
+  ${c.coste?`<div class="precio">PRECIO ACORDADO: ${fmtN(c.coste)} EUR</div>`:''}
+
+  <div class="obligaciones">
+    <h3>Obligaciones del transportista</h3>
+    <p>*Compromiso día de carga: en la aceptación de la presente orden de recogida, se fijará un día concreto. En caso de NO cumplimiento deberá avisar con antelación para coordinar una nueva recogida. En caso de anulaciones reiteradas, se considerará que el transportista no le interesa el trabajo y quedará fuera de la lista de proveedores de Arisac.</p>
+    <p>*Avisar con 2 horas de antelación para coordinar entrada en las instalaciones de Arisac, S.L.</p>
+    <p>*No se puede llegar sin preaviso, pues los horarios de cargas y descargas están organizados con antelación. Se le puede solicitar esperar en la población de Pego si estuviese llena la zona de carga.</p>
+    <p>*Para los casos de entrega en obra, o con hora de cita, se especificará una hora de entrega final, siendo de su obligación avisar el no cumplimiento. Dicho incumplimiento se sancionará de la siguiente manera:</p>
+    <p><strong>**OBRA:</strong> Todo lo excedido de 2 horas se cobrará a razón de <strong>100 EUR/hora</strong></p>
+    <p><strong>**ALMACÉN:</strong> Todo lo excedido de 2 horas se cobrará a razón de <strong>50 EUR/hora</strong></p>
+  </div>
+
+  <div class="footer">Generado: ${new Date().toLocaleString('es-ES')} · ${c.name}${c.codigo_orden?' · '+c.codigo_orden:''}</div>
+  </div>
+  <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>
+  </body></html>`;
+
+  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
+}
 
 // ── QR CODE GENERATOR (no external deps) ─────────────────────────────────────
 function makeQRDataUri(text, size){
