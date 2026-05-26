@@ -79,11 +79,11 @@ app.post('/api/transportistas', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/transportistas/:id', async (req, res) => {
-  const { nombre, contacto, telefono, email, nif, color, tarifas, notas } = req.body;
+  const { nombre, contacto, telefono, email, nif, cif, direccion, cp, ciudad, pais, color, tarifas, notas } = req.body;
   try {
     const r = await pool.query(
-      `UPDATE transportistas SET nombre=$1,contacto=$2,telefono=$3,email=$4,nif=$5,color=$6,tarifas=$7,notas=$8 WHERE id=$9 RETURNING *`,
-      [nombre,contacto,telefono,email,nif,color,JSON.stringify(tarifas||[]),notas,req.params.id]
+      `UPDATE transportistas SET nombre=$1,contacto=$2,telefono=$3,email=$4,nif=$5,cif=$6,direccion=$7,cp=$8,ciudad=$9,pais=$10,color=$11,tarifas=$12,notas=$13 WHERE id=$14 RETURNING *`,
+      [nombre,contacto,telefono,email,nif,cif||null,direccion||null,cp||null,ciudad||null,pais||'España',color,JSON.stringify(tarifas||[]),notas,req.params.id]
     );
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
