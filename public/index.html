@@ -822,12 +822,13 @@ async function printOrdenTransportista(cid){
     <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;background:#f8fafc">
       <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#6b7280;margin-bottom:6px">Transportista</div>
       <div style="font-size:16px;font-weight:700;color:#0d4f7a">${tr?tr.nombre:'Sin asignar'}</div>
-      ${tr&&(tr.cif||tr.nif)?`<div style="font-size:11px;color:#6b7280;margin-top:2px">CIF/NIF: ${tr.cif||tr.nif}</div>`:''}
-      ${tr&&tr.direccion?`<div style="font-size:11px;color:#6b7280;margin-top:1px">${tr.direccion}${tr.cp?' · '+tr.cp:''}${tr.ciudad?' '+tr.ciudad:''}</div>`:''}
-      ${tr&&tr.pais&&tr.pais!=='España'?`<div style="font-size:11px;color:#6b7280">${tr.pais}</div>`:''}
-      ${tr&&tr.telefono?`<div style="font-size:11px;color:#6b7280;margin-top:3px">📞 ${tr.telefono}</div>`:''}
-      ${tr&&tr.email?`<div style="font-size:11px;color:#6b7280">✉ ${tr.email}</div>`:''}
-      ${c.mat_camion||c.mat_remolque?`<div style="margin-top:8px;font-size:11px;font-family:monospace;background:#fff;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px;display:inline-block">${[c.mat_camion,c.mat_remolque].filter(Boolean).join(' · ')}</div>`:''}
+      ${tr&&(tr.cif||tr.nif)?`<div style="font-size:11px;color:#444;margin-top:4px"><strong>CIF/NIF:</strong> ${tr.cif||tr.nif}</div>`:''}
+      ${tr&&tr.direccion?`<div style="font-size:11px;color:#444;margin-top:2px">${tr.direccion}</div>`:''}
+      ${tr&&(tr.cp||tr.ciudad)?`<div style="font-size:11px;color:#444">${[tr.cp,tr.ciudad].filter(Boolean).join(' ')}</div>`:''}
+      ${tr&&tr.pais&&tr.pais!=='España'?`<div style="font-size:11px;color:#444">${tr.pais}</div>`:'<div style="font-size:11px;color:#444">España</div>'}
+      ${tr&&tr.telefono?`<div style="font-size:11px;color:#6b7280;margin-top:4px">Tel: ${tr.telefono}</div>`:''}
+      ${tr&&tr.email?`<div style="font-size:11px;color:#6b7280">Email: ${tr.email}</div>`:''}
+      ${c.mat_camion||c.mat_remolque?`<div style="margin-top:8px;font-size:11px;font-family:monospace;background:#fff;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px;display:inline-block"><strong>Matrículas:</strong> ${[c.mat_camion,c.mat_remolque].filter(Boolean).join(' / ')}</div>`:''}
     </div>
     <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;background:#f8fafc">
       <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#6b7280;margin-bottom:6px">Datos de la carga</div>
