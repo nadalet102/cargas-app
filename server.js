@@ -66,6 +66,13 @@ async function initDB() {
     ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS orden_carga INTEGER;
     ALTER TABLE cargas ADD COLUMN IF NOT EXISTS mat_camion TEXT;
     ALTER TABLE cargas ADD COLUMN IF NOT EXISTS mat_remolque TEXT;
+    CREATE TABLE IF NOT EXISTS categorias (
+      id SERIAL PRIMARY KEY,
+      nombre TEXT NOT NULL,
+      color TEXT DEFAULT '#334155'
+    );
+    ALTER TABLE cargas ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL;
+    ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL;
   `);
   console.log('DB ready');
 }
@@ -121,11 +128,11 @@ app.post('/api/cargas', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/cargas/:id', async (req, res) => {
-  const { name, codigo_orden, truck_id, fecha, status, color_idx, coste, coste_modo, notas } = req.body;
+  const { name, codigo_orden, truck_id, fecha, status, color_idx, coste, coste_modo, notas, categoria_id } = req.body;
   try {
     const r = await pool.query(
-      `UPDATE cargas SET name=$1,codigo_orden=$2,truck_id=$3,fecha=$4,status=$5,color_idx=$6,coste=$7,coste_modo=$8,mat_camion=$9,mat_remolque=$10,notas=$11 WHERE id=$12 RETURNING *`,
-      [name,codigo_orden||null,truck_id||null,fecha||null,status,color_idx,coste||null,coste_modo,req.body.mat_camion||null,req.body.mat_remolque||null,notas,req.params.id]
+      `UPDATE cargas SET name=$1,codigo_orden=$2,truck_id=$3,fecha=$4,status=$5,color_idx=$6,coste=$7,coste_modo=$8,mat_camion=$9,mat_remolque=$10,notas=$11,categoria_id=$12 WHERE id=$13 RETURNING *`,
+      [name,codigo_orden||null,truck_id||null,fecha||null,status,color_idx,coste||null,coste_modo,req.body.mat_camion||null,req.body.mat_remolque||null,notas,categoria_id||null,req.params.id]
     );
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -140,25 +147,25 @@ app.delete('/api/cargas/:id', async (req, res) => {
 
 // ── PEDIDOS ───────────────────────────────────────────────────────────────────
 app.get('/api/pedidos', async (req, res) => {
-  try { res.json((await pool.query('SELECT * FROM pedidos ORDER BY created_at DESC')).rows); }
+  try { res.json((await pool.query('SELECT p.*,cat.nombre as categoria_nombre,cat.color as categoria_color FROM pedidos p LEFT JOIN categorias cat ON cat.id=p.categoria_id ORDER BY p.created_at DESC')).rows); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/pedidos', async (req, res) => {
-  const { num,cliente,destino,ubicacion,estado_prep,fecha,kg,porte,prio,paradas,obs,carga_id,orden_carga } = req.body;
+  const { num,cliente,destino,ubicacion,estado_prep,fecha,kg,porte,prio,paradas,obs,carga_id,orden_carga,categoria_id } = req.body;
   try {
     const r = await pool.query(
-      `INSERT INTO pedidos (num,cliente,destino,ubicacion,estado_prep,fecha,kg,porte,prio,paradas,obs,carga_id,orden_carga) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [num,cliente,destino,ubicacion||null,estado_prep||'sin_preparar',fecha||null,kg||0,porte||0,prio||'normal',paradas||1,obs,carga_id||null,orden_carga||null]
+      `INSERT INTO pedidos (num,cliente,destino,ubicacion,estado_prep,fecha,kg,porte,prio,paradas,obs,carga_id,orden_carga,categoria_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [num,cliente,destino,ubicacion||null,estado_prep||'sin_preparar',fecha||null,kg||0,porte||0,prio||'normal',paradas||1,obs,carga_id||null,orden_carga||null,categoria_id||null]
     );
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/pedidos/:id', async (req, res) => {
-  const { num,cliente,destino,ubicacion,estado_prep,fecha,kg,porte,prio,paradas,obs,carga_id,orden_carga } = req.body;
+  const { num,cliente,destino,ubicacion,estado_prep,fecha,kg,porte,prio,paradas,obs,carga_id,orden_carga,categoria_id } = req.body;
   try {
     const r = await pool.query(
-      `UPDATE pedidos SET num=$1,cliente=$2,destino=$3,ubicacion=$4,estado_prep=$5,fecha=$6,kg=$7,porte=$8,prio=$9,paradas=$10,obs=$11,carga_id=$12,orden_carga=$13 WHERE id=$14 RETURNING *`,
-      [num,cliente,destino,ubicacion||null,estado_prep||'sin_preparar',fecha||null,kg||0,porte||0,prio||'normal',paradas||1,obs,carga_id||null,orden_carga||null,req.params.id]
+      `UPDATE pedidos SET num=$1,cliente=$2,destino=$3,ubicacion=$4,estado_prep=$5,fecha=$6,kg=$7,porte=$8,prio=$9,paradas=$10,obs=$11,carga_id=$12,orden_carga=$13,categoria_id=$14 WHERE id=$15 RETURNING *`,
+      [num,cliente,destino,ubicacion||null,estado_prep||'sin_preparar',fecha||null,kg||0,porte||0,prio||'normal',paradas||1,obs,carga_id||null,orden_carga||null,categoria_id||null,req.params.id]
     );
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -187,6 +194,23 @@ app.patch('/api/pedidos/:id/orden', async (req, res) => {
     const r = await pool.query('UPDATE pedidos SET orden_carga=$1 WHERE id=$2 RETURNING *',[orden_carga,req.params.id]);
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/categorias', async (req, res) => {
+  try { res.json((await pool.query('SELECT * FROM categorias ORDER BY nombre')).rows); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+app.post('/api/categorias', async (req, res) => {
+  try { res.json((await pool.query('INSERT INTO categorias (nombre,color) VALUES ($1,$2) RETURNING *',[req.body.nombre,req.body.color||'#334155'])).rows[0]); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+app.put('/api/categorias/:id', async (req, res) => {
+  try { res.json((await pool.query('UPDATE categorias SET nombre=$1,color=$2 WHERE id=$3 RETURNING *',[req.body.nombre,req.body.color,req.params.id])).rows[0]); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+app.delete('/api/categorias/:id', async (req, res) => {
+  try { await pool.query('DELETE FROM categorias WHERE id=$1',[req.params.id]); res.json({ok:true}); }
+  catch(e) { res.status(500).json({error:e.message}); }
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname,'public','index.html')));
