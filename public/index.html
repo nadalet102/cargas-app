@@ -1149,9 +1149,9 @@ function openModal(type,id){
   const p=id&&type==='pedido'?pedidos.find(x=>String(x.id)===String(id)):null;
   const t=id&&type==='trans'?transportistas.find(x=>String(x.id)===String(id)):null;
   document.getElementById('modal-title').innerHTML=id?`<i class="ti ti-pencil"></i> Editar ${type==='pedido'?'pedido':'transportista'}`:`<i class="ti ti-plus"></i> Nuevo ${type==='pedido'?'pedido':'transportista'}`+(type==='pedido'&&!id?` <button onclick="triggerPDFImport()" style="margin-left:10px;background:none;border:1px solid var(--border2);border-radius:var(--radius-sm);padding:3px 10px;font-size:11px;cursor:pointer;color:var(--blue-d)"><i class="ti ti-file-import"></i> Importar PDF BC</button>`:'');
-  if(type==='pedido'&&!id) document.getElementById('modal-title').insertAdjacentHTML('afterend','<input type="file" id="pdf-import-file" accept=".pdf" style="display:none" onchange="procesarPDFPedido(this)">');
   if(type==='pedido'){
     document.getElementById('modal-body').innerHTML=`
+      ${!id?'<input type="file" id="pdf-import-file" accept=".pdf" style="display:none" onchange="procesarPDFPedido(this)">':''}
       <div class="field"><label>Nº Pedido BC</label><input type="text" id="f-num" value="${p?p.num:'PED-'+String(Date.now()).slice(-4)}"></div>
       <div class="field"><label>Cliente</label><input type="text" id="f-cliente" value="${p?p.cliente:''}" placeholder="Nombre del cliente"></div>
       <div class="frow">
