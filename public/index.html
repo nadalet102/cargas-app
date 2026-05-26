@@ -758,6 +758,16 @@ function printCarga(cid, showPrices){
     const prepLabel=isPrep?'Preparado':'Sin preparar';
     const prepBg=isPrep?'#EAF3DE':'#FCEBEB';
     const prepColor=isPrep?'#27500A':'#791F1F';
+    // QR for chofer PDF — only if maps_url is set
+    var qrCell='';
+    if(!showPrices){
+      if(p.maps_url){
+        var qrUrl='https://chart.googleapis.com/chart?chs=80x80&cht=qr&chl='+encodeURIComponent(p.maps_url)+'&choe=UTF-8';
+        qrCell='<td style="padding:4px 8px;text-align:center"><a href="'+p.maps_url+'" target="_blank"><img src="'+qrUrl+'" width="60" height="60" title="Ver en Maps" style="display:block"></a></td>';
+      } else {
+        qrCell='<td style="padding:4px 8px;text-align:center;color:#d1d5db;font-size:10px">—</td>';
+      }
+    }
     rows+='<tr style="background:'+rowBg+';border-bottom:1px solid #e5e7eb">'
       +'<td style="padding:8px 10px;font-weight:500;font-family:monospace;color:'+col.b+'">'+(p.orden_carga||i+1)+'</td>'
       +'<td style="padding:8px 10px;color:#185FA5;font-weight:500">'+p.num+'</td>'
@@ -765,6 +775,7 @@ function printCarga(cid, showPrices){
       +'<td style="padding:8px 10px;color:#6b7280">'+p.destino+'</td>'
       +'<td style="padding:8px 10px">'+ubicCell+'</td>'
       +portCell
+      +((!showPrices)?qrCell:'')
       +'<td style="padding:8px 10px;text-align:right;font-weight:500">'+fmtN(p.kg)+'</td>'
       +'<td style="padding:8px 10px;text-align:center"><span style="background:'+prepBg+';color:'+prepColor+';padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500">'+prepLabel+'</span></td>'
       +'</tr>';
@@ -964,6 +975,7 @@ function openModal(type,id){
       <div class="field"><label>Cliente</label><input type="text" id="f-cliente" value="${p?p.cliente:''}" placeholder="Nombre del cliente"></div>
       <div class="frow">
         <div class="field"><label>Destino</label><input type="text" id="f-destino" value="${p?p.destino:''}" placeholder="Ciudad, Provincia"></div>
+        <div class="field"><label>Link Google Maps <span style="font-size:10px;color:var(--text2);font-weight:400">(opcional — para QR en PDF chófer)</span></label><input type="url" id="f-maps-url" value="${p?p.maps_url||'':''}" placeholder="https://maps.app.goo.gl/..."></div>
         <div class="field"><label>Fecha entrega</label><input type="date" id="f-fecha" value="${p&&p.fecha?String(p.fecha).substring(0,10):''}"></div>
       </div>
       <div class="frow">
