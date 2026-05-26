@@ -1148,7 +1148,8 @@ function openModal(type,id){
   modalType=type;editId=id;
   const p=id&&type==='pedido'?pedidos.find(x=>String(x.id)===String(id)):null;
   const t=id&&type==='trans'?transportistas.find(x=>String(x.id)===String(id)):null;
-  document.getElementById('modal-title').innerHTML=id?`<i class="ti ti-pencil"></i> Editar ${type==='pedido'?'pedido':'transportista'}`:`<i class="ti ti-plus"></i> Nuevo ${type==='pedido'?'pedido':'transportista'}`;
+  document.getElementById('modal-title').innerHTML=id?`<i class="ti ti-pencil"></i> Editar ${type==='pedido'?'pedido':'transportista'}`:`<i class="ti ti-plus"></i> Nuevo ${type==='pedido'?'pedido':'transportista'}`+(type==='pedido'&&!id?` <button onclick="triggerPDFImport()" style="margin-left:10px;background:none;border:1px solid var(--border2);border-radius:var(--radius-sm);padding:3px 10px;font-size:11px;cursor:pointer;color:var(--blue-d)"><i class="ti ti-file-import"></i> Importar PDF BC</button>`:'');
+  if(type==='pedido'&&!id) document.getElementById('modal-title').insertAdjacentHTML('afterend','<input type="file" id="pdf-import-file" accept=".pdf" style="display:none" onchange="procesarPDFPedido(this)">');
   if(type==='pedido'){
     document.getElementById('modal-body').innerHTML=`
       <div class="field"><label>Nº Pedido BC</label><input type="text" id="f-num" value="${p?p.num:'PED-'+String(Date.now()).slice(-4)}"></div>
@@ -1225,6 +1226,56 @@ function addTarifaRow(){
 }
 
 function closeModal(){document.getElementById('overlay').classList.remove('open');editId=null;modalType=null;}
+
+function triggerPDFImport(){
+  const inp=document.getElementById('pdf-import-file');
+  if(inp){inp.value='';inp.click();}
+}
+
+async function procesarPDFPedido(input){
+  const file=input.files[0];
+  if(!file) return;
+  // Show loading in title
+  const titleEl=document.getElementById('modal-title');
+  const origTitle=titleEl.innerHTML;
+  titleEl.innerHTML='<i class="ti ti-loader"></i> Leyendo PDF...';
+
+  const base64=await new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result.split(',')[1]);
+    r.onerror=()=>rej(new Error('Error leyendo archivo'));
+    r.readAsDataURL(file);
+  });
+
+  try{
+    const resp=await fetch('/api/importar-pdf',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({base64,media_type:'application/pdf'})
+    });
+    const raw=await resp.text();
+    if(!resp.ok) throw new Error('HTTP '+resp.status+': '+raw.substring(0,200));
+    let datos;
+    try{datos=JSON.parse(raw);}
+    catch(e){throw new Error('Respuesta inválida: '+raw.substring(0,100));}
+
+    // Fill form fields
+    if(datos.num) document.getElementById('f-num').value=datos.num;
+    if(datos.cliente_nombre) document.getElementById('f-cliente').value=datos.cliente_nombre;
+    if(datos.destino_texto) document.getElementById('f-destino').value=datos.destino_texto;
+    if(datos.direccion_descarga) document.getElementById('f-dir-desc').value=datos.direccion_descarga;
+    if(datos.kg) document.getElementById('f-kg').value=datos.kg;
+    if(datos.porte) document.getElementById('f-porte').value=datos.porte;
+    if(datos.fecha_pedido) document.getElementById('f-fecha').value=datos.fecha_pedido;
+    if(datos.obs) document.getElementById('f-obs').value=datos.obs;
+
+    titleEl.innerHTML=origTitle;
+    log('PDF importado: '+datos.num,'ok');
+  }catch(e){
+    titleEl.innerHTML=origTitle;
+    log('Error leyendo PDF: '+e.message,'warn');
+  }
+}
 
 async function savePedido(){
   const cliente=document.getElementById('f-cliente').value.trim();
