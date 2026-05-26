@@ -733,39 +733,28 @@ function closePdfModal(){document.getElementById('pdf-modal-overlay').classList.
 function doPrint(showPrices){var cid=_pdfCargaId;closePdfModal();printCarga(cid,showPrices);}
 
 // ── QR CODE GENERATOR (no external deps) ─────────────────────────────────────
-// Minimal QR encoder for URLs — generates a data URI PNG via canvas
 function makeQRDataUri(text, size){
-  // Use qrcodejs loaded on demand
-  if(!window._qrReady){
-    // fallback: return placeholder — will be replaced after script loads
-    return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-  }
   try{
-    var canvas=document.createElement('canvas');
-    canvas.width=size; canvas.height=size;
-    var qr=window.qrcode(0,'M');
-    qr.addData(text);
-    qr.make();
-    var cells=qr.getModuleCount();
-    var ctx=canvas.getContext('2d');
-    var cellSz=size/cells;
-    ctx.fillStyle='#fff';ctx.fillRect(0,0,size,size);
-    ctx.fillStyle='#000';
-    for(var r=0;r<cells;r++){
-      for(var c=0;c<cells;c++){
-        if(qr.isDark(r,c)) ctx.fillRect(c*cellSz,r*cellSz,cellSz,cellSz);
-      }
-    }
-    return canvas.toDataURL('image/png');
-  }catch(e){return '';}
+    var div=document.createElement('div');
+    div.style.display='none';
+    document.body.appendChild(div);
+    new QRCode(div,{text:text,width:size,height:size,correctLevel:QRCode.CorrectLevel.M});
+    var canvas=div.querySelector('canvas');
+    var img=div.querySelector('img');
+    var uri='';
+    if(canvas) uri=canvas.toDataURL('image/png');
+    else if(img) uri=img.src;
+    document.body.removeChild(div);
+    return uri;
+  }catch(e){console.error('QR error',e);return '';}
 }
 
 async function ensureQR(){
-  if(window._qrReady) return;
+  if(window.QRCode) return;
   await new Promise(function(res,rej){
     var s=document.createElement('script');
     s.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
-    s.onload=function(){window._qrReady=true;res();};
+    s.onload=function(){res();};
     s.onerror=rej;
     document.head.appendChild(s);
   });
