@@ -1059,7 +1059,9 @@ async function savePedido(){
     kg,porte:parseFloat(document.getElementById('f-porte').value)||0,
     prio:document.getElementById('f-prio').value,
     paradas:parseInt(document.getElementById('f-paradas').value)||1,
-    obs:document.getElementById('f-obs').value.trim()
+    obs:document.getElementById('f-obs').value.trim(),
+    categoria_id:document.getElementById('f-cat')?.value||null,
+    maps_url:document.getElementById('f-maps-url')?.value.trim()||null
   };
   try{
     if(editId){
