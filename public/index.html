@@ -1202,8 +1202,14 @@ function openModal(type,id){
         <div class="field"><label>Email</label><input type="email" id="f-temail" value="${t?t.email||'':''}" placeholder="correo@empresa.com"></div>
       </div>
       <div class="frow">
-        <div class="field"><label>NIF / CIF</label><input type="text" id="f-tnif" value="${t?t.nif||'':''}" placeholder="B12345678"></div>
+        <div class="field"><label>NIF / CIF</label><input type="text" id="f-tnif" value="${t?t.nif||t.cif||'':''}" placeholder="B12345678"></div>
         <div class="field"><label>Color</label><select id="f-tcolor">${TRANS_COLORS.map(c=>`<option value="${c}" ${t&&t.color===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>Dirección fiscal</label><input type="text" id="f-tdir" value="${t?t.direccion||'':''}" placeholder="Calle, número..."></div>
+      <div class="frow">
+        <div class="field"><label>CP</label><input type="text" id="f-tcp" value="${t?t.cp||'':''}" placeholder="00000"></div>
+        <div class="field"><label>Ciudad</label><input type="text" id="f-tciudad" value="${t?t.ciudad||'':''}"></div>
+        <div class="field"><label>País</label><input type="text" id="f-tpais" value="${t?t.pais||'España':'España'}"></div>
       </div>
       <div class="field">
         <label>Tarifas orientativas <button type="button" onclick="addTarifaRow()" style="background:var(--blue);color:#fff;border:none;border-radius:3px;padding:1px 7px;font-size:10px;cursor:pointer;margin-left:6px"><i class="ti ti-plus"></i> Añadir</button></label>
@@ -1323,7 +1329,7 @@ async function saveTrans(){
     const pp=document.getElementById('tfp-'+i);
     if(inp.value.trim())tarifas.push({ruta:inp.value.trim(),precio:pp?pp.value:''});
   });
-  const data={nombre,contacto:document.getElementById('f-tcontacto').value.trim(),telefono:document.getElementById('f-ttelefono').value.trim(),email:document.getElementById('f-temail').value.trim(),nif:document.getElementById('f-tnif').value.trim(),color:document.getElementById('f-tcolor').value,tarifas,notas:document.getElementById('f-tnotas').value.trim()};
+  const data={nombre,contacto:document.getElementById('f-tcontacto').value.trim(),telefono:document.getElementById('f-ttelefono').value.trim(),email:document.getElementById('f-temail').value.trim(),nif:document.getElementById('f-tnif').value.trim(),cif:document.getElementById('f-tnif').value.trim(),direccion:document.getElementById('f-tdir')?.value.trim()||null,cp:document.getElementById('f-tcp')?.value.trim()||null,ciudad:document.getElementById('f-tciudad')?.value.trim()||null,pais:document.getElementById('f-tpais')?.value.trim()||'España',color:document.getElementById('f-tcolor').value,tarifas,notas:document.getElementById('f-tnotas').value.trim()};
   try{
     if(editId){
       const updated=await api('PUT','/transportistas/'+editId,data);
