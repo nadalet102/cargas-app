@@ -129,13 +129,63 @@ app.post('/api/cargas', async (req, res) => {
 app.put('/api/cargas/:id', async (req, res) => {
   const { name, codigo_orden, truck_id, fecha, status, color_idx, coste, coste_modo, notas, categoria_id } = req.body;
   try {
+    // Leer estado anterior para detectar cambio
+    const prev = (await pool.query('SELECT status FROM cargas WHERE id=$1',[req.params.id])).rows[0];
+    const estadoAnterior = prev ? prev.status : null;
+
     const r = await pool.query(
       `UPDATE cargas SET name=$1,codigo_orden=$2,truck_id=$3,fecha=$4,status=$5,color_idx=$6,coste=$7,coste_modo=$8,mat_camion=$9,mat_remolque=$10,notas=$11,categoria_id=$12 WHERE id=$13 RETURNING *`,
       [name,codigo_orden||null,truck_id||null,fecha||null,status,color_idx,coste||null,coste_modo,req.body.mat_camion||null,req.body.mat_remolque||null,notas,categoria_id||null,req.params.id]
     );
+
+    // Si el estado cambió, disparar alerta por email (sin bloquear la respuesta)
+    if(estadoAnterior && status && estadoAnterior !== status){
+      enviarAlertaCambioEstado(r.rows[0], estadoAnterior, status).catch(e=>console.warn('Alerta error:',e.message));
+    }
+
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+// Enviar alerta de cambio de estado vía Power Automate
+async function enviarAlertaCambioEstado(carga, estadoAnterior, estadoNuevo){
+  const FLOW_URL = process.env.PA_ALERT_URL;
+  if(!FLOW_URL) return; // si no está configurada, no hace nada
+
+  const estadoLabel={pendiente:'Pendiente',planificada:'Planificada',ruta:'En ruta',entregada:'Entregada'};
+
+  // Datos del transportista y pedidos
+  let transportista = 'Sin asignar';
+  if(carga.truck_id){
+    const tr = (await pool.query('SELECT nombre FROM transportistas WHERE id=$1',[carga.truck_id])).rows[0];
+    if(tr) transportista = tr.nombre;
+  }
+  const peds = (await pool.query('SELECT num,cliente,destino FROM pedidos WHERE carga_id=$1 ORDER BY orden_carga',[carga.id])).rows;
+  const pedidosTxt = peds.length
+    ? peds.map(p=>`• ${p.num||''} - ${p.cliente} (${p.destino||'—'})`).join('\n')
+    : 'Sin pedidos';
+
+  const payload = {
+    carga: carga.name || 'Sin nombre',
+    estado_anterior: estadoLabel[estadoAnterior] || estadoAnterior,
+    estado_nuevo: estadoLabel[estadoNuevo] || estadoNuevo,
+    transportista,
+    fecha: carga.fecha ? new Date(carga.fecha).toLocaleDateString('es-ES') : 'Sin fecha',
+    pedidos: pedidosTxt
+  };
+
+  const flowUrl = new URL(FLOW_URL);
+  const body = JSON.stringify(payload);
+  await new Promise((resolve,reject)=>{
+    const r = require('https').request({
+      hostname: flowUrl.hostname,
+      path: flowUrl.pathname + flowUrl.search,
+      method: 'POST',
+      headers: {'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}
+    }, resp=>{ let d=''; resp.on('data',c=>d+=c); resp.on('end',()=>resolve(d)); });
+    r.on('error',reject); r.write(body); r.end();
+  });
+}
 app.delete('/api/cargas/:id', async (req, res) => {
   try {
     await pool.query('UPDATE pedidos SET carga_id=NULL WHERE carga_id=$1',[req.params.id]);
