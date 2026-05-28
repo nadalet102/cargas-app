@@ -421,9 +421,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
       <div style="font-size:16px;font-weight:600">Pedidos abiertos en Business Central</div>
       <div style="font-size:12px;color:var(--text2);margin-top:2px">Selecciona los que quieres añadir a la planificación</div>
     </div>
-    <button class="btn-primary" onclick="sincronizarBC()"><i class="ti ti-refresh"></i> Sincronizar ahora</button>
+    <button class="btn-primary" onclick="sincronizarBC()"><i class="ti ti-refresh"></i> Actualizar</button>
   </div>
-  <div style="font-size:11px;color:var(--text3);margin-bottom:10px"><i class="ti ti-clock" style="font-size:11px"></i> Los pedidos se sincronizan automáticamente cada 10 minutos</div>
+  <div style="font-size:11px;color:var(--text3);margin-bottom:10px"><i class="ti ti-clock" style="font-size:11px"></i> Los pedidos se sincronizan automáticamente desde BC cada 10 minutos</div>
   <div id="bc-bandeja-list"><div style="text-align:center;padding:40px;color:var(--text2)"><i class="ti ti-building-store" style="font-size:28px;opacity:.3;display:block;margin-bottom:8px"></i>Pulsa Sincronizar para cargar los pedidos de BC</div></div>
 
   <!-- Clientes excluidos -->
@@ -1728,18 +1728,14 @@ async function loadBCConfig(){
 
 async function sincronizarBC(){
   const btn=event?.target?.closest('button');
-  if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader"></i> Sincronizando...';}
+  if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader"></i> Cargando...';}
   try{
-    await api('POST','/bc/sincronizar');
-    // Wait a moment for Power Automate to push the data, then reload
-    await new Promise(r=>setTimeout(r,3000));
     await loadBCPedidos();
-    log('Sincronización completada','ok');
+    log('Pedidos actualizados','ok');
   }catch(e){
-    log('Error sincronizando: '+e.message,'warn');
-    await loadBCPedidos(); // reload anyway in case data is there
+    log('Error: '+e.message,'warn');
   }
-  if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-refresh"></i> Sincronizar ahora';}
+  if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-refresh"></i> Actualizar';}
 }
 
 async function loadBCPedidos(){
