@@ -341,14 +341,24 @@ async function bcRequest(path){
   return JSON.parse(result.body);
 }
 
+// Get company GUID (no spaces, avoids URL escaping issues)
+let bcCompanyId = null;
+async function getBCCompanyId(){
+  if(bcCompanyId) return bcCompanyId;
+  const data = await bcRequest(`/v2.0/${BC_TENANT}/production/api/v2.0/companies`);
+  const company = data.value.find(c=>c.name && c.name.includes('ARISAC')) || data.value[0];
+  bcCompanyId = company.id;
+  return bcCompanyId;
+}
+
 // GET /api/bc/pedidos — list open sales orders from BC
 app.get('/api/bc/pedidos', async (req, res) => {
   try {
-    const base = `/v2.0/${BC_TENANT}/production/api/v2.0/companies(${BC_COMPANY})/salesOrders`;
+    const companyId = await getBCCompanyId();
+    const base = `/v2.0/${BC_TENANT}/production/api/v2.0/companies(${companyId})/salesOrders`;
     const filter = `$filter=status eq 'Open'&$select=number,customerName,shipToName,shipToAddress,shipToCity,shipToPostCode,shipmentDate,requestedDeliveryDate,currencyCode&$top=100&$orderby=number desc`;
     const data = await bcRequest(`${base}?${filter}`);
 
-    // Get lines for each order to extract kg (gross weight) and porte
     const pedidos = data.value.map(o => ({
       num: o.number,
       cliente: o.customerName,
@@ -366,8 +376,9 @@ app.get('/api/bc/pedidos', async (req, res) => {
 // GET /api/bc/pedido/:num — get full order with lines
 app.get('/api/bc/pedido/:num', async (req, res) => {
   try {
+    const companyId = await getBCCompanyId();
     const num = encodeURIComponent(req.params.num);
-    const base = `/v2.0/${BC_TENANT}/production/api/v2.0/companies(${BC_COMPANY})/salesOrders`;
+    const base = `/v2.0/${BC_TENANT}/production/api/v2.0/companies(${companyId})/salesOrders`;
     const data = await bcRequest(`${base}?$filter=number eq '${num}'&$expand=salesOrderLines`);
     if(!data.value.length) return res.status(404).json({error:'Pedido no encontrado'});
     const o = data.value[0];
