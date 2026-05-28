@@ -226,10 +226,61 @@ app.delete('/api/pedidos/:id', async (req, res) => {
 app.patch('/api/pedidos/:id/carga', async (req, res) => {
   const { carga_id } = req.body;
   try {
+    // Contar pedidos que ya tiene la carga ANTES de añadir este
+    let yaTenia = 0;
+    if(carga_id){
+      const cnt = await pool.query('SELECT COUNT(*) FROM pedidos WHERE carga_id=$1 AND id<>$2',[carga_id,req.params.id]);
+      yaTenia = parseInt(cnt.rows[0].count);
+    }
+
     const r = await pool.query('UPDATE pedidos SET carga_id=$1 WHERE id=$2 RETURNING *',[carga_id||null,req.params.id]);
+
+    // Si se añade a una carga que YA tenía al menos un pedido → alerta de agrupación
+    if(carga_id && yaTenia >= 1){
+      enviarAlertaAgrupacion(carga_id, r.rows[0]).catch(e=>console.warn('Alerta agrupación error:',e.message));
+    }
+
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+// Enviar alerta cuando se agrupan pedidos en una carga
+async function enviarAlertaAgrupacion(cargaId, pedidoNuevo){
+  const FLOW_URL = process.env.PA_ALERT_URL;
+  if(!FLOW_URL) return;
+
+  const carga = (await pool.query('SELECT * FROM cargas WHERE id=$1',[cargaId])).rows[0];
+  if(!carga) return;
+
+  let transportista = 'Sin asignar';
+  if(carga.truck_id){
+    const tr = (await pool.query('SELECT nombre FROM transportistas WHERE id=$1',[carga.truck_id])).rows[0];
+    if(tr) transportista = tr.nombre;
+  }
+  const peds = (await pool.query('SELECT num,cliente,destino FROM pedidos WHERE carga_id=$1 ORDER BY orden_carga',[cargaId])).rows;
+  const pedidosTxt = peds.map(p=>`• ${p.num||''} - ${p.cliente} (${p.destino||'—'})`).join('\n');
+
+  const payload = {
+    carga: carga.name || 'Sin nombre',
+    estado_anterior: 'Pedidos agrupados',
+    estado_nuevo: `Se ha añadido ${pedidoNuevo.cliente} (${peds.length} pedidos en total)`,
+    transportista,
+    fecha: carga.fecha ? new Date(carga.fecha).toLocaleDateString('es-ES') : 'Sin fecha',
+    pedidos: pedidosTxt
+  };
+
+  const flowUrl = new URL(FLOW_URL);
+  const body = JSON.stringify(payload);
+  await new Promise((resolve,reject)=>{
+    const r = require('https').request({
+      hostname: flowUrl.hostname,
+      path: flowUrl.pathname + flowUrl.search,
+      method: 'POST',
+      headers: {'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}
+    }, resp=>{ let d=''; resp.on('data',c=>d+=c); resp.on('end',()=>resolve(d)); });
+    r.on('error',reject); r.write(body); r.end();
+  });
+}
 app.patch('/api/pedidos/:id/prep', async (req, res) => {
   const { estado_prep } = req.body;
   try {
