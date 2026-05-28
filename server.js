@@ -369,13 +369,40 @@ async function getBCCompanyId(){
 
 // ── BANDEJA BC (sincronizada via Power Automate) ──────────────────────────────
 
-// POST /api/bc/sync — recibe pedidos desde Power Automate
+// POST /api/bc/sync — recibe pedidos desde Power Automate (cabeceras + lineas)
 app.post('/api/bc/sync', async (req, res) => {
   try {
-    const pedidos = Array.isArray(req.body) ? req.body : (req.body.pedidos || [req.body]);
+    const cabeceras = req.body.cabeceras || [];
+    const lineas = req.body.lineas || [];
+
+    // Agrupar líneas por documentId
+    const lineasPorDoc = {};
+    for(const l of lineas){
+      const docId = l.documentId;
+      if(!docId) continue;
+      if(!lineasPorDoc[docId]) lineasPorDoc[docId] = [];
+      lineasPorDoc[docId].push({
+        ref_bc: l.lineObjectNumber || l.lineObjectNumber || null,
+        descripcion: l.description || null,
+        cantidad: l.quantity || 0,
+        precio_unidad: l.unitPrice || 0,
+        peso: l.netWeight || 0
+      });
+    }
+
     let nuevos = 0;
-    for(const p of pedidos){
-      if(!p.num) continue;
+    for(const o of cabeceras){
+      if(!o.number) continue;
+      const lns = lineasPorDoc[o.id] || [];
+      const destino = [o.shipToName, o.shipToCity].filter(Boolean).join(' — ');
+      const direccion = [o.shipToAddress, o.shipToPostCode, o.shipToCity].filter(Boolean).join(', ');
+      const fecha = o.shipmentDate || o.requestedDeliveryDate || null;
+      // kg total: suma de pesos de líneas si existe
+      const kg = lns.reduce((s,l)=>s+(l.peso||0)*(l.cantidad||0),0) || null;
+      // porte: línea cuyo ref empiece por PORT
+      const porteLn = lns.find(l=>(l.ref_bc||'').toUpperCase().startsWith('PORT'));
+      const porte = porteLn ? (porteLn.precio_unidad*porteLn.cantidad) : null;
+
       const r = await pool.query(
         `INSERT INTO bc_inbox (num,cliente,destino,direccion_descarga,fecha,kg,porte,lineas)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
@@ -383,12 +410,12 @@ app.post('/api/bc/sync', async (req, res) => {
            cliente=$2,destino=$3,direccion_descarga=$4,fecha=$5,kg=$6,porte=$7,lineas=$8,synced_at=NOW()
          WHERE bc_inbox.estado='pendiente'
          RETURNING (xmax=0) AS inserted`,
-        [p.num, p.cliente||null, p.destino||null, p.direccion_descarga||null,
-         p.fecha||null, p.kg||null, p.porte||null, JSON.stringify(p.lineas||[])]
+        [o.number, o.customerName||o.sellToCustomerName||null, destino, direccion,
+         fecha, kg, porte, JSON.stringify(lns)]
       );
       if(r.rows[0] && r.rows[0].inserted) nuevos++;
     }
-    res.json({ok:true, recibidos:pedidos.length, nuevos});
+    res.json({ok:true, cabeceras:cabeceras.length, lineas:lineas.length, nuevos});
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
