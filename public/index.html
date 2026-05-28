@@ -263,6 +263,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
   <div class="tb-right">
     <div class="sync-dot syncing" id="sync-dot"></div>
     <button class="tb-btn accent" onclick="openModal('pedido',null)"><i class="ti ti-plus"></i> Nuevo pedido</button>
+    <button class="tb-btn" onclick="printResumen()"><i class="ti ti-file-text"></i> Resumen</button>
     <button class="tb-btn" onclick="loadAll()"><i class="ti ti-refresh"></i></button>
   </div>
 </div>
@@ -945,6 +946,124 @@ async function ensureQR(){
     s.onerror=rej;
     document.head.appendChild(s);
   });
+}
+
+function printResumen(){
+  // Mostrar modal de selección de estados
+  const estados=[
+    {k:'pendiente',label:'Pendientes',color:'#6b7280'},
+    {k:'planificada',label:'Planificadas',color:'#185FA5'},
+    {k:'ruta',label:'En ruta',color:'#854F0B'},
+    {k:'entregada',label:'Entregadas',color:'#0F6E56'},
+  ];
+  const cont=document.createElement('div');
+  cont.id='resumen-modal';
+  cont.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  cont.innerHTML=`
+    <div style="background:#fff;border-radius:10px;padding:22px;width:340px;max-width:90vw">
+      <div style="font-size:16px;font-weight:600;margin-bottom:4px">Generar resumen</div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:14px">Selecciona qué cargas incluir</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">
+        ${estados.map(e=>`
+          <label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-size:13px">
+            <input type="checkbox" class="res-est" value="${e.k}" checked style="width:16px;height:16px;cursor:pointer">
+            <span style="width:11px;height:11px;border-radius:3px;background:${e.color};display:inline-block"></span>
+            ${e.label}
+          </label>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="document.getElementById('resumen-modal').remove()" style="padding:7px 14px;border:1px solid #d1d5db;background:#fff;border-radius:6px;cursor:pointer;font-size:13px">Cancelar</button>
+        <button onclick="generarResumen()" style="padding:7px 14px;border:none;background:#185FA5;color:#fff;border-radius:6px;cursor:pointer;font-size:13px">Generar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(cont);
+}
+
+function generarResumen(){
+  const seleccionados=Array.from(document.querySelectorAll('.res-est:checked')).map(c=>c.value);
+  document.getElementById('resumen-modal')?.remove();
+  if(!seleccionados.length){ log('Selecciona al menos un estado','warn'); return; }
+
+  const grupos={pendiente:[],planificada:[],ruta:[],entregada:[]};
+  cargas.forEach(c=>{ (grupos[c.status]||grupos.pendiente).push(c); });
+
+  const hoy=new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'long',year:'numeric'});
+  const horaImp=new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+  const estadoLabel={pendiente:'Pendientes',planificada:'Planificadas',ruta:'En ruta',entregada:'Entregadas'};
+  const estadoColor={pendiente:'#6b7280',planificada:'#185FA5',ruta:'#854F0B',entregada:'#0F6E56'};
+
+  function seccionEstado(estado){
+    if(!seleccionados.includes(estado)) return '';
+    const lista=grupos[estado];
+    if(!lista.length) return '';
+    const filas=lista.map(c=>{
+      const ps=cargaPs(c.id).sort((a,b)=>(a.orden_carga||999)-(b.orden_carga||999));
+      const kg=cargaKg(c.id);
+      const tr=transportistas.find(t=>String(t.id)===String(c.truck_id));
+      const pedidosTxt=ps.map(p=>`${p.num||''} · ${p.cliente} (${p.destino||'—'})`).join('<br>');
+      return `<tr>
+        <td style="font-weight:700;vertical-align:top">${c.name||'Sin nombre'}</td>
+        <td style="vertical-align:top">${tr?tr.nombre:'Sin asignar'}</td>
+        <td style="vertical-align:top">${c.fecha?fmtDate(c.fecha):'Sin fecha'}</td>
+        <td style="vertical-align:top;font-size:11px">${pedidosTxt||'Vacía'}</td>
+        <td style="text-align:right;vertical-align:top;white-space:nowrap">${kg.toLocaleString('es-ES')} kg</td>
+      </tr>`;
+    }).join('');
+    const totalKg=lista.reduce((s,c)=>s+cargaKg(c.id),0);
+    return `
+      <div style="margin-bottom:24px;break-inside:avoid">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="width:12px;height:12px;border-radius:3px;background:${estadoColor[estado]}"></div>
+          <h2 style="font-size:15px;margin:0;color:${estadoColor[estado]}">${estadoLabel[estado]} (${lista.length})</h2>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="border-bottom:2px solid #1a1a1a">
+              <th style="text-align:left;padding:6px 8px">Carga</th>
+              <th style="text-align:left;padding:6px 8px">Transportista</th>
+              <th style="text-align:left;padding:6px 8px">Fecha</th>
+              <th style="text-align:left;padding:6px 8px">Pedidos</th>
+              <th style="text-align:right;padding:6px 8px">Kg</th>
+            </tr>
+          </thead>
+          <tbody>${filas}</tbody>
+          <tfoot>
+            <tr style="border-top:2px solid #1a1a1a;font-weight:700">
+              <td colspan="4" style="padding:6px 8px;text-align:right">TOTAL ${estadoLabel[estado]}:</td>
+              <td style="text-align:right;padding:6px 8px;white-space:nowrap">${totalKg.toLocaleString('es-ES')} kg</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>`;
+  }
+
+  const cargasIncluidas=cargas.filter(c=>seleccionados.includes(c.status||'pendiente'));
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Resumen de cargas</title>
+    <style>
+      *{box-sizing:border-box}
+      body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;margin:0;padding:30px}
+      table td{padding:6px 8px;border-bottom:1px solid #e5e7eb}
+      @media print{body{padding:12px}}
+    </style></head><body>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1a1a1a;padding-bottom:12px;margin-bottom:20px">
+      <div>
+        <h1 style="font-size:22px;margin:0 0 4px">Resumen de Cargas</h1>
+        <div style="font-size:12px;color:#6b7280">Generado el ${hoy} a las ${horaImp}</div>
+      </div>
+      <div style="text-align:right;font-size:12px;color:#6b7280">
+        <div><strong style="font-size:18px;color:#1a1a1a">${cargasIncluidas.length}</strong> cargas</div>
+      </div>
+    </div>
+    ${seccionEstado('pendiente')}
+    ${seccionEstado('planificada')}
+    ${seccionEstado('ruta')}
+    ${seccionEstado('entregada')}
+  </body></html>`;
+
+  const w=window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
+  setTimeout(()=>w.print(),400);
 }
 
 async function printCarga(cid, showPrices){
