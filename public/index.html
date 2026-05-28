@@ -421,8 +421,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
       <div style="font-size:16px;font-weight:600">Pedidos abiertos en Business Central</div>
       <div style="font-size:12px;color:var(--text2);margin-top:2px">Selecciona los que quieres añadir a la planificación</div>
     </div>
-    <button class="btn-primary" onclick="loadBCPedidos()"><i class="ti ti-refresh"></i> Sincronizar</button>
+    <button class="btn-primary" onclick="sincronizarBC()"><i class="ti ti-refresh"></i> Sincronizar ahora</button>
   </div>
+  <div style="font-size:11px;color:var(--text3);margin-bottom:10px"><i class="ti ti-clock" style="font-size:11px"></i> Los pedidos se sincronizan automáticamente cada 10 minutos</div>
   <div id="bc-bandeja-list"><div style="text-align:center;padding:40px;color:var(--text2)"><i class="ti ti-building-store" style="font-size:28px;opacity:.3;display:block;margin-bottom:8px"></i>Pulsa Sincronizar para cargar los pedidos de BC</div></div>
 
   <!-- Clientes excluidos -->
@@ -1702,6 +1703,9 @@ let bcClientesExcluidos=[];
 function ignorarBCPedido(num){
   if(!bcIgnorados.includes(num)) bcIgnorados.push(num);
   api('POST','/bc/config/ignorados',{value:bcIgnorados});
+  // También marcar como rechazado en la bandeja para que no vuelva
+  api('POST','/bc/pedido/'+encodeURIComponent(num)+'/estado',{estado:'rechazado'});
+  bcBandeja=bcBandeja.filter(p=>p.num!==num);
   renderBCBandeja();
 }
 
@@ -1720,6 +1724,22 @@ async function loadBCConfig(){
     bcIgnorados = ign||[];
     bcClientesExcluidos = exc||[];
   }catch(e){ console.warn('BC config error:', e.message); }
+}
+
+async function sincronizarBC(){
+  const btn=event?.target?.closest('button');
+  if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader"></i> Sincronizando...';}
+  try{
+    await api('POST','/bc/sincronizar');
+    // Wait a moment for Power Automate to push the data, then reload
+    await new Promise(r=>setTimeout(r,3000));
+    await loadBCPedidos();
+    log('Sincronización completada','ok');
+  }catch(e){
+    log('Error sincronizando: '+e.message,'warn');
+    await loadBCPedidos(); // reload anyway in case data is there
+  }
+  if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-refresh"></i> Sincronizar ahora';}
 }
 
 async function loadBCPedidos(){
@@ -1799,7 +1819,6 @@ async function importarDesdeBCBandeja(num){
     if(p.kg) document.getElementById('f-kg').value=Math.round(p.kg);
     if(p.porte) document.getElementById('f-porte').value=p.porte;
     if(p.fecha) document.getElementById('f-fecha').value=p.fecha;
-    if(p.obs) document.getElementById('f-obs').value=p.obs;
     // Show banner
     const banner=document.createElement('div');
     banner.style.cssText='background:#e6f5ea;border:1px solid #2d7a3a;border-radius:6px;padding:8px 12px;font-size:12px;color:#2d7a3a;margin-bottom:10px';
