@@ -55,6 +55,7 @@ async function initDB() {
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cp TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS ciudad TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS pais TEXT DEFAULT 'España'`,
+    `CREATE TABLE IF NOT EXISTS bc_config (key TEXT PRIMARY KEY, value JSONB DEFAULT '[]')`,
   ];
   for (const sql of stmts) {
     try { await pool.query(sql); }
@@ -274,6 +275,123 @@ app.post('/api/importar-pdf', async (req, res) => {
     res.json({ num, cliente_nombre, cif_cliente, destino_texto, direccion_descarga, fecha_pedido, kg, porte, obs });
   } catch(e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+
+// ── BC CONFIG (excluidos, ignorados) ─────────────────────────────────────────
+app.get('/api/bc/config/:key', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT value FROM bc_config WHERE key=$1',[req.params.key]);
+    res.json(r.rows[0]?.value || []);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+app.post('/api/bc/config/:key', async (req, res) => {
+  try {
+    await pool.query(
+      'INSERT INTO bc_config(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',
+      [req.params.key, JSON.stringify(req.body.value||[])]
+    );
+    res.json({ok:true});
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── BUSINESS CENTRAL API ──────────────────────────────────────────────────────
+const BC_TENANT   = process.env.BC_TENANT_ID;
+const BC_CLIENT   = process.env.BC_CLIENT_ID;
+const BC_SECRET   = process.env.BC_SECRET;
+const BC_COMPANY  = process.env.BC_COMPANY     || 'ENVASADOS ARISAC%2C S.L.';
+let   bcToken     = null;
+let   bcTokenExp  = 0;
+
+async function getBCToken(){
+  if(bcToken && Date.now() < bcTokenExp - 60000) return bcToken;
+  const https = require('https');
+  const body = new URLSearchParams({
+    grant_type:'client_credentials', client_id:BC_CLIENT,
+    client_secret:BC_SECRET, scope:'https://api.businesscentral.dynamics.com/.default'
+  }).toString();
+  const data = await new Promise((res,rej)=>{
+    const req=https.request({
+      hostname:'login.microsoftonline.com',
+      path:`/${BC_TENANT}/oauth2/v2.0/token`,
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body)}
+    },r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>res(JSON.parse(d)));});
+    req.on('error',rej);req.write(body);req.end();
+  });
+  if(data.error) throw new Error(data.error_description);
+  bcToken = data.access_token;
+  bcTokenExp = Date.now() + data.expires_in*1000;
+  return bcToken;
+}
+
+async function bcRequest(path){
+  const https = require('https');
+  const token = await getBCToken();
+  const result = await new Promise((res,rej)=>{
+    const req=https.request({
+      hostname:'api.businesscentral.dynamics.com',
+      path,method:'GET',
+      headers:{'Authorization':'Bearer '+token,'Accept':'application/json'}
+    },r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>res({status:r.statusCode,body:d}));});
+    req.on('error',rej);req.end();
+  });
+  if(result.status!==200) throw new Error('BC API '+result.status+': '+result.body.substring(0,200));
+  return JSON.parse(result.body);
+}
+
+// GET /api/bc/pedidos — list open sales orders from BC
+app.get('/api/bc/pedidos', async (req, res) => {
+  try {
+    const base = `/v2.0/${BC_TENANT}/production/api/v2.0/companies(${BC_COMPANY})/salesOrders`;
+    const filter = `$filter=status eq 'Open'&$select=number,customerName,shipToName,shipToAddress,shipToCity,shipToPostCode,shipmentDate,requestedDeliveryDate,currencyCode&$top=100&$orderby=number desc`;
+    const data = await bcRequest(`${base}?${filter}`);
+
+    // Get lines for each order to extract kg (gross weight) and porte
+    const pedidos = data.value.map(o => ({
+      num: o.number,
+      cliente: o.customerName,
+      destino: [o.shipToName, o.shipToCity].filter(Boolean).join(' — '),
+      direccion_descarga: [o.shipToAddress, o.shipToPostCode, o.shipToCity].filter(Boolean).join(', '),
+      fecha: o.shipmentDate || o.requestedDeliveryDate || null,
+    }));
+
+    res.json(pedidos);
+  } catch(e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// GET /api/bc/pedido/:num — get full order with lines
+app.get('/api/bc/pedido/:num', async (req, res) => {
+  try {
+    const num = encodeURIComponent(req.params.num);
+    const base = `/v2.0/${BC_TENANT}/production/api/v2.0/companies(${BC_COMPANY})/salesOrders`;
+    const data = await bcRequest(`${base}?$filter=number eq '${num}'&$expand=salesOrderLines`);
+    if(!data.value.length) return res.status(404).json({error:'Pedido no encontrado'});
+    const o = data.value[0];
+    const lines = (o.salesOrderLines||[]);
+
+    // Find porte line
+    const porteLine = lines.find(l => l.lineType==='Item' && (l.itemId||'').toString().toUpperCase().startsWith('PORT'));
+    const porte = porteLine ? porteLine.lineAmount : null;
+
+    // Total kg (gross weight)
+    const kg = lines.reduce((s,l) => s + (l.shipmentQuantity||l.quantity||0) * (l.unitWeight||0), 0) || null;
+
+    res.json({
+      num: o.number,
+      cliente: o.customerName,
+      destino: [o.shipToName, o.shipToCity].filter(Boolean).join(' — '),
+      direccion_descarga: [o.shipToAddress, o.shipToPostCode, o.shipToCity].filter(Boolean).join(', '),
+      fecha: o.shipmentDate||o.requestedDeliveryDate||null,
+      porte,
+      kg,
+      obs: o.externalDocumentNumber||null,
+    });
+  } catch(e) {
+    res.status(502).json({ error: e.message });
   }
 });
 
