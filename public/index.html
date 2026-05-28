@@ -124,7 +124,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 .mini-acts{display:flex;gap:3px;align-items:center;flex-shrink:0}
 .mini-rm{background:none;border:none;cursor:pointer;color:var(--text3);font-size:11px;padding:2px;border-radius:3px}
 .mini-rm:hover{color:var(--red);background:var(--red-l)}
-.order-input{width:32px;font-size:10px;text-align:center;border:1px solid var(--border2);border-radius:4px;padding:2px;font-family:'DM Mono',monospace;background:var(--surface);color:var(--text)}
+.order-input{width:34px;height:28px;font-size:12px;text-align:center;border:1px solid var(--border2);border-radius:5px;padding:0;font-family:'DM Mono',monospace;background:var(--surface);color:var(--text);box-sizing:border-box}
 .cc-selects{padding:7px 10px;border-top:1px solid var(--border);background:var(--surface2);display:flex;flex-direction:column;gap:4px}
 .cc-sel{width:100%;font-size:11px;padding:5px 7px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);color:var(--text)}
 .cc-pdf-btn{width:100%;margin-top:4px;padding:6px;font-size:11px;background:var(--blue-d);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;font-family:'DM Sans',sans-serif}
@@ -735,7 +735,8 @@ function renderCargas(){
             return `<div class="mini-card ${mc}">
               <div class="mini-order">${p.orden_carga||idx+1}</div>
               <div class="mini-body">
-                <div class="mini-client">${p.cliente}${p.num?` <span style="font-size:10px;color:var(--text2);font-weight:500;font-family:monospace">#${p.num}</span>`:''}${p.prio==='urgente'?' <span class="badge b-red" style="font-size:9px">U</span>':''}</div>
+                <div class="mini-client">${p.cliente}${p.prio==='urgente'?' <span class="badge b-red" style="font-size:9px">U</span>':''}</div>
+                ${p.num?`<div style="font-size:10px;color:var(--blue-d);font-weight:600;font-family:monospace;margin-top:1px">${p.num}</div>`:''}
                 ${p.ubicacion?`<div class="mini-ubic"><i class="ti ti-box" style="font-size:10px"></i>${p.ubicacion}</div>`:''}
                 <div class="mini-meta"><span>${p.destino.split(',')[0]}</span><span>·</span><span>${fmtN(p.kg)} kg</span><span>·</span><span style="color:var(--green)">${fmtN(p.porte)} €</span>${p.categoria_nombre?`<span>·</span><span style="background:${p.categoria_color}22;color:${p.categoria_color};font-size:9px;padding:1px 5px;border-radius:6px;font-weight:600">${p.categoria_nombre}</span>`:''}</div>
                 ${p.obs?`<div style="font-size:10px;color:var(--text2);margin-top:2px"><i class="ti ti-message" style="font-size:9px"></i> ${p.obs}</div>`:''}
