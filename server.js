@@ -304,6 +304,10 @@ const BC_COMPANY  = process.env.BC_COMPANY     || 'ENVASADOS ARISAC%2C S.L.';
 let   bcToken     = null;
 let   bcTokenExp  = 0;
 
+console.log('[BC] TENANT:', BC_TENANT);
+console.log('[BC] CLIENT:', BC_CLIENT);
+console.log('[BC] SECRET length:', BC_SECRET ? BC_SECRET.length : 'MISSING');
+
 async function getBCToken(){
   if(bcToken && Date.now() < bcTokenExp - 60000) return bcToken;
   const https = require('https');
