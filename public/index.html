@@ -287,6 +287,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
   <div class="tab" id="tab-cal" onclick="switchTab('cal')"><i class="ti ti-calendar"></i> Calendario</div>
   <div class="tab" id="tab-trans" onclick="switchTab('trans')"><i class="ti ti-truck"></i> Transportistas</div>
   <div class="tab" id="tab-cats" onclick="switchTab('cats')"><i class="ti ti-tag"></i> Categorías</div>
+  <div class="tab" id="tab-prep" onclick="switchTab('prep')"><i class="ti ti-clipboard-check"></i> Preparación</div>
   <div class="tab" id="tab-bc" onclick="switchTab('bc')"><i class="ti ti-building-store"></i> Bandeja BC</div>
   <div class="tab" id="tab-hist" onclick="switchTab('hist')"><i class="ti ti-history"></i> Historial <span id="hist-badge" style="background:#EAF3DE;color:#27500A;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;margin-left:3px">0</span></div>
   <div class="tab" id="tab-dash" onclick="switchTab('dash')"><i class="ti ti-chart-bar"></i> Resumen</div>
@@ -412,6 +413,24 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 
 <div class="statusbar">
   <div class="sb-msg" id="sb-msg"><i class="ti ti-info-circle"></i> Arrastra pedidos a las cargas · verde = preparado · rojo = sin preparar</div>
+</div>
+
+<!-- PREPARACIÓN -->
+<div class="view" id="view-prep">
+<div class="container">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="font-size:16px;font-weight:600">Preparación de pedidos</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px">Marca las líneas a medida que las preparas</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="prep-search" placeholder="Buscar pedido..." oninput="renderPrepList()" style="font-size:12px;padding:7px 11px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);width:180px">
+      <button class="btn-primary" onclick="triggerPrepPDF()"><i class="ti ti-file-import"></i> Importar PDF</button>
+      <input type="file" id="prep-pdf-file" accept=".pdf" style="display:none" onchange="importarPrepPDF(this)">
+    </div>
+  </div>
+  <div id="prep-list"></div>
+</div>
 </div>
 
 <!-- BANDEJA BC -->
@@ -587,7 +606,7 @@ function updateCatDropdowns(){
 function renderAll(){renderBCList();renderCargas();updateStats();updateCatDropdowns();}
 
 function switchTab(t){
-  ['plan','cal','trans','cats','hist','dash','bc'].forEach(id=>{
+  ['plan','cal','trans','cats','hist','dash','bc','prep'].forEach(id=>{
     document.getElementById('tab-'+id).classList.toggle('active',id===t);
     document.getElementById('view-'+id).classList.toggle('active',id===t);
   });
@@ -597,6 +616,7 @@ function switchTab(t){
   if(t==='cats')renderCats();
   if(t==='bc'){loadBCConfig().then(()=>{loadBCPedidos();renderClientesExcluidos();});}
   if(t==='hist')renderHist();
+  if(t==='prep')renderPrepList();
 }
 
 function onSearch(v){searchQ=v.toLowerCase();renderBCList();}
@@ -1877,6 +1897,155 @@ async function deleteCat(id){
     renderCats(); renderCargas(); renderBCList();
     log('Categoría eliminada');
   }catch(e){log('Error','warn');}
+}
+
+// ── PREPARACIÓN DE PEDIDOS ────────────────────────────────────────────────────
+let prepLineasCache={};
+
+function renderPrepList(){
+  const el=document.getElementById('prep-list');
+  if(!el) return;
+  const q=(document.getElementById('prep-search')?.value||'').toLowerCase();
+  // Pedidos con líneas o todos los pedidos
+  let lista=pedidos.slice();
+  if(q) lista=lista.filter(p=>(p.cliente||'').toLowerCase().includes(q)||(p.num||'').toLowerCase().includes(q)||(p.destino||'').toLowerCase().includes(q));
+  // Ordenar: sin preparar primero
+  lista.sort((a,b)=>(a.estado_prep==='preparado'?1:0)-(b.estado_prep==='preparado'?1:0));
+
+  if(!lista.length){
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text2)"><i class="ti ti-clipboard-off" style="font-size:28px;opacity:.3;display:block;margin-bottom:8px"></i>No hay pedidos. Importa un PDF para empezar.</div>';
+    return;
+  }
+
+  el.innerHTML='<div class="list-card">'+lista.map(p=>{
+    const prep=p.estado_prep==='preparado';
+    return `<div style="border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer" onclick="togglePrepDetalle('${p.id}')">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:600;font-family:monospace;color:var(--blue-d)">${p.num||'—'}</span>
+            <span style="font-weight:500">${p.cliente}</span>
+            ${prep?'<span class="badge b-green" style="font-size:10px"><i class="ti ti-check"></i> Preparado</span>':'<span class="badge b-amber" style="font-size:10px">Pendiente</span>'}
+          </div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">
+            ${p.destino||'—'}${p.ubicacion?' · <strong style="color:var(--blue-d)">Campa: '+p.ubicacion+'</strong>':''}
+          </div>
+        </div>
+        <i class="ti ti-chevron-down" id="prep-chev-${p.id}" style="color:var(--text3);transition:transform .15s"></i>
+      </div>
+      <div id="prep-det-${p.id}" style="display:none;padding:0 16px 14px;background:var(--surface2)"></div>
+    </div>`;
+  }).join('')+'</div>';
+}
+
+async function togglePrepDetalle(pid){
+  const det=document.getElementById('prep-det-'+pid);
+  const chev=document.getElementById('prep-chev-'+pid);
+  if(!det) return;
+  if(det.style.display==='block'){
+    det.style.display='none';
+    if(chev) chev.style.transform='';
+    return;
+  }
+  det.style.display='block';
+  if(chev) chev.style.transform='rotate(180deg)';
+  det.innerHTML='<div style="padding:14px;color:var(--text2);font-size:12px"><i class="ti ti-loader"></i> Cargando líneas...</div>';
+
+  try{
+    const lineas=await api('GET','/pedidos/'+pid+'/lineas');
+    prepLineasCache[pid]=lineas;
+    renderPrepLineas(pid);
+  }catch(e){
+    det.innerHTML='<div style="padding:14px;color:var(--red);font-size:12px">Error cargando líneas</div>';
+  }
+}
+
+function renderPrepLineas(pid){
+  const det=document.getElementById('prep-det-'+pid);
+  const lineas=prepLineasCache[pid]||[];
+  if(!det) return;
+  if(!lineas.length){
+    det.innerHTML='<div style="padding:14px;color:var(--text2);font-size:12px;font-style:italic">Este pedido no tiene líneas. Impórtalas desde el PDF.</div>';
+    return;
+  }
+  const nPrep=lineas.filter(l=>l.preparada).length;
+  det.innerHTML=`
+    <div style="font-size:11px;color:var(--text2);margin:8px 0">${nPrep}/${lineas.length} líneas preparadas</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:6px;overflow:hidden">
+      <thead><tr style="background:var(--surface2);border-bottom:1px solid var(--border)">
+        <th style="width:36px;padding:7px"></th>
+        <th style="text-align:left;padding:7px;font-size:10px;color:var(--text2)">REFERENCIA</th>
+        <th style="text-align:left;padding:7px;font-size:10px;color:var(--text2)">DESCRIPCIÓN</th>
+        <th style="text-align:right;padding:7px;font-size:10px;color:var(--text2)">CANT.</th>
+      </tr></thead>
+      <tbody>
+        ${lineas.map(l=>`<tr style="border-bottom:1px solid var(--border);${l.preparada?'opacity:.55':''}">
+          <td style="text-align:center;padding:7px">
+            <input type="checkbox" ${l.preparada?'checked':''} onchange="toggleLineaPrep('${pid}','${l.id}',this.checked)" style="width:18px;height:18px;cursor:pointer">
+          </td>
+          <td style="padding:7px;font-family:monospace;font-weight:600;color:var(--blue-d);${l.preparada?'text-decoration:line-through':''}">${l.referencia||'—'}</td>
+          <td style="padding:7px;${l.preparada?'text-decoration:line-through':''}">${l.descripcion||'—'}</td>
+          <td style="padding:7px;text-align:right;font-weight:600">${fmtN(l.cantidad)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function toggleLineaPrep(pid,lid,checked){
+  try{
+    await api('PATCH','/lineas/'+lid+'/prep',{preparada:checked});
+    const lineas=prepLineasCache[pid]||[];
+    const l=lineas.find(x=>String(x.id)===String(lid));
+    if(l) l.preparada=checked;
+    renderPrepLineas(pid);
+    // Si todas las líneas están preparadas, marcar pedido como preparado
+    const todas=lineas.length>0 && lineas.every(x=>x.preparada);
+    const p=pedidos.find(x=>String(x.id)===String(pid));
+    if(p && todas && p.estado_prep!=='preparado'){
+      await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:'preparado'});
+      p.estado_prep='preparado';
+      log('Pedido '+(p.num||'')+' completamente preparado','ok');
+    }
+  }catch(e){ log('Error: '+e.message,'warn'); }
+}
+
+function triggerPrepPDF(){
+  const inp=document.getElementById('prep-pdf-file');
+  if(inp){inp.value='';inp.click();}
+}
+
+async function importarPrepPDF(input){
+  const file=input.files[0];
+  if(!file) return;
+  log('Leyendo PDF...');
+  const base64=await new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result.split(',')[1]);
+    r.onerror=()=>rej(new Error('Error leyendo archivo'));
+    r.readAsDataURL(file);
+  });
+  try{
+    const datos=await api('POST','/importar-pdf',{base64});
+    // Crear el pedido con sus líneas
+    if(!datos.num){ log('No se pudo leer el número de pedido','warn'); return; }
+    const nuevo=await api('POST','/pedidos',{
+      num:datos.num,
+      cliente:datos.cliente_nombre||'Cliente',
+      destino:datos.destino_texto||'—',
+      direccion_descarga:datos.direccion_descarga||null,
+      fecha:datos.fecha_pedido||null,
+      kg:datos.kg||0,
+      porte:datos.porte||0,
+      obs:datos.obs||null
+    });
+    // Guardar líneas
+    if(datos.lineas && datos.lineas.length){
+      await api('POST','/pedidos/'+nuevo.id+'/lineas',{lineas:datos.lineas});
+    }
+    await loadAll();
+    renderPrepList();
+    log('Pedido '+datos.num+' importado con '+(datos.lineas?.length||0)+' líneas','ok');
+  }catch(e){ log('Error importando PDF: '+e.message,'warn'); }
 }
 
 // ── BANDEJA BC ────────────────────────────────────────────────────────────────
