@@ -78,8 +78,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 /* CARGAS */
 .cargas-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px}
 .cargas-title{font-size:11px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
-.cg{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:10px}
-.cc{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:border-color .12s}
+.cg{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.cc{background:var(--surface);border:1.5px solid #1a1a1a;border-radius:var(--radius);overflow:hidden;transition:border-color .12s,box-shadow .12s;box-shadow:0 1px 3px rgba(0,0,0,0.08)}
 .cc.drag-over{border-color:var(--blue);background:var(--blue-l)}
 .cc-hdr{padding:9px 11px;border-bottom:1px solid var(--border)}
 .cc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px}
@@ -116,7 +116,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 .mini-card.mc-preparado{background:var(--prep-ok);border-color:rgba(59,109,17,.2)}
 .mini-card.mc-sin_preparar{background:var(--prep-no);border-color:rgba(162,45,45,.2)}
 .mini-card.mc-default{background:var(--surface2)}
-.mini-order{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0;background:var(--blue-l);color:var(--blue-d)}
+.mini-order{min-width:22px;height:22px;padding:0 5px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;background:var(--blue-l);color:var(--blue-d)}
 .mini-body{flex:1;min-width:0}
 .mini-client{font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mini-meta{font-size:10px;color:var(--text2);display:flex;gap:4px;margin-top:1px;flex-wrap:wrap}
@@ -285,6 +285,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
   <div class="tab" id="tab-cal" onclick="switchTab('cal')"><i class="ti ti-calendar"></i> Calendario</div>
   <div class="tab" id="tab-trans" onclick="switchTab('trans')"><i class="ti ti-truck"></i> Transportistas</div>
   <div class="tab" id="tab-cats" onclick="switchTab('cats')"><i class="ti ti-tag"></i> Categorías</div>
+  <div class="tab" id="tab-bc" onclick="switchTab('bc')"><i class="ti ti-building-store"></i> Bandeja BC</div>
   <div class="tab" id="tab-hist" onclick="switchTab('hist')"><i class="ti ti-history"></i> Historial <span id="hist-badge" style="background:#EAF3DE;color:#27500A;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;margin-left:3px">0</span></div>
   <div class="tab" id="tab-dash" onclick="switchTab('dash')"><i class="ti ti-chart-bar"></i> Resumen</div>
 </div>
@@ -411,6 +412,31 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
   <div class="sb-msg" id="sb-msg"><i class="ti ti-info-circle"></i> Arrastra pedidos a las cargas · verde = preparado · rojo = sin preparar</div>
 </div>
 
+<!-- BANDEJA BC -->
+<div class="view" id="view-bc">
+<div class="container">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div>
+      <div style="font-size:16px;font-weight:600">Pedidos abiertos en Business Central</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px">Selecciona los que quieres añadir a la planificación</div>
+    </div>
+    <button class="btn-primary" onclick="loadBCPedidos()"><i class="ti ti-refresh"></i> Sincronizar</button>
+  </div>
+  <div id="bc-bandeja-list"><div style="text-align:center;padding:40px;color:var(--text2)"><i class="ti ti-building-store" style="font-size:28px;opacity:.3;display:block;margin-bottom:8px"></i>Pulsa Sincronizar para cargar los pedidos de BC</div></div>
+
+  <!-- Clientes excluidos -->
+  <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">Clientes excluidos permanentemente</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Los pedidos de estos clientes no aparecerán en la bandeja</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <input type="text" id="bc-excluir-input" placeholder="Nombre del cliente o parte del nombre..." style="flex:1;font-size:12px;padding:6px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text)">
+      <button class="btn-primary" onclick="añadirClienteExcluido()" style="font-size:12px;padding:6px 12px"><i class="ti ti-plus"></i> Excluir</button>
+    </div>
+    <div id="bc-excluidos-list"></div>
+  </div>
+</div>
+</div>
+
 <!-- MODAL -->
 <div class="overlay" id="overlay">
   <div class="modal">
@@ -492,6 +518,13 @@ const STATUS_CFG={
   ruta:{label:'En ruta',badge:'b-amber'},
   entregada:{label:'Entregada',badge:'b-green'},
 };
+// Color de la carga según su estado
+const STATUS_COL={
+  pendiente:{b:'#9ca3af',bg:'#f8fafc',t:'#475569'},   // sin color (gris neutro)
+  planificada:{b:'#185FA5',bg:'#E6F1FB',t:'#0C447C'}, // azul
+  ruta:{b:'#854F0B',bg:'#FAEEDA',t:'#633806'},        // ámbar
+  entregada:{b:'#0F6E56',bg:'#E1F5EE',t:'#085041'},   // verde
+};
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DOWS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 const TRANS_COLORS=['#185FA5','#0F6E56','#854F0B','#712B13','#534AB7','#A32D2D'];
@@ -551,7 +584,7 @@ function updateCatDropdowns(){
 function renderAll(){renderBCList();renderCargas();updateStats();updateCatDropdowns();}
 
 function switchTab(t){
-  ['plan','cal','trans','cats','hist','dash'].forEach(id=>{
+  ['plan','cal','trans','cats','hist','dash','bc'].forEach(id=>{
     document.getElementById('tab-'+id).classList.toggle('active',id===t);
     document.getElementById('view-'+id).classList.toggle('active',id===t);
   });
@@ -559,6 +592,7 @@ function switchTab(t){
   if(t==='dash')renderDash();
   if(t==='trans')renderTrans();
   if(t==='cats')renderCats();
+  if(t==='bc'){loadBCConfig().then(()=>{loadBCPedidos();renderClientesExcluidos();});}
   if(t==='hist')renderHist();
 }
 
@@ -637,8 +671,8 @@ function renderCargas(){
   grid.innerHTML=filtered.map(c=>{
     const ps=cargaPs(c.id).sort((a,b)=>(a.orden_carga||999)-(b.orden_carga||999));
     const kg=cargaKg(c.id),portes=cargaPortes(c.id);
-    const idx=Math.min(c.color_idx||0,CCOLS.length-1);
-    const col=CCOLS[idx];
+    // Color según estado: pendiente sin color (gris), planificada azul, etc.
+    const col=STATUS_COL[c.status]||STATUS_COL.pendiente;
     const t=getTrans(c.truck_id);
     const sc=STATUS_CFG[c.status]||STATUS_CFG.pendiente;
     const costeVal=c.coste!=null?+c.coste:null;
@@ -701,7 +735,7 @@ function renderCargas(){
             return `<div class="mini-card ${mc}">
               <div class="mini-order">${p.orden_carga||idx+1}</div>
               <div class="mini-body">
-                <div class="mini-client">${p.cliente}${p.prio==='urgente'?' <span class="badge b-red" style="font-size:9px">U</span>':''}</div>
+                <div class="mini-client">${p.cliente}${p.num?` <span style="font-size:10px;color:var(--text2);font-weight:500;font-family:monospace">#${p.num}</span>`:''}${p.prio==='urgente'?' <span class="badge b-red" style="font-size:9px">U</span>':''}</div>
                 ${p.ubicacion?`<div class="mini-ubic"><i class="ti ti-box" style="font-size:10px"></i>${p.ubicacion}</div>`:''}
                 <div class="mini-meta"><span>${p.destino.split(',')[0]}</span><span>·</span><span>${fmtN(p.kg)} kg</span><span>·</span><span style="color:var(--green)">${fmtN(p.porte)} €</span>${p.categoria_nombre?`<span>·</span><span style="background:${p.categoria_color}22;color:${p.categoria_color};font-size:9px;padding:1px 5px;border-radius:6px;font-weight:600">${p.categoria_nombre}</span>`:''}</div>
                 ${p.obs?`<div style="font-size:10px;color:var(--text2);margin-top:2px"><i class="ti ti-message" style="font-size:9px"></i> ${p.obs}</div>`:''}
@@ -1656,6 +1690,159 @@ async function deleteCat(id){
     renderCats(); renderCargas(); renderBCList();
     log('Categoría eliminada');
   }catch(e){log('Error','warn');}
+}
+
+// ── BANDEJA BC ────────────────────────────────────────────────────────────────
+let bcBandeja=[];
+let bcIgnorados=[];
+let bcClientesExcluidos=[];
+
+function ignorarBCPedido(num){
+  if(!bcIgnorados.includes(num)) bcIgnorados.push(num);
+  api('POST','/bc/config/ignorados',{value:bcIgnorados});
+  renderBCBandeja();
+}
+
+function restaurarIgnorados(){
+  bcIgnorados=[];
+  api('POST','/bc/config/ignorados',{value:[]});
+  renderBCBandeja();
+}
+
+async function loadBCConfig(){
+  try{
+    const [ign, exc] = await Promise.all([
+      api('GET','/bc/config/ignorados'),
+      api('GET','/bc/config/excluidos')
+    ]);
+    bcIgnorados = ign||[];
+    bcClientesExcluidos = exc||[];
+  }catch(e){ console.warn('BC config error:', e.message); }
+}
+
+async function loadBCPedidos(){
+  const el=document.getElementById('bc-bandeja-list');
+  if(!el)return;
+  el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text2)"><i class="ti ti-loader"></i> Cargando pedidos de BC...</div>';
+  try{
+    const data=await api('GET','/bc/pedidos');
+    bcBandeja=data;
+    renderBCBandeja();
+  }catch(e){
+    el.innerHTML='<div style="background:var(--red-l);border-radius:6px;padding:14px;color:var(--red)"><strong>Error conectando con BC:</strong> '+e.message+'</div>';
+  }
+}
+
+function renderBCBandeja(){
+  const el=document.getElementById('bc-bandeja-list');
+  if(!el)return;
+  if(!bcBandeja.length){
+    el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text2)">No hay pedidos abiertos en BC</div>';
+    return;
+  }
+  const imported=new Set(pedidos.map(p=>p.num));
+  const visibles=bcBandeja.filter(p=>!bcIgnorados.includes(p.num)&&!bcClientesExcluidos.some(c=>p.cliente&&p.cliente.toLowerCase().includes(c.toLowerCase())));
+  const nIgn=bcBandeja.length-visibles.length;
+
+  let html='';
+  if(nIgn>0){
+    html+=`<div style="padding:8px 16px;font-size:11px;color:var(--text2);display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)">
+      <span>${nIgn} pedido${nIgn!==1?'s':''} ignorado${nIgn!==1?'s':''}</span>
+      <button onclick="restaurarIgnorados()" style="background:none;border:none;cursor:pointer;color:var(--blue-d);font-size:11px;text-decoration:underline">Mostrar todos</button>
+    </div>`;
+  }
+
+  if(!visibles.length){
+    html+='<div style="text-align:center;padding:30px;color:var(--text2)">Todos los pedidos están importados o ignorados</div>';
+    el.innerHTML='<div class="list-card">'+html+'</div>';
+    return;
+  }
+
+  html+=visibles.map(p=>{
+    const yaImportado=imported.has(p.num);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);${yaImportado?'opacity:.55':''}">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span style="font-weight:600;font-family:monospace;color:var(--blue-d)">${p.num}</span>
+          ${yaImportado?'<span style="background:var(--green-l);color:var(--green);font-size:10px;padding:1px 7px;border-radius:8px;font-weight:600">Ya importado</span>':''}
+        </div>
+        <div style="font-size:13px;font-weight:500;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.cliente}</div>
+        <div style="font-size:11px;color:var(--text2)">${p.destino||''}${p.fecha?' · '+fmtD(p.fecha):''}</div>
+      </div>
+      <div style="display:flex;gap:5px;flex-shrink:0">
+        ${!yaImportado
+          ?`<button class="btn-primary" style="font-size:11px;padding:5px 10px" onclick="importarDesdeBCBandeja('${p.num}')"><i class="ti ti-plus"></i> Añadir</button>`
+          :'<button class="btn-sec" style="font-size:11px;padding:5px 10px" disabled>Importado</button>'
+        }
+        ${!yaImportado?`<button class="btn-sec" style="font-size:11px;padding:5px 8px;color:var(--text2)" onclick="ignorarBCPedido('${p.num}')" title="Ignorar este pedido"><i class="ti ti-eye-off"></i></button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML='<div class="list-card">'+html+'</div>';
+}
+
+async function importarDesdeBCBandeja(num){
+  const btn=event.target.closest('button');
+  if(btn){btn.disabled=true;btn.innerHTML='<i class="ti ti-loader"></i>';}
+  try{
+    const p=await api('GET','/bc/pedido/'+encodeURIComponent(num));
+    // Open modal pre-filled
+    openModal('pedido',null);
+    await new Promise(r=>setTimeout(r,100)); // wait for modal to render
+    if(p.num) document.getElementById('f-num').value=p.num;
+    if(p.cliente) document.getElementById('f-cliente').value=p.cliente;
+    if(p.destino) document.getElementById('f-destino').value=p.destino;
+    if(p.direccion_descarga) document.getElementById('f-dir-desc').value=p.direccion_descarga;
+    if(p.kg) document.getElementById('f-kg').value=Math.round(p.kg);
+    if(p.porte) document.getElementById('f-porte').value=p.porte;
+    if(p.fecha) document.getElementById('f-fecha').value=p.fecha;
+    if(p.obs) document.getElementById('f-obs').value=p.obs;
+    // Show banner
+    const banner=document.createElement('div');
+    banner.style.cssText='background:#e6f5ea;border:1px solid #2d7a3a;border-radius:6px;padding:8px 12px;font-size:12px;color:#2d7a3a;margin-bottom:10px';
+    banner.innerHTML='<i class="ti ti-check"></i> Importado desde BC: <strong>'+num+'</strong> — Revisa y guarda';
+    const body=document.getElementById('modal-body');
+    if(body) body.insertBefore(banner,body.firstChild);
+    log('Pedido '+num+' cargado desde BC','ok');
+  }catch(e){
+    if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-plus"></i> Añadir';}
+    log('Error: '+e.message,'warn');
+  }
+}
+
+function añadirClienteExcluido(){
+  const inp=document.getElementById('bc-excluir-input');
+  const val=inp?.value.trim();
+  if(!val) return;
+  if(!bcClientesExcluidos.includes(val)) bcClientesExcluidos.push(val);
+  api('POST','/bc/config/excluidos',{value:bcClientesExcluidos});
+  inp.value='';
+  renderClientesExcluidos();
+  renderBCBandeja();
+}
+
+function quitarClienteExcluido(nombre){
+  bcClientesExcluidos=bcClientesExcluidos.filter(c=>c!==nombre);
+  api('POST','/bc/config/excluidos',{value:bcClientesExcluidos});
+  renderClientesExcluidos();
+  renderBCBandeja();
+}
+
+function renderClientesExcluidos(){
+  const el=document.getElementById('bc-excluidos-list');
+  if(!el) return;
+  if(!bcClientesExcluidos.length){
+    el.innerHTML='<div style="font-size:11px;color:var(--text2);font-style:italic">Ningún cliente excluido</div>';
+    return;
+  }
+  el.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+    bcClientesExcluidos.map(c=>
+      `<div style="display:flex;align-items:center;gap:5px;background:var(--red-l);color:var(--red);border:1px solid var(--red);padding:3px 8px;border-radius:20px;font-size:11px;font-weight:500">
+        <span>${c}</span>
+        <button onclick="quitarClienteExcluido('${c.replace(/'/g,"\'")}'')" style="background:none;border:none;cursor:pointer;color:var(--red);padding:0;line-height:1;font-size:13px">×</button>
+      </div>`
+    ).join('')+'</div>';
 }
 
 setInterval(loadAll,30000);
