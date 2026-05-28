@@ -50,6 +50,7 @@ async function initDB() {
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS maps_url TEXT`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS direccion_descarga TEXT`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS preparador TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cif TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS direccion TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cp TEXT`,
@@ -64,6 +65,11 @@ async function initDB() {
       cantidad NUMERIC DEFAULT 0,
       preparada BOOLEAN DEFAULT false,
       orden INTEGER DEFAULT 0
+    )`,
+    `CREATE TABLE IF NOT EXISTS preparadores (
+      id SERIAL PRIMARY KEY,
+      nombre TEXT NOT NULL,
+      activo BOOLEAN DEFAULT true
     )`,
     `CREATE TABLE IF NOT EXISTS bc_inbox (
       num TEXT PRIMARY KEY,
@@ -150,6 +156,10 @@ app.put('/api/cargas/:id', async (req, res) => {
     // Si el estado cambió, disparar alerta por email (sin bloquear la respuesta)
     if(estadoAnterior && status && estadoAnterior !== status){
       enviarAlertaCambioEstado(r.rows[0], estadoAnterior, status).catch(e=>console.warn('Alerta error:',e.message));
+      // Si la carga pasa a entregada, marcar sus pedidos como entregados
+      if(status==='entregada'){
+        await pool.query("UPDATE pedidos SET estado_prep='entregado' WHERE carga_id=$1",[req.params.id]);
+      }
     }
 
     res.json(r.rows[0]);
@@ -401,13 +411,17 @@ app.post('/api/importar-pdf', async (req, res) => {
     const lineasText = text.replace(/\\n/g,'\n');
     const lineRegex = /([A-Z]{2,}[A-Z0-9]+)\s+(.+?)\s+(\d+,\d{2})\s+\d/g;
     let lm;
+    const refExcluidas = ['PORT','TOTAL','IVA','BASE','DTO','DESC','FIN','SUBT','RECARGO','GASTO'];
+    const descExcluidas = /(portes?|transporte|importe|descuento|recargo|gastos?|financ|iva|base imponible|total)/i;
     while((lm = lineRegex.exec(lineasText)) !== null){
       const ref = lm[1].trim();
-      // Saltar líneas que no son productos
-      if(['PORT','TOTAL','IVA','BASE'].some(s=>ref.startsWith(s))) continue;
+      // Saltar referencias que no son artículos
+      if(refExcluidas.some(s=>ref.startsWith(s))) continue;
       const desc = lm[2].trim().replace(/\s+/g,' ');
+      // Saltar descripciones que sean conceptos de importe, no artículos
+      if(descExcluidas.test(desc)) continue;
       const cant = parseFloat(lm[3].replace(',','.'));
-      if(desc.length < 2 || isNaN(cant)) continue;
+      if(desc.length < 2 || isNaN(cant) || cant<=0) continue;
       lineas.push({ referencia: ref, descripcion: desc, cantidad: cant });
     }
 
@@ -443,6 +457,34 @@ app.post('/api/pedidos/:id/lineas', async (req, res) => {
     }
     const r = await pool.query('SELECT * FROM pedido_lineas WHERE pedido_id=$1 ORDER BY orden,id',[req.params.id]);
     res.json(r.rows);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── PREPARADORES (CRUD) ───────────────────────────────────────────────────────
+app.get('/api/preparadores', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM preparadores WHERE activo=true ORDER BY nombre');
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+app.post('/api/preparadores', async (req, res) => {
+  try {
+    const r = await pool.query('INSERT INTO preparadores(nombre) VALUES($1) RETURNING *',[req.body.nombre]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+app.delete('/api/preparadores/:id', async (req, res) => {
+  try {
+    await pool.query('UPDATE preparadores SET activo=false WHERE id=$1',[req.params.id]);
+    res.json({ok:true});
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// PATCH asignar preparador a un pedido
+app.patch('/api/pedidos/:id/preparador', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE pedidos SET preparador=$1 WHERE id=$2 RETURNING *',[req.body.preparador||null,req.params.id]);
+    res.json(r.rows[0]);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
