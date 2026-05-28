@@ -56,6 +56,15 @@ async function initDB() {
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS ciudad TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS pais TEXT DEFAULT 'España'`,
     `CREATE TABLE IF NOT EXISTS bc_config (key TEXT PRIMARY KEY, value JSONB DEFAULT '[]')`,
+    `CREATE TABLE IF NOT EXISTS pedido_lineas (
+      id SERIAL PRIMARY KEY,
+      pedido_id INTEGER REFERENCES pedidos(id) ON DELETE CASCADE,
+      referencia TEXT,
+      descripcion TEXT,
+      cantidad NUMERIC DEFAULT 0,
+      preparada BOOLEAN DEFAULT false,
+      orden INTEGER DEFAULT 0
+    )`,
     `CREATE TABLE IF NOT EXISTS bc_inbox (
       num TEXT PRIMARY KEY,
       cliente TEXT,
@@ -385,10 +394,64 @@ app.post('/api/importar-pdf', async (req, res) => {
     const obraMatch = text.match(/externo\s+([A-Z][^\n]{2,40}?)(?:\s{2,}|Direcci)/i);
     const obs = obraMatch ? obraMatch[1].trim() : null;
 
-    res.json({ num, cliente_nombre, cif_cliente, destino_texto, direccion_descarga, fecha_pedido, kg, porte, obs });
+    // Líneas del pedido: REF DESCRIPCION CANTIDAD ...resto
+    // Formato: GVIBRF024 G Vibrado Forna 200x100x100cm 71,00 208740 142,00 0 363,70 41,00 15.235,39
+    // Ref = código alfanumérico al inicio, cantidad = primer número con decimales tras la descripción
+    const lineas = [];
+    const lineasText = text.replace(/\\n/g,'\n');
+    const lineRegex = /([A-Z]{2,}[A-Z0-9]+)\s+(.+?)\s+(\d+,\d{2})\s+\d/g;
+    let lm;
+    while((lm = lineRegex.exec(lineasText)) !== null){
+      const ref = lm[1].trim();
+      // Saltar líneas que no son productos
+      if(['PORT','TOTAL','IVA','BASE'].some(s=>ref.startsWith(s))) continue;
+      const desc = lm[2].trim().replace(/\s+/g,' ');
+      const cant = parseFloat(lm[3].replace(',','.'));
+      if(desc.length < 2 || isNaN(cant)) continue;
+      lineas.push({ referencia: ref, descripcion: desc, cantidad: cant });
+    }
+
+    res.json({ num, cliente_nombre, cif_cliente, destino_texto, direccion_descarga, fecha_pedido, kg, porte, obs, lineas });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── LÍNEAS DE PEDIDO (preparación) ────────────────────────────────────────────
+
+// GET líneas de un pedido
+app.get('/api/pedidos/:id/lineas', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM pedido_lineas WHERE pedido_id=$1 ORDER BY orden,id',[req.params.id]);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// POST guardar líneas de un pedido (reemplaza todas)
+app.post('/api/pedidos/:id/lineas', async (req, res) => {
+  const { lineas } = req.body;
+  try {
+    await pool.query('DELETE FROM pedido_lineas WHERE pedido_id=$1',[req.params.id]);
+    if(Array.isArray(lineas)){
+      for(let i=0;i<lineas.length;i++){
+        const l = lineas[i];
+        await pool.query(
+          'INSERT INTO pedido_lineas(pedido_id,referencia,descripcion,cantidad,preparada,orden) VALUES($1,$2,$3,$4,$5,$6)',
+          [req.params.id, l.referencia||null, l.descripcion||null, l.cantidad||0, l.preparada||false, i]
+        );
+      }
+    }
+    const r = await pool.query('SELECT * FROM pedido_lineas WHERE pedido_id=$1 ORDER BY orden,id',[req.params.id]);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// PATCH marcar línea como preparada/no preparada
+app.patch('/api/lineas/:id/prep', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE pedido_lineas SET preparada=$1 WHERE id=$2 RETURNING *',[req.body.preparada,req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
 });
 
 
