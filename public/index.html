@@ -586,6 +586,7 @@ const DOWS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 const TRANS_COLORS=['#185FA5','#0F6E56','#854F0B','#712B13','#534AB7','#A32D2D'];
 
 let pedidos=[],cargas=[],transportistas=[],categorias=[],preparadoresList=[];
+let pdfImportLineas=null;  // líneas del último PDF importado en el modal de planificación
 let dragId=null,searchQ='',prepFilter='all',catFilter='',editId=null,modalType=null,cargaN=0;
 let calY=new Date().getFullYear(),calM=new Date().getMonth();
 
@@ -1508,7 +1509,7 @@ function addTarifaRow(){
   box.appendChild(div);
 }
 
-function closeModal(){document.getElementById('overlay').classList.remove('open');editId=null;modalType=null;}
+function closeModal(){document.getElementById('overlay').classList.remove('open');editId=null;modalType=null;pdfImportLineas=null;}
 
 function triggerPDFImport(){
   const inp=document.getElementById('pdf-import-file');
@@ -1552,6 +1553,9 @@ async function procesarPDFPedido(input){
     if(datos.fecha_pedido){const el=document.getElementById('f-fecha');if(el)el.value=datos.fecha_pedido;}
     if(datos.obs){const el=document.getElementById('f-obs');if(el)el.value=datos.obs;}
 
+    // Guardar las líneas leídas para crearlas al pulsar "Guardar"
+    pdfImportLineas = datos.lineas || null;
+
     // Restore title and show success banner
     titleEl.innerHTML=origTitle;
     // Show green banner inside modal body
@@ -1575,6 +1579,7 @@ async function savePedido(){
   const data={
     num:document.getElementById('f-num').value.trim(),
     cliente,destino,
+    direccion_descarga:document.getElementById('f-dir-desc')?.value.trim()||null,
     ubicacion:document.getElementById('f-ubicacion').value.trim()||null,
     estado_prep:document.getElementById('f-estadoprep').value,
     fecha:document.getElementById('f-fecha').value||null,
@@ -1592,8 +1597,13 @@ async function savePedido(){
       log('Pedido '+data.num+' actualizado','ok');
     }else{
       const newP=await api('POST','/pedidos',data);
-      pedidos.unshift(newP);log('Pedido '+data.num+' creado','ok');
+      // Si se importó un PDF en este modal, crear también sus líneas
+      let nLin=0;
+      if(pdfImportLineas){ nLin=await guardarLineasPedido(newP.id, pdfImportLineas); }
+      pedidos.unshift(newP);
+      log('Pedido '+data.num+' creado'+(nLin?' con '+nLin+' artículos':''),'ok');
     }
+    pdfImportLineas=null;
     closeModal();renderAll();
   }catch(e){log('Error: '+e.message,'warn');}
 }
@@ -2253,6 +2263,43 @@ async function delPreparador(id){
   }catch(e){ log('Error eliminando preparador','warn'); }
 }
 
+// ── Helpers de importación PDF (unifican preparación y planificación) ──────────
+
+// Cabecera del pedido a partir de la respuesta del parser (/importar-pdf).
+// 'base' = pedido existente (al reimportar conserva lo que no venga en el PDF).
+function cabeceraDesdePDF(datos, base){
+  base = base || {};
+  return {
+    ...base,
+    num: datos.num || base.num || null,
+    cliente: datos.cliente_nombre || base.cliente || 'Cliente',
+    destino: datos.destino_texto || base.destino || '—',
+    direccion_descarga: datos.direccion_descarga || base.direccion_descarga || null,
+    fecha: datos.fecha_pedido || base.fecha || null,
+    kg: datos.kg || base.kg || 0,
+    porte: datos.porte || base.porte || 0,
+    obs: datos.obs || base.obs || null
+  };
+}
+
+// Guarda las líneas del pedido (solo artículos). Si se pasan 'previas',
+// conserva el estado 'preparada' y las observaciones manuales por referencia.
+async function guardarLineasPedido(pid, datosLineas, previas){
+  const filtradas=(datosLineas||[]).filter(l=>l.es_articulo!==false);
+  let payload=filtradas;
+  if(previas && previas.length){
+    const porRef={};
+    previas.forEach(l=>{ porRef[l.referencia]={preparada:l.preparada,observaciones:l.observaciones}; });
+    payload=filtradas.map(l=>({
+      ...l,
+      preparada: !!(porRef[l.referencia]?.preparada),
+      observaciones: porRef[l.referencia]?.observaciones || l.observaciones || null
+    }));
+  }
+  await api('POST','/pedidos/'+pid+'/lineas',{lineas:payload});
+  return filtradas.length;
+}
+
 async function importarPrepPDF(input){
   const file=input.files[0];
   if(!file) return;
@@ -2266,25 +2313,12 @@ async function importarPrepPDF(input){
   try{
     const datos=await api('POST','/importar-pdf',{base64});
     if(!datos.num){ log('No se pudo leer el número de pedido','warn'); return; }
-    const nuevo=await api('POST','/pedidos',{
-      num:datos.num,
-      cliente:datos.cliente_nombre||'Cliente',
-      destino:datos.destino_texto||'—',
-      direccion_descarga:datos.direccion_descarga||null,
-      fecha:datos.fecha_pedido||null,
-      kg:datos.kg||0,
-      porte:datos.porte||0,
-      obs:datos.obs||null
-    });
-    // Solo mercancía a preparar: descartar conceptos (gasoil, portes, descuentos…)
-    const lineasArt=(datos.lineas||[]).filter(l=>l.es_articulo!==false);
-    if(lineasArt.length){
-      await api('POST','/pedidos/'+nuevo.id+'/lineas',{lineas:lineasArt});
-    }
+    const nuevo=await api('POST','/pedidos', cabeceraDesdePDF(datos));
+    const n=await guardarLineasPedido(nuevo.id, datos.lineas);
     await loadAll();
     fillPreparadorFilters();
     renderPrepList();
-    log('Pedido '+datos.num+' importado con '+lineasArt.length+' artículos','ok');
+    log('Pedido '+datos.num+' importado con '+n+' artículos','ok');
   }catch(e){ log('Error importando PDF: '+e.message,'warn'); }
 }
 
@@ -2313,33 +2347,15 @@ async function reimportarPDF(pid,input){
     const datos=await api('POST','/importar-pdf',{base64});
     const p=pedidos.find(x=>String(x.id)===String(pid));
     if(!p) return;
-    // Actualizar cabecera del pedido con datos nuevos (conservando lo que ya hay si no viene)
-    await api('PUT','/pedidos/'+pid,{
-      ...p,
-      cliente:datos.cliente_nombre||p.cliente,
-      destino:datos.destino_texto||p.destino,
-      direccion_descarga:datos.direccion_descarga||p.direccion_descarga,
-      fecha:datos.fecha_pedido||p.fecha,
-      kg:datos.kg||p.kg,
-      porte:datos.porte||p.porte
-    });
-    // Reemplazar líneas (manteniendo estado preparada y observaciones por referencia)
-    const lineasViejas=prepLineasCache[pid]||[];
-    const datoPorRef={};
-    lineasViejas.forEach(l=>{ datoPorRef[l.referencia]={preparada:l.preparada,observaciones:l.observaciones}; });
-    const lineasNuevas=(datos.lineas||[]).filter(l=>l.es_articulo!==false).map(l=>({
-      ...l,
-      preparada: !!(datoPorRef[l.referencia]?.preparada),
-      // conserva la observación manual; si no la hay, usa la que venga del PDF
-      observaciones: datoPorRef[l.referencia]?.observaciones || l.observaciones || null
-    }));
-    await api('POST','/pedidos/'+pid+'/lineas',{lineas:lineasNuevas});
+    // Cabecera completa (conserva lo que ya hay si no viene en el PDF)
+    await api('PUT','/pedidos/'+pid, cabeceraDesdePDF(datos, p));
+    // Líneas: reemplaza conservando preparada/observaciones por referencia
+    const n=await guardarLineasPedido(pid, datos.lineas, prepLineasCache[pid]||[]);
     await loadAll();
-    // Recargar el detalle
     const fresh=await api('GET','/pedidos/'+pid+'/lineas');
     prepLineasCache[pid]=fresh;
     renderDetalleLineas(pid);
-    log('Pedido actualizado: '+lineasNuevas.length+' artículos','ok');
+    log('Pedido actualizado: '+n+' artículos','ok');
   }catch(e){ log('Error actualizando PDF: '+e.message,'warn'); }
 }
 
