@@ -400,7 +400,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
     <div>
       <div style="font-size:16px;font-weight:500">Historial de cargas entregadas</div>
-      <div style="font-size:12px;color:var(--text2);margin-top:2px">Cargas marcadas como entregadas — solo lectura</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px">Cargas marcadas como entregadas — puedes revertir una entrega si fue un error</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <select id="hist-filter-mes" onchange="renderHist()" style="font-size:11px;padding:5px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);color:var(--text)">
@@ -1856,11 +1856,24 @@ function renderHist(){
               ${coste!=null?`<div style="font-size:12px;font-weight:500;color:${margen>=0?'var(--green)':'var(--red)'}">${margen>=0?'+':''}${fmtN(margen)} € margen</div>`:''}
             </div>
             <button onclick="openPdfModal('${c.id}')" style="margin-top:6px;background:var(--blue-d);color:#fff;border:none;border-radius:var(--radius-sm);padding:4px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif"><i class="ti ti-printer"></i> PDF</button>
+            <button onclick="revertirEntrega('${c.id}')" style="margin-top:6px;background:none;color:#b45309;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:4px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif" title="Marcar como no entregada y volver a En ruta"><i class="ti ti-arrow-back-up"></i> No entregada</button>
           </div>
         </div>
       </div>`;
     }).join('')}
   </div>`;
+}
+
+// Revertir una entrega: la carga vuelve a "En ruta" y sus pedidos a "Preparado"
+async function revertirEntrega(cid){
+  const c=cargas.find(x=>String(x.id)===String(cid));
+  if(!c) return;
+  if(!confirm('¿Marcar la carga "'+c.name+'" como NO entregada?\nVolverá a "En ruta" y sus pedidos a "Preparado".')) return;
+  try{
+    await api('PUT','/cargas/'+cid,{...c, status:'ruta'});
+    await loadAll();
+    log('Entrega revertida: "'+c.name+'" vuelve a En ruta','ok');
+  }catch(e){ log('Error al revertir: '+e.message,'warn'); }
 }
 
 function log(msg,type=''){
