@@ -52,6 +52,9 @@ async function initDB() {
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS maps_url TEXT`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS direccion_descarga TEXT`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS preparador TEXT`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS obs_prep TEXT`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS es_agencia BOOLEAN DEFAULT false`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS medidas TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cif TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS direccion TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cp TEXT`,
@@ -476,6 +479,22 @@ app.patch('/api/pedidos/:id/preparador', async (req, res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
+// PATCH observación global del pedido (notas para el carretillero)
+app.patch('/api/pedidos/:id/obs_prep', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE pedidos SET obs_prep=$1 WHERE id=$2 RETURNING *',[req.body.obs_prep||null,req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// PATCH marca de agencia + medidas (largo x ancho x alto)
+app.patch('/api/pedidos/:id/agencia', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE pedidos SET es_agencia=$1, medidas=$2 WHERE id=$3 RETURNING *',[!!req.body.es_agencia, req.body.medidas||null, req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
 // PATCH marcar línea como preparada/no preparada
 app.patch('/api/lineas/:id/prep', async (req, res) => {
   try {
@@ -488,6 +507,14 @@ app.patch('/api/lineas/:id/prep', async (req, res) => {
 app.patch('/api/lineas/:id/obs', async (req, res) => {
   try {
     const r = await pool.query('UPDATE pedido_lineas SET observaciones=$1 WHERE id=$2 RETURNING *',[req.body.observaciones||null,req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// PATCH embalaje (palets) de una línea
+app.patch('/api/lineas/:id/embalaje', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE pedido_lineas SET embalaje=$1 WHERE id=$2 RETURNING *',[req.body.embalaje||null,req.params.id]);
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
