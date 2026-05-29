@@ -2,7 +2,7 @@ const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
-const { extraerLineas, extraerCliente } = require('./parseLineas');
+const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLineas');
 
 const app = express();
 app.use(cors());
@@ -357,7 +357,7 @@ app.post('/api/importar-pdf', async (req, res) => {
   const buf = Buffer.from(base64, 'base64');
 
   try {
-    const { text, page0 } = await new Promise((resolve, reject) => {
+    const { text, page0, pages } = await new Promise((resolve, reject) => {
       const parser = new PDFParser(null, 1);
       parser.on('pdfParser_dataError', e => reject(new Error(e.parserError)));
       parser.on('pdfParser_dataReady', data => {
@@ -367,7 +367,7 @@ app.post('/api/importar-pdf', async (req, res) => {
             catch(e) { return t.R.map(r => r.T).join(''); }
           }).join(' ')
         ).join('\\n');
-        resolve({ text: t, page0: data.Pages[0] });
+        resolve({ text: t, page0: data.Pages[0], pages: data.Pages });
       });
       parser.parseBuffer(buf);
     });
@@ -422,7 +422,7 @@ app.post('/api/importar-pdf', async (req, res) => {
 
     // Líneas del pedido: parser por POSICIÓN DE COLUMNA (coordenadas pdf2json)
     // Devuelve { referencia, descripcion, cantidad, observaciones, es_articulo, embalaje, kgs }
-    const lineas = extraerLineas(page0);
+    const lineas = extraerTodasLineas(pages);
 
     res.json({ num, cliente_nombre, cif_cliente, destino_texto, direccion_descarga, fecha_pedido, kg, porte, obs, lineas });
   } catch(e) {
