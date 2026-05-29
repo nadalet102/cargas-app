@@ -2066,6 +2066,8 @@ async function abrirPedidoDetalle(pid){
   prepLineasCache[pid]=lineas;
 
   const todosPrep=nombresPreparadores();
+  const med=(p.medidas||'').split(/x/i).map(s=>s.trim());
+  const medL=med[0]||'', medA=med[1]||'', medH=med[2]||'';
 
   const ov=document.createElement('div');
   ov.id='pedido-detalle-ov';
@@ -2097,6 +2099,25 @@ async function abrirPedidoDetalle(pid){
           </div>
         </div>
         <div id="detalle-lineas-${pid}"></div>
+
+        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+          <label style="display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;cursor:pointer">
+            <input type="checkbox" id="agencia-${p.id}" ${p.es_agencia?'checked':''} onchange="toggleAgencia('${p.id}',this.checked)" style="width:18px;height:18px;cursor:pointer">
+            <i class="ti ti-truck-delivery" style="color:var(--blue)"></i> Envío por agencia
+          </label>
+          <div id="medidas-box-${p.id}" style="margin-top:12px;${p.es_agencia?'':'display:none'}">
+            <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px">Medidas</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <div><div style="font-size:10px;color:var(--text2);margin-bottom:2px">Largo (cm)</div><input type="number" min="0" id="med-largo-${p.id}" value="${medL}" placeholder="Largo" onchange="guardarMedidas('${p.id}')" style="width:90px;font-size:13px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text)"></div>
+              <div><div style="font-size:10px;color:var(--text2);margin-bottom:2px">Ancho (cm)</div><input type="number" min="0" id="med-ancho-${p.id}" value="${medA}" placeholder="Ancho" onchange="guardarMedidas('${p.id}')" style="width:90px;font-size:13px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text)"></div>
+              <div><div style="font-size:10px;color:var(--text2);margin-bottom:2px">Alto (cm)</div><input type="number" min="0" id="med-alto-${p.id}" value="${medH}" placeholder="Alto" onchange="guardarMedidas('${p.id}')" style="width:90px;font-size:13px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text)"></div>
+            </div>
+          </div>
+          <div style="margin-top:18px">
+            <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px">Observación para el carretillero</div>
+            <textarea id="obsprep-${p.id}" onchange="guardarObsPrep('${p.id}',this.value)" placeholder="Notas de preparación / carga…" style="width:100%;min-height:64px;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical">${(p.obs_prep||'').replace(/</g,'&lt;')}</textarea>
+          </div>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(ov);
@@ -2151,7 +2172,7 @@ function renderDetalleLineas(pid){
           <td style="text-align:center;padding:8px"><input type="checkbox" ${l.preparada?'checked':''} onchange="toggleLineaPrep('${pid}','${l.id}',this.checked)" style="width:20px;height:20px;cursor:pointer"></td>
           <td style="padding:8px;font-family:monospace;font-weight:600;color:var(--blue-d);${l.preparada?'text-decoration:line-through':''}">${l.referencia||'—'}</td>
           <td style="padding:8px;${l.preparada?'text-decoration:line-through':''}">${l.descripcion||'—'}</td>
-          <td style="padding:8px;text-align:right;font-weight:600;white-space:nowrap">${fmtN(l.cantidad)}${l.embalaje?`<div style="font-size:10px;color:var(--text2);font-weight:500;margin-top:2px">${l.embalaje}</div>`:''}${l.kgs?`<div style="font-size:10px;color:var(--text3);font-weight:400">${fmtN(l.kgs)} kg</div>`:''}</td>
+          <td style="padding:8px;text-align:right;font-weight:600;white-space:nowrap">${fmtN(l.cantidad)}<div style="margin-top:3px;display:flex;align-items:center;justify-content:flex-end;gap:3px"><input type="number" min="0" value="${(String(l.embalaje||'').match(/\d+/)||[''])[0]}" onchange="guardarPalets('${pid}','${l.id}',this.value)" onclick="event.stopPropagation()" style="width:44px;font-size:11px;padding:2px 4px;text-align:right;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><span style="font-size:10px;color:var(--text2)">pal.</span></div>${l.kgs?`<div style="font-size:10px;color:var(--text3);font-weight:400">${fmtN(l.kgs)} kg</div>`:''}</td>
           <td style="padding:4px 8px">
             <input type="text" value="${(l.observaciones||'').replace(/"/g,'&quot;')}" placeholder="—" onchange="guardarObsLinea('${pid}','${l.id}',this.value)" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
           </td>
@@ -2176,6 +2197,55 @@ async function asignarPreparador(pid,nombre){
     if(p) p.preparador=nombre;
     fillPreparadorFilters();
   }catch(e){ log('Error asignando preparador','warn'); }
+}
+
+// Cambiar el nº de palets de una línea
+async function guardarPalets(pid,lid,val){
+  const n=parseInt(val);
+  const embalaje=(n&&n>0)?(n+' PALET'):null;
+  try{
+    await api('PATCH','/lineas/'+lid+'/embalaje',{embalaje});
+    const lineas=prepLineasCache[pid]||[];
+    const l=lineas.find(x=>String(x.id)===String(lid));
+    if(l) l.embalaje=embalaje;
+    renderDetalleLineas(pid); // recalcula el total de palets
+  }catch(e){ log('Error guardando palets','warn'); }
+}
+
+// Lee las 3 medidas del formulario y las une como "L x A x Al"
+function _medidasActuales(pid){
+  const g=k=>document.getElementById(k+'-'+pid);
+  const l=(g('med-largo')?.value||'').trim(), a=(g('med-ancho')?.value||'').trim(), h=(g('med-alto')?.value||'').trim();
+  return (l||a||h)?[l,a,h].join(' x '):null;
+}
+
+async function _guardarAgencia(pid){
+  const esAg=document.getElementById('agencia-'+pid)?.checked||false;
+  const medidas=_medidasActuales(pid);
+  await api('PATCH','/pedidos/'+pid+'/agencia',{es_agencia:esAg, medidas});
+  const p=pedidos.find(x=>String(x.id)===String(pid));
+  if(p){ p.es_agencia=esAg; p.medidas=medidas; }
+}
+
+async function toggleAgencia(pid,checked){
+  const box=document.getElementById('medidas-box-'+pid);
+  if(box) box.style.display=checked?'':'none';
+  try{ await _guardarAgencia(pid); }
+  catch(e){ log('Error guardando agencia','warn'); }
+}
+
+async function guardarMedidas(pid){
+  try{ await _guardarAgencia(pid); }
+  catch(e){ log('Error guardando medidas','warn'); }
+}
+
+// Observación global del pedido (notas del carretillero)
+async function guardarObsPrep(pid,val){
+  try{
+    await api('PATCH','/pedidos/'+pid+'/obs_prep',{obs_prep:val.trim()||null});
+    const p=pedidos.find(x=>String(x.id)===String(pid));
+    if(p) p.obs_prep=val.trim()||null;
+  }catch(e){ log('Error guardando observación','warn'); }
 }
 
 async function toggleLineaPrep(pid,lid,checked){
