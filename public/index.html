@@ -1986,7 +1986,11 @@ function pedidoRowHTML(p, modo){
           ${p.destino||'—'}${p.ubicacion?' · <strong style="color:var(--blue-d)">Campa: '+p.ubicacion+'</strong>':''}${p.fecha?' · Entrega: '+fmtDate(p.fecha):''}
         </div>
       </div>
-      <i class="ti ti-chevron-right" style="color:var(--text3)"></i>
+      <div style="display:flex;align-items:center;gap:2px" onclick="event.stopPropagation()">
+        <button title="Ubicación en campa" onclick="event.stopPropagation();editarUbicacion('${p.id}')" style="background:none;border:none;cursor:pointer;color:var(--blue);padding:6px;font-size:17px;line-height:1"><i class="ti ti-map-pin"></i></button>
+        <button title="Eliminar pedido" onclick="event.stopPropagation();eliminarPedidoPrep('${p.id}')" style="background:none;border:none;cursor:pointer;color:#c0392b;padding:6px;font-size:17px;line-height:1"><i class="ti ti-trash"></i></button>
+        <i class="ti ti-chevron-right" style="color:var(--text3)"></i>
+      </div>
     </div>
   </div>`;
 }
@@ -2013,6 +2017,31 @@ function renderPreparadosList(){
     return;
   }
   el.innerHTML='<div class="list-card">'+lista.map(p=>pedidoRowHTML(p,'preparados')).join('')+'</div>';
+}
+
+// Editar ubicación en campa desde la lista de preparación
+async function editarUbicacion(pid){
+  const p=pedidos.find(x=>String(x.id)===String(pid));
+  if(!p) return;
+  const val=prompt('Ubicación en campa para '+(p.num||p.cliente)+':', p.ubicacion||'');
+  if(val===null) return; // cancelado
+  try{
+    await api('PUT','/pedidos/'+pid,{...p, ubicacion: val.trim()||null});
+    await loadAll();
+    log('Ubicación actualizada','ok');
+  }catch(e){ log('Error guardando ubicación: '+e.message,'warn'); }
+}
+
+// Eliminar pedido desde la lista de preparación
+async function eliminarPedidoPrep(pid){
+  const p=pedidos.find(x=>String(x.id)===String(pid));
+  if(!p) return;
+  if(!confirm('¿Eliminar el pedido '+(p.num||'')+' — '+p.cliente+'?\nEsta acción no se puede deshacer.')) return;
+  try{
+    await api('DELETE','/pedidos/'+pid);
+    await loadAll();
+    log('Pedido eliminado','ok');
+  }catch(e){ log('Error eliminando pedido: '+e.message,'warn'); }
 }
 
 // Vista detalle de un pedido (pantalla completa modal)
