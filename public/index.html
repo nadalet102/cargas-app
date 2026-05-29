@@ -2097,7 +2097,7 @@ function renderDetalleLineas(pid){
           <td style="text-align:center;padding:8px"><input type="checkbox" ${l.preparada?'checked':''} onchange="toggleLineaPrep('${pid}','${l.id}',this.checked)" style="width:20px;height:20px;cursor:pointer"></td>
           <td style="padding:8px;font-family:monospace;font-weight:600;color:var(--blue-d);${l.preparada?'text-decoration:line-through':''}">${l.referencia||'—'}</td>
           <td style="padding:8px;${l.preparada?'text-decoration:line-through':''}">${l.descripcion||'—'}</td>
-          <td style="padding:8px;text-align:right;font-weight:600">${fmtN(l.cantidad)}</td>
+          <td style="padding:8px;text-align:right;font-weight:600;white-space:nowrap">${fmtN(l.cantidad)}${l.embalaje?`<div style="font-size:10px;color:var(--text2);font-weight:500;margin-top:2px">${l.embalaje}</div>`:''}${l.kgs?`<div style="font-size:10px;color:var(--text3);font-weight:400">${fmtN(l.kgs)} kg</div>`:''}</td>
           <td style="padding:4px 8px">
             <input type="text" value="${(l.observaciones||'').replace(/"/g,'&quot;')}" placeholder="—" onchange="guardarObsLinea('${pid}','${l.id}',this.value)" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
           </td>
@@ -2232,13 +2232,15 @@ async function importarPrepPDF(input){
       porte:datos.porte||0,
       obs:datos.obs||null
     });
-    if(datos.lineas && datos.lineas.length){
-      await api('POST','/pedidos/'+nuevo.id+'/lineas',{lineas:datos.lineas});
+    // Solo mercancía a preparar: descartar conceptos (gasoil, portes, descuentos…)
+    const lineasArt=(datos.lineas||[]).filter(l=>l.es_articulo!==false);
+    if(lineasArt.length){
+      await api('POST','/pedidos/'+nuevo.id+'/lineas',{lineas:lineasArt});
     }
     await loadAll();
     fillPreparadorFilters();
     renderPrepList();
-    log('Pedido '+datos.num+' importado con '+(datos.lineas?.length||0)+' artículos','ok');
+    log('Pedido '+datos.num+' importado con '+lineasArt.length+' artículos','ok');
   }catch(e){ log('Error importando PDF: '+e.message,'warn'); }
 }
 
@@ -2275,10 +2277,11 @@ async function reimportarPDF(pid,input){
     const lineasViejas=prepLineasCache[pid]||[];
     const datoPorRef={};
     lineasViejas.forEach(l=>{ datoPorRef[l.referencia]={preparada:l.preparada,observaciones:l.observaciones}; });
-    const lineasNuevas=(datos.lineas||[]).map(l=>({
+    const lineasNuevas=(datos.lineas||[]).filter(l=>l.es_articulo!==false).map(l=>({
       ...l,
       preparada: !!(datoPorRef[l.referencia]?.preparada),
-      observaciones: datoPorRef[l.referencia]?.observaciones||null
+      // conserva la observación manual; si no la hay, usa la que venga del PDF
+      observaciones: datoPorRef[l.referencia]?.observaciones || l.observaciones || null
     }));
     await api('POST','/pedidos/'+pid+'/lineas',{lineas:lineasNuevas});
     await loadAll();
@@ -2286,7 +2289,7 @@ async function reimportarPDF(pid,input){
     const fresh=await api('GET','/pedidos/'+pid+'/lineas');
     prepLineasCache[pid]=fresh;
     renderDetalleLineas(pid);
-    log('Pedido actualizado: '+(datos.lineas?.length||0)+' artículos','ok');
+    log('Pedido actualizado: '+lineasNuevas.length+' artículos','ok');
   }catch(e){ log('Error actualizando PDF: '+e.message,'warn'); }
 }
 
