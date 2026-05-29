@@ -35,12 +35,11 @@ const RE_CONCEPTO = /^(GASOIL|PORT|GASTO|RECARG|FINAN|ANTICIP|ABONO|DTOPP|SACOSU
 // textos legales…) que se cuela cuando la tabla no tiene fila "Totales".
 const RE_CODIGO = /^[A-Z][A-Z0-9]{3,}$/;
 
-// Limpia una nota: descarta separadores decorativos de asteriscos (****…****) y
-// recorta asteriscos/espacios de los bordes. Devuelve '' si no queda texto útil.
+// Limpia una nota: quita los asteriscos (de los bordes o de en medio) y espacios
+// sobrantes, dejando el texto que hubiera entre ellos. Devuelve '' si no queda nada
+// útil (p.ej. una línea que era solo "*****").
 function limpiarNota(t) {
-  const raw = String(t || '').replace(/\s+/g, ' ').trim();
-  if (/\*{3,}/.test(raw)) return '';                 // línea decorativa -> fuera
-  const s = raw.replace(/^[*\s]+|[*\s]+$/g, '').trim();
+  const s = String(t || '').replace(/\*+/g, ' ').replace(/\s+/g, ' ').trim();
   const alnum = (s.match(/[\p{L}\p{N}]/gu) || []).length;
   return alnum < 2 ? '' : s;
 }
@@ -107,7 +106,7 @@ function extraerLineas(page) {
   const B = bandas(tieneDto);
 
   const lineas = [];
-  let notasBuffer = [];   // notas que aparecen antes de la 1ª línea con artículo
+  let notaAbajo = [];   // notas que van al artículo de ABAJO (asteriscos, o notas antes de la 1ª línea)
 
   for (const f of filas) {
     const y = f[0].y;
@@ -130,15 +129,21 @@ function extraerLineas(page) {
     // fila de relleno (solo ceros / vacía) -> ignorar
     if (!codigo && !desc) continue;
 
-    // fila SIN código de artículo válido = nota / continuación / decoración
+    // fila SIN código de artículo válido = nota / continuación / línea de asteriscos
     if (!RE_CODIGO.test(codigo)) {
-      const texto = limpiarNota([codigo, desc].filter(Boolean).join(' '));
-      if (!texto) continue;                    // separador de asteriscos o sin texto útil
-      if (lineas.length) {
+      const raw = [codigo, desc].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+      const tieneAsteriscos = raw.includes('*');
+      const texto = limpiarNota(raw);
+      if (!texto) continue;                    // p.ej. "*****" sin texto dentro
+      if (tieneAsteriscos) {
+        // lo que va entre asteriscos -> observación del artículo de ABAJO
+        notaAbajo.push(texto);
+      } else if (lineas.length) {
+        // nota normal / continuación -> artículo de arriba
         const prev = lineas[lineas.length - 1];
         prev.observaciones = (prev.observaciones ? prev.observaciones + ' ' : '') + texto;
       } else {
-        notasBuffer.push(texto);
+        notaAbajo.push(texto);                 // antes de la 1ª línea -> al de abajo
       }
       continue;
     }
@@ -154,9 +159,9 @@ function extraerLineas(page) {
       embalaje,   // p.ej. "12 PALET"
       kgs,        // peso de la línea
     };
-    if (notasBuffer.length) {           // notas previas -> primera línea
-      linea.observaciones = notasBuffer.join(' ');
-      notasBuffer = [];
+    if (notaAbajo.length) {             // notas de asteriscos / previas -> este artículo
+      linea.observaciones = notaAbajo.join(' ');
+      notaAbajo = [];
     }
     lineas.push(linea);
   }
