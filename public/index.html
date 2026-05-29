@@ -2025,9 +2025,12 @@ async function editarUbicacion(pid){
   if(!p) return;
   const val=prompt('Ubicación en campa para '+(p.num||p.cliente)+':', p.ubicacion||'');
   if(val===null) return; // cancelado
+  const nueva=val.trim()||null;
   try{
-    await api('PUT','/pedidos/'+pid,{...p, ubicacion: val.trim()||null});
+    await api('PUT','/pedidos/'+pid,{...p, ubicacion: nueva});
     await loadAll();
+    const cell=document.getElementById('ubic-campa-'+pid); // si el detalle está abierto
+    if(cell) cell.textContent = nueva || '—';
     log('Ubicación actualizada','ok');
   }catch(e){ log('Error guardando ubicación: '+e.message,'warn'); }
 }
@@ -2073,7 +2076,7 @@ async function abrirPedidoDetalle(pid){
           <input type="file" id="reimport-pdf-${pid}" accept=".pdf" style="display:none" onchange="reimportarPDF('${pid}',this)">
         </div>
         <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:18px">
-          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Ubicación campa</div><div style="font-size:14px;font-weight:600;color:var(--blue-d)">${p.ubicacion||'—'}</div></div>
+          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Ubicación campa</div><button onclick="editarUbicacion('${p.id}')" style="font-size:14px;font-weight:600;color:var(--blue-d);background:none;border:none;padding:0;cursor:pointer;display:inline-flex;align-items:center;gap:5px"><span id="ubic-campa-${p.id}">${p.ubicacion||'—'}</span> <i class="ti ti-pencil" style="font-size:12px;color:var(--blue)"></i></button></div>
           <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Fecha entrega</div><div style="font-size:14px;font-weight:600">${p.fecha?fmtDate(p.fecha):'—'}</div></div>
           <div style="flex:1;min-width:160px">
             <div style="font-size:10px;color:var(--text2);text-transform:uppercase">Preparador</div>
@@ -2106,7 +2109,19 @@ function renderDetalleLineas(pid){
   }
   const nPrep=lineas.filter(l=>l.preparada).length;
   const pct=Math.round(nPrep/lineas.length*100);
+  const totKg=lineas.reduce((s,l)=>s+(Number(l.kgs)||0),0);
+  const totPalets=lineas.reduce((s,l)=>{const m=String(l.embalaje||'').match(/(\d+)/);return s+(m?parseInt(m[1]):0);},0);
   cont.innerHTML=`
+    <div style="display:flex;gap:10px;margin-bottom:12px">
+      <div style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center">
+        <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">Total palets</div>
+        <div style="font-size:19px;font-weight:700;color:var(--blue-d)">${totPalets||'—'}</div>
+      </div>
+      <div style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center">
+        <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">Total kg</div>
+        <div style="font-size:19px;font-weight:700;color:var(--blue-d)">${totKg?fmtN(totKg):'—'}</div>
+      </div>
+    </div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
       <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
         <div style="height:100%;width:${pct}%;background:${pct===100?'#0F6E56':'#185FA5'};transition:width .2s"></div>
