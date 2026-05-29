@@ -432,6 +432,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn-sec" onclick="abrirGestionPreparadores()"><i class="ti ti-users"></i> Preparadores</button>
+      <button class="btn-sec" onclick="abrirGestionComerciales()"><i class="ti ti-briefcase"></i> Comerciales</button>
       <button class="btn-primary" onclick="triggerPrepPDF()"><i class="ti ti-file-import"></i> Importar PDF</button>
       <input type="file" id="prep-pdf-file" accept=".pdf" style="display:none" onchange="importarPrepPDF(this)">
     </div>
@@ -593,7 +594,7 @@ const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 const DOWS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 const TRANS_COLORS=['#185FA5','#0F6E56','#854F0B','#712B13','#534AB7','#A32D2D'];
 
-let pedidos=[],cargas=[],transportistas=[],categorias=[],preparadoresList=[];
+let pedidos=[],cargas=[],transportistas=[],categorias=[],preparadoresList=[],comercialesList=[];
 let pdfImportLineas=null;  // líneas del último PDF importado en el modal de planificación
 let dragId=null,searchQ='',prepFilter='all',catFilter='',editId=null,modalType=null,cargaN=0;
 let calY=new Date().getFullYear(),calM=new Date().getMonth();
@@ -632,7 +633,7 @@ async function api(method,path,body){
 async function loadAll(){
   setSyncStatus('loading');
   try{
-    [transportistas,cargas,pedidos,categorias,preparadoresList]=await Promise.all([api('GET','/transportistas'),api('GET','/cargas'),api('GET','/pedidos'),api('GET','/categorias'),api('GET','/preparadores')]);
+    [transportistas,cargas,pedidos,categorias,preparadoresList,comercialesList]=await Promise.all([api('GET','/transportistas'),api('GET','/cargas'),api('GET','/pedidos'),api('GET','/categorias'),api('GET','/preparadores'),api('GET','/comerciales')]);
     cargaN=cargas.length;
     setSyncStatus('ok');
     renderAll();
@@ -1439,7 +1440,15 @@ function openModal(type,id){
     document.getElementById('modal-body').innerHTML=`
       ${!id?'<input type="file" id="pdf-import-file" accept=".pdf" style="display:none" onchange="procesarPDFPedido(this)">':''}
       <div class="field"><label>Nº Pedido BC</label><input type="text" id="f-num" value="${p?p.num:'PED-'+String(Date.now()).slice(-4)}"></div>
-      <div class="field"><label>Cliente</label><input type="text" id="f-cliente" value="${p?p.cliente:''}" placeholder="Nombre del cliente"></div>
+      <div class="frow">
+        <div class="field"><label>Cliente</label><input type="text" id="f-cliente" value="${p?p.cliente:''}" placeholder="Nombre del cliente"></div>
+        <div class="field"><label>Comercial <span style="font-size:10px;color:var(--text2);font-weight:400">(quién pasa el pedido)</span></label>
+          <select id="f-comercial">
+            <option value="">— Sin asignar —</option>
+            ${nombresComerciales().map(n=>`<option value="${n}" ${p&&p.comercial===n?'selected':''}>${n}</option>`).join('')}
+          </select>
+        </div>
+      </div>
       <div class="frow">
         <div class="field"><label>Destino</label><input type="text" id="f-destino" value="${p?p.destino:''}" placeholder="Ciudad, Provincia"></div>
         <div class="field"><label>Link Google Maps <span style="font-size:10px;color:var(--text2);font-weight:400">(opcional — para QR)</span></label><input type="url" id="f-maps-url" value="${p?p.maps_url||'':''}" placeholder="https://maps.app.goo.gl/..."></div>
@@ -1596,7 +1605,8 @@ async function savePedido(){
     paradas:parseInt(document.getElementById('f-paradas').value)||1,
     obs:document.getElementById('f-obs').value.trim(),
     categoria_id:document.getElementById('f-cat')?.value||null,
-    maps_url:document.getElementById('f-maps-url')?.value.trim()||null
+    maps_url:document.getElementById('f-maps-url')?.value.trim()||null,
+    comercial:document.getElementById('f-comercial')?.value||null
   };
   try{
     if(editId){
@@ -1974,6 +1984,59 @@ async function deleteCat(id){
 // ── PREPARACIÓN DE PEDIDOS ────────────────────────────────────────────────────
 let prepLineasCache={};
 const nombresPreparadores=()=>preparadoresList.map(p=>p.nombre);
+const nombresComerciales=()=>comercialesList.map(c=>c.nombre);
+
+// ── COMERCIALES (gestión) ─────────────────────────────────────────────────────
+function abrirGestionComerciales(){
+  const ov=document.createElement('div');
+  ov.id='gestion-com-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML=`
+    <div style="background:var(--surface);border-radius:12px;width:400px;max-width:100%">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)">
+        <div style="font-size:16px;font-weight:600">Comerciales</div>
+        <button onclick="document.getElementById('gestion-com-ov').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3)">×</button>
+      </div>
+      <div style="padding:18px 20px">
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <input type="text" id="nuevo-comercial" placeholder="Nombre del comercial" onkeydown="if(event.key==='Enter')addComercial()" style="flex:1;font-size:13px;padding:8px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text)">
+          <button class="btn-primary" onclick="addComercial()"><i class="ti ti-plus"></i></button>
+        </div>
+        <div id="lista-comerciales"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  renderListaComerciales();
+}
+function renderListaComerciales(){
+  const el=document.getElementById('lista-comerciales');
+  if(!el) return;
+  if(!comercialesList.length){ el.innerHTML='<div style="text-align:center;color:var(--text2);font-size:12px;padding:16px">No hay comerciales. Añade el primero.</div>'; return; }
+  el.innerHTML=comercialesList.map(c=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px">
+      <span style="font-size:13px;font-weight:500"><i class="ti ti-briefcase" style="color:var(--text3);margin-right:6px"></i>${c.nombre}</span>
+      <button onclick="delComercial('${c.id}')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:14px" title="Eliminar"><i class="ti ti-trash"></i></button>
+    </div>`).join('');
+}
+async function addComercial(){
+  const inp=document.getElementById('nuevo-comercial');
+  const nombre=(inp?.value||'').trim();
+  if(!nombre) return;
+  try{ await api('POST','/comerciales',{nombre}); comercialesList=await api('GET','/comerciales'); inp.value=''; renderListaComerciales(); }
+  catch(e){ log('Error añadiendo comercial','warn'); }
+}
+async function delComercial(id){
+  try{ await api('DELETE','/comerciales/'+id); comercialesList=await api('GET','/comerciales'); renderListaComerciales(); }
+  catch(e){ log('Error eliminando comercial','warn'); }
+}
+async function asignarComercial(pid,nombre){
+  try{
+    await api('PATCH','/pedidos/'+pid+'/comercial',{comercial:nombre||null});
+    const p=pedidos.find(x=>String(x.id)===String(pid));
+    if(p) p.comercial=nombre||null;
+    renderPrepList(); renderPreparadosList();
+  }catch(e){ log('Error asignando comercial','warn'); }
+}
 
 function fillPreparadorFilters(){
   const todos=nombresPreparadores();
@@ -2009,15 +2072,21 @@ function filtrarPedidos(estadoFiltro, prefijo){
 }
 
 function pedidoRowHTML(p, modo){
-  const prep=p.estado_prep==='preparado';
+  const estado=p.estado_prep;
+  const badgeEstado = estado==='preparado'
+    ? '<span class="badge b-green" style="font-size:10px"><i class="ti ti-check"></i> Preparado</span>'
+    : estado==='en_preparacion'
+    ? '<span class="badge" style="font-size:10px;background:#E3F0FF;color:#1257A3"><i class="ti ti-progress-check" style="font-size:10px"></i> En preparación</span>'
+    : '<span class="badge b-amber" style="font-size:10px">Pendiente</span>';
   return `<div style="border-bottom:1px solid var(--border);${p.tiene_cambios?'border-left:4px solid #E8920A;background:#FFF9F0':''}">
     <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer" onclick="abrirPedidoDetalle('${p.id}')">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-weight:600;font-family:monospace;color:var(--blue-d)">${p.num||'—'}</span>
           <span style="font-weight:500">${p.cliente}</span>
-          ${prep?'<span class="badge b-green" style="font-size:10px"><i class="ti ti-check"></i> Preparado</span>':'<span class="badge b-amber" style="font-size:10px">Pendiente</span>'}
+          ${badgeEstado}
           ${p.tiene_cambios?'<span class="badge" style="font-size:10px;background:#FAEEDA;color:#9A6700"><i class="ti ti-bell" style="font-size:10px"></i> Actualizado</span>':''}
+          ${p.comercial?`<span class="badge" style="font-size:10px;background:#EFEAFB;color:#5B3FA8"><i class="ti ti-briefcase" style="font-size:10px"></i> ${p.comercial}</span>`:''}
           ${p.preparador?`<span class="badge" style="font-size:10px;background:#E6F1FB;color:#0C447C"><i class="ti ti-user" style="font-size:10px"></i> ${p.preparador}</span>`:''}
         </div>
         <div style="font-size:11px;color:var(--text2);margin-top:2px">
@@ -2135,6 +2204,13 @@ async function abrirPedidoDetalle(pid){
             <select onchange="asignarPreparador('${pid}',this.value)" style="font-size:13px;padding:5px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin-top:2px;width:100%">
               <option value="">Sin asignar</option>
               ${todosPrep.map(n=>`<option value="${n}" ${p.preparador===n?'selected':''}>${n}</option>`).join('')}
+            </select>
+          </div>
+          <div style="flex:1;min-width:160px">
+            <div style="font-size:10px;color:var(--text2);text-transform:uppercase"><i class="ti ti-briefcase" style="font-size:11px"></i> Comercial (pasó el pedido)</div>
+            <select onchange="asignarComercial('${pid}',this.value)" style="font-size:13px;padding:5px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin-top:2px;width:100%">
+              <option value="">Sin asignar</option>
+              ${nombresComerciales().map(n=>`<option value="${n}" ${p.comercial===n?'selected':''}>${n}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -2302,17 +2378,14 @@ async function toggleLineaPrep(pid,lid,checked){
     const l=lineas.find(x=>String(x.id)===String(lid));
     if(l) l.preparada=checked;
     renderDetalleLineas(pid);
-    const todas=lineas.length>0 && lineas.every(x=>x.preparada);
+    const total=lineas.length;
+    const nPrep=lineas.filter(x=>x.preparada).length;
+    const target = (total>0 && nPrep===total) ? 'preparado' : (nPrep>0 ? 'en_preparacion' : 'sin_preparar');
     const p=pedidos.find(x=>String(x.id)===String(pid));
-    if(p){
-      if(todas && p.estado_prep!=='preparado'){
-        await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:'preparado'});
-        p.estado_prep='preparado';
-        log('Pedido '+(p.num||'')+' preparado','ok');
-      } else if(!todas && p.estado_prep==='preparado'){
-        await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:'sin_preparar'});
-        p.estado_prep='sin_preparar';
-      }
+    if(p && p.estado_prep!=='entregado' && p.estado_prep!==target){
+      await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:target});
+      p.estado_prep=target;
+      if(target==='preparado') log('Pedido '+(p.num||'')+' preparado','ok');
     }
   }catch(e){ log('Error: '+e.message,'warn'); }
 }
