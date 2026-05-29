@@ -44,6 +44,18 @@ function limpiarNota(t) {
   return alnum < 2 ? '' : s;
 }
 
+// Distingue una NOTA/instrucción de una CONTINUACIÓN de descripción.
+// Las notas reales suelen ir en MAYÚSCULAS y con varias palabras
+// ("MERCANCÍA MAXIMO A SERVIR POR AGENCIA", "DESCÀRREGA CV-700"); las
+// continuaciones de un nombre largo van en minúsculas ("piquetas y tornilleria",
+// "tornillos, 2 tuercas", "74x69x198cm").
+function pareceNota(s) {
+  const up = (s.match(/\p{Lu}/gu) || []).length;
+  const lo = (s.match(/\p{Ll}/gu) || []).length;
+  if (up + lo < 3) return false;                 // casi sin letras -> es continuación
+  return up >= lo * 2 && s.trim().split(/\s+/).length >= 2;
+}
+
 // Bandas de columna en unidades pdf2json (estables en estos documentos)
 function bandas(tieneDto) {
   return {
@@ -138,8 +150,12 @@ function extraerLineas(page) {
       if (tieneAsteriscos) {
         // lo que va entre asteriscos -> observación del artículo de ABAJO
         notaAbajo.push(texto);
+      } else if (lineas.length && !pareceNota(texto)) {
+        // continuación de una descripción larga -> se une a la descripción de arriba
+        const prev = lineas[lineas.length - 1];
+        prev.descripcion = (prev.descripcion + ' ' + texto).replace(/\s+/g, ' ').trim();
       } else if (lineas.length) {
-        // nota normal / continuación -> artículo de arriba
+        // nota / instrucción -> observación del artículo de arriba
         const prev = lineas[lineas.length - 1];
         prev.observaciones = (prev.observaciones ? prev.observaciones + ' ' : '') + texto;
       } else {
