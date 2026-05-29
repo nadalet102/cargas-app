@@ -25,8 +25,25 @@ function esNum(s) {
   return isNaN(n) ? null : n;
 }
 
-// Conceptos que no son mercancía a preparar (se detecta por la referencia)
-const RE_CONCEPTO = /^(GASOIL|PORT|GASTO|RECARG|FINAN|ANTICIP|ABONO|DTOPP)/i;
+// Conceptos que NO son mercancía a preparar (se detecta por la referencia):
+// gasoil, portes, gastos, recargos, financiación, anticipos, abonos, descuentos,
+// saco suelto (accesorio) y envases/palets de jardinería (ENVA…).
+const RE_CONCEPTO = /^(GASOIL|PORT|GASTO|RECARG|FINAN|ANTICIP|ABONO|DTOPP|SACOSUELTO|ENVA)/i;
+
+// Un código de artículo real es mayúsculas/dígitos sin espacios (SCCR0046, BBGJ0059,
+// SACOSUELTO, GASOIL…). Sirve para descartar el pie de página (Importe, Forma de pago,
+// textos legales…) que se cuela cuando la tabla no tiene fila "Totales".
+const RE_CODIGO = /^[A-Z][A-Z0-9]{3,}$/;
+
+// Limpia una nota: descarta separadores decorativos de asteriscos (****…****) y
+// recorta asteriscos/espacios de los bordes. Devuelve '' si no queda texto útil.
+function limpiarNota(t) {
+  const raw = String(t || '').replace(/\s+/g, ' ').trim();
+  if (/\*{3,}/.test(raw)) return '';                 // línea decorativa -> fuera
+  const s = raw.replace(/^[*\s]+|[*\s]+$/g, '').trim();
+  const alnum = (s.match(/[\p{L}\p{N}]/gu) || []).length;
+  return alnum < 2 ? '' : s;
+}
 
 // Bandas de columna en unidades pdf2json (estables en estos documentos)
 function bandas(tieneDto) {
@@ -82,7 +99,7 @@ function extraerLineas(page) {
       yHeader = f[0].y;
       tieneDto = /Dto\./.test(txt);
     }
-    if (yHeader !== null && f[0].y > yHeader && /Totales/.test(txt)) {
+    if (yHeader !== null && f[0].y > yHeader && /(Totales|Suma y sigue|Forma de pago|Base IVA)/i.test(txt)) {
       yTotales = f[0].y; break;
     }
   }
@@ -113,12 +130,11 @@ function extraerLineas(page) {
     // fila de relleno (solo ceros / vacía) -> ignorar
     if (!codigo && !desc) continue;
 
-    // fila SIN código = nota / continuación de descripción -> observación
-    if (!codigo) {
-      const texto = desc.replace(/\s+/g, ' ').trim();
-      if (!texto) continue;
+    // fila SIN código de artículo válido = nota / continuación / decoración
+    if (!RE_CODIGO.test(codigo)) {
+      const texto = limpiarNota([codigo, desc].filter(Boolean).join(' '));
+      if (!texto) continue;                    // separador de asteriscos o sin texto útil
       if (lineas.length) {
-        // continuación de la nota anterior o nota nueva de la última línea
         const prev = lineas[lineas.length - 1];
         prev.observaciones = (prev.observaciones ? prev.observaciones + ' ' : '') + texto;
       } else {
@@ -127,7 +143,7 @@ function extraerLineas(page) {
       continue;
     }
 
-    // línea de producto
+    // línea de producto (código válido)
     const linea = {
       referencia: codigo.replace(/\s+/g, ' ').trim(),
       descripcion: desc.replace(/\s+/g, ' ').trim(),
@@ -147,7 +163,18 @@ function extraerLineas(page) {
   return lineas;
 }
 
-module.exports = { extraerLineas, esNum, extraerCliente };
+/**
+ * Extrae las líneas de TODAS las páginas de un PDF parseado.
+ * @param {Array|object} pages  -> data.Pages (array) o una sola página
+ */
+function extraerTodasLineas(pages) {
+  if (!Array.isArray(pages)) return extraerLineas(pages);
+  const out = [];
+  for (const pg of pages) out.push(...extraerLineas(pg));
+  return out;
+}
+
+module.exports = { extraerLineas, extraerTodasLineas, esNum, extraerCliente };
 
 // Nombre del cliente por POSICIÓN: la fila justo debajo de "Cliente:" en la
 // columna izquierda. Más fiable que la regex sobre texto plano (que fallaba
