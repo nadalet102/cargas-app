@@ -442,6 +442,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
       <option value="">Todos los preparadores</option>
     </select>
     <input type="date" id="prep-filter-fecha" onchange="renderPrepList()" style="font-size:12px;padding:6px 11px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text)">
+    <select id="prep-sort" onchange="renderPrepList()" style="font-size:12px;padding:7px 11px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text)">
+      <option value="num">Orden: por nº pedido</option>
+      <option value="fecha">Orden: por fecha</option>
+    </select>
     <button onclick="limpiarFiltrosPrep('prep')" style="font-size:11px;padding:6px 10px;border:1px solid var(--border2);background:var(--surface);border-radius:var(--radius-sm);cursor:pointer;color:var(--text2)">Limpiar</button>
   </div>
   <div id="prep-list"></div>
@@ -461,6 +465,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
       <option value="">Todos los preparadores</option>
     </select>
     <input type="date" id="preparados-filter-fecha" onchange="renderPreparadosList()" style="font-size:12px;padding:6px 11px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text)">
+    <select id="preparados-sort" onchange="renderPreparadosList()" style="font-size:12px;padding:7px 11px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text)">
+      <option value="num">Orden: por nº pedido</option>
+      <option value="fecha">Orden: por fecha</option>
+    </select>
     <button onclick="limpiarFiltrosPrep('preparados')" style="font-size:11px;padding:6px 10px;border:1px solid var(--border2);background:var(--surface);border-radius:var(--radius-sm);cursor:pointer;color:var(--text2)">Limpiar</button>
   </div>
   <div id="preparados-list"></div>
@@ -2002,13 +2010,14 @@ function filtrarPedidos(estadoFiltro, prefijo){
 
 function pedidoRowHTML(p, modo){
   const prep=p.estado_prep==='preparado';
-  return `<div style="border-bottom:1px solid var(--border)">
+  return `<div style="border-bottom:1px solid var(--border);${p.tiene_cambios?'border-left:4px solid #E8920A;background:#FFF9F0':''}">
     <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer" onclick="abrirPedidoDetalle('${p.id}')">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-weight:600;font-family:monospace;color:var(--blue-d)">${p.num||'—'}</span>
           <span style="font-weight:500">${p.cliente}</span>
           ${prep?'<span class="badge b-green" style="font-size:10px"><i class="ti ti-check"></i> Preparado</span>':'<span class="badge b-amber" style="font-size:10px">Pendiente</span>'}
+          ${p.tiene_cambios?'<span class="badge" style="font-size:10px;background:#FAEEDA;color:#9A6700"><i class="ti ti-bell" style="font-size:10px"></i> Actualizado</span>':''}
           ${p.preparador?`<span class="badge" style="font-size:10px;background:#E6F1FB;color:#0C447C"><i class="ti ti-user" style="font-size:10px"></i> ${p.preparador}</span>`:''}
         </div>
         <div style="font-size:11px;color:var(--text2);margin-top:2px">
@@ -2028,7 +2037,9 @@ function renderPrepList(){
   const el=document.getElementById('prep-list');
   if(!el) return;
   let lista=filtrarPedidos('sin_preparar','prep');
-  lista.sort((a,b)=>(String(a.fecha||'9999')).localeCompare(String(b.fecha||'9999')));
+  const sort=document.getElementById('prep-sort')?.value||'num';
+  if(sort==='fecha') lista.sort((a,b)=>(String(a.fecha||'9999')).localeCompare(String(b.fecha||'9999')));
+  else lista.sort((a,b)=>String(a.num||'').localeCompare(String(b.num||''),undefined,{numeric:true}));
   if(!lista.length){
     el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text2)"><i class="ti ti-clipboard-off" style="font-size:28px;opacity:.3;display:block;margin-bottom:8px"></i>No hay pedidos pendientes. Importa un PDF para empezar.</div>';
     return;
@@ -2040,7 +2051,9 @@ function renderPreparadosList(){
   const el=document.getElementById('preparados-list');
   if(!el) return;
   let lista=filtrarPedidos('preparado','preparados');
-  lista.sort((a,b)=>(String(a.fecha||'9999')).localeCompare(String(b.fecha||'9999')));
+  const sortP=document.getElementById('preparados-sort')?.value||'num';
+  if(sortP==='fecha') lista.sort((a,b)=>(String(a.fecha||'9999')).localeCompare(String(b.fecha||'9999')));
+  else lista.sort((a,b)=>String(a.num||'').localeCompare(String(b.num||''),undefined,{numeric:true}));
   if(!lista.length){
     el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text2)"><i class="ti ti-package-off" style="font-size:28px;opacity:.3;display:block;margin-bottom:8px"></i>No hay pedidos preparados todavía.</div>';
     return;
@@ -2087,6 +2100,13 @@ async function abrirPedidoDetalle(pid){
   const todosPrep=nombresPreparadores();
   const med=(p.medidas||'').split(/x/i).map(s=>s.trim());
   const medL=med[0]||'', medA=med[1]||'', medH=med[2]||'';
+  const cambiosBanner = (p.tiene_cambios && p.cambios) ? `<div id="cambios-banner-${p.id}" style="background:#FAEEDA;border:1px solid #F0C77E;border-radius:8px;padding:10px 14px;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div style="font-size:12px;font-weight:700;color:#7A4E00;display:flex;align-items:center;gap:6px"><i class="ti ti-bell-ringing"></i> Actualizado desde PDF — revisa los cambios</div>
+      <button onclick="marcarCambiosVistos('${p.id}')" style="font-size:11px;padding:4px 10px;border:1px solid #C8860B;background:#fff;color:#7A4E00;border-radius:6px;cursor:pointer;white-space:nowrap">Marcar como visto</button>
+    </div>
+    <pre style="margin:8px 0 0;font-family:inherit;font-size:12px;color:#5b4300;white-space:pre-wrap;word-break:break-word">${(p.cambios||'').replace(/</g,'&lt;')}</pre>
+  </div>` : '';
 
   const ov=document.createElement('div');
   ov.id='pedido-detalle-ov';
@@ -2102,6 +2122,7 @@ async function abrirPedidoDetalle(pid){
         <button onclick="cerrarPedidoDetalle()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3);line-height:1">×</button>
       </div>
       <div style="padding:18px 22px">
+        ${cambiosBanner}
         <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
           <button onclick="triggerReimportPDF('${pid}')" style="font-size:12px;padding:6px 12px;border:1px solid var(--blue);background:var(--blue-l);color:var(--blue-d);border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:5px"><i class="ti ti-file-import"></i> Actualizar desde PDF</button>
           <input type="file" id="reimport-pdf-${pid}" accept=".pdf" style="display:none" onchange="reimportarPDF('${pid}',this)">
@@ -2418,6 +2439,70 @@ async function importarPrepPDF(input){
   }catch(e){ log('Error importando PDF: '+e.message,'warn'); }
 }
 
+// Compara el pedido actual con lo que trae el PDF y devuelve la lista de cambios
+function diffPedido(viejo, oldLines, datos){
+  const cambios=[];
+  const fmt=v=>(v===null||v===undefined||v==='')?'(vacío)':v;
+  const campos=[
+    ['cliente','Cliente',datos.cliente_nombre],
+    ['destino','Destino',datos.destino_texto],
+    ['direccion_descarga','Dirección descarga',datos.direccion_descarga],
+    ['fecha','Fecha',datos.fecha_pedido],
+    ['kg','Kg',datos.kg],
+    ['porte','Porte €',datos.porte]
+  ];
+  for(const [k,label,nv] of campos){
+    if(nv==null||nv==='') continue;                 // si el PDF no trae el dato, no cuenta
+    if(String(viejo[k]??'')!==String(nv)) cambios.push(label+': '+fmt(viejo[k])+' → '+fmt(nv));
+  }
+  const oldByRef={}, newByRef={};
+  (oldLines||[]).forEach(l=>oldByRef[l.referencia]=l);
+  (datos.lineas||[]).filter(l=>l.es_articulo!==false).forEach(l=>newByRef[l.referencia]=l);
+  for(const ref in newByRef){
+    const nl=newByRef[ref], ol=oldByRef[ref];
+    if(!ol){ cambios.push('+ Línea nueva: '+ref+' ('+nl.cantidad+(nl.embalaje?' · '+nl.embalaje:'')+')'); continue; }
+    if(Number(ol.cantidad)!==Number(nl.cantidad)) cambios.push(ref+' · cantidad: '+ol.cantidad+' → '+nl.cantidad);
+    const op=(String(ol.embalaje||'').match(/\d+/)||[''])[0]||'0';
+    const np=(String(nl.embalaje||'').match(/\d+/)||[''])[0]||'0';
+    if(op!==np) cambios.push(ref+' · palets: '+op+' → '+np);
+  }
+  for(const ref in oldByRef){ if(!newByRef[ref]) cambios.push('− Línea eliminada: '+ref+(oldByRef[ref].descripcion?' ('+oldByRef[ref].descripcion+')':'')); }
+  return cambios;
+}
+
+// Notificación modal con la lista de cambios
+function mostrarCambios(titulo, cambios){
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+  ov.innerHTML=`<div style="background:var(--surface);border-radius:12px;width:460px;max-width:100%;overflow:hidden">
+    <div style="background:#FAEEDA;border-bottom:1px solid #F0C77E;padding:14px 18px;display:flex;align-items:center;gap:10px">
+      <i class="ti ti-bell-ringing" style="color:#9A6700;font-size:20px"></i>
+      <div><div style="font-size:14px;font-weight:700;color:#7A4E00">Pedido actualizado desde PDF</div>
+      <div style="font-size:12px;color:#9A6700">${titulo} — ${cambios.length} cambio(s)</div></div>
+    </div>
+    <div style="padding:14px 18px;max-height:50vh;overflow-y:auto">
+      ${cambios.map(c=>`<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">${c.replace(/</g,'&lt;')}</div>`).join('')}
+    </div>
+    <div style="padding:12px 18px;text-align:right;border-top:1px solid var(--border)">
+      <button class="btn-primary" data-ok>Entendido</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('[data-ok]').onclick=()=>ov.remove();
+}
+
+// Marcar los cambios como vistos (quita el naranja, conserva el historial)
+async function marcarCambiosVistos(pid){
+  const p=pedidos.find(x=>String(x.id)===String(pid));
+  try{
+    await api('PATCH','/pedidos/'+pid+'/cambios',{cambios:p?p.cambios:null, tiene_cambios:false});
+    if(p) p.tiene_cambios=false;
+    const banner=document.getElementById('cambios-banner-'+pid); if(banner) banner.remove();
+    renderPrepList(); renderPreparadosList();
+  }catch(e){ log('Error','warn'); }
+}
+
 function triggerReimportPDF(pid){
   // Crear el input al vuelo y colgarlo del body: evita fallos de id / overlay en móvil
   const inp=document.createElement('input');
@@ -2443,15 +2528,24 @@ async function reimportarPDF(pid,input){
     const datos=await api('POST','/importar-pdf',{base64});
     const p=pedidos.find(x=>String(x.id)===String(pid));
     if(!p) return;
-    // Cabecera completa (conserva lo que ya hay si no viene en el PDF)
+    const oldLines=(prepLineasCache[pid]||[]).slice();   // memoria de cómo estaba
+    const cambios=diffPedido(p, oldLines, datos);
+    // Cabecera + líneas
     await api('PUT','/pedidos/'+pid, cabeceraDesdePDF(datos, p));
-    // Líneas: reemplaza conservando preparada/observaciones por referencia
-    const n=await guardarLineasPedido(pid, datos.lineas, prepLineasCache[pid]||[]);
+    await guardarLineasPedido(pid, datos.lineas, oldLines);
+    // Registrar cambios (memoria) y marcar el pedido en naranja
+    if(cambios.length){
+      const stamp=new Date().toLocaleString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      const bloque='【 '+stamp+' 】\n'+cambios.map(c=>'• '+c).join('\n');
+      const nuevoTexto=bloque+(p.cambios?('\n\n'+p.cambios):'');
+      await api('PATCH','/pedidos/'+pid+'/cambios',{cambios:nuevoTexto, tiene_cambios:true});
+    }
     await loadAll();
-    const fresh=await api('GET','/pedidos/'+pid+'/lineas');
-    prepLineasCache[pid]=fresh;
-    renderDetalleLineas(pid);
-    log('Pedido actualizado: '+n+' artículos','ok');
+    // Reabrir el detalle para reflejar líneas, totales y el aviso de cambios
+    document.getElementById('pedido-detalle-ov')?.remove();
+    await abrirPedidoDetalle(pid);
+    if(cambios.length){ mostrarCambios((p.num||p.cliente||'Pedido'), cambios); log('Pedido actualizado: '+cambios.length+' cambio(s)','ok'); }
+    else log('Pedido actualizado: sin cambios','ok');
   }catch(e){ log('Error actualizando PDF: '+e.message,'warn'); }
 }
 
