@@ -2,7 +2,7 @@ const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
-const { extraerLineas } = require('./parseLineas');
+const { extraerLineas, extraerCliente } = require('./parseLineas');
 
 const app = express();
 app.use(cors());
@@ -55,6 +55,8 @@ async function initDB() {
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS obs_prep TEXT`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS es_agencia BOOLEAN DEFAULT false`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS medidas TEXT`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS cambios TEXT`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS tiene_cambios BOOLEAN DEFAULT false`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cif TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS direccion TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cp TEXT`,
@@ -380,9 +382,9 @@ app.post('/api/importar-pdf', async (req, res) => {
       fecha_pedido = y+'-'+fechaMatch[2].padStart(2,'0')+'-'+fechaMatch[1].padStart(2,'0');
     }
 
-    // Cliente nombre (limpio — solo empresa hasta dirección)
+    // Cliente: por posición (fila bajo "Cliente:"); regex de respaldo
     const clienteMatch = text.match(/Cliente:\s*([\w\s\.\,\-]+?)(?:\s{2,}|CIF:|Avda|Calle|Plaza|Pza|\d{5})/i);
-    const cliente_nombre = clienteMatch ? clienteMatch[1].trim().replace(/\s+/g,' ') : null;
+    const cliente_nombre = extraerCliente(page0) || (clienteMatch ? clienteMatch[1].trim().replace(/\s+/g,' ') : null);
 
     // CIF cliente
     const cifMatch = text.match(/CIF:\s*([A-Z]\d{7}[A-Z0-9])/i);
@@ -479,6 +481,14 @@ app.delete('/api/preparadores/:id', async (req, res) => {
 app.patch('/api/pedidos/:id/preparador', async (req, res) => {
   try {
     const r = await pool.query('UPDATE pedidos SET preparador=$1 WHERE id=$2 RETURNING *',[req.body.preparador||null,req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// PATCH registro de cambios del pedido (memoria de actualizaciones por PDF)
+app.patch('/api/pedidos/:id/cambios', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE pedidos SET cambios=$1, tiene_cambios=$2 WHERE id=$3 RETURNING *',[req.body.cambios||null, !!req.body.tiene_cambios, req.params.id]);
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
