@@ -147,4 +147,24 @@ function extraerLineas(page) {
   return lineas;
 }
 
-module.exports = { extraerLineas, esNum };
+module.exports = { extraerLineas, esNum, extraerCliente };
+
+// Nombre del cliente por POSICIÓN: la fila justo debajo de "Cliente:" en la
+// columna izquierda. Más fiable que la regex sobre texto plano (que fallaba
+// con acentos/ç y se tragaba la dirección en clientes-persona).
+function extraerCliente(page) {
+  const W = page.Texts
+    .map(t => ({ x: t.x, y: t.y, s: dec(t.R.map(r => r.T).join('')).trim() }))
+    .filter(w => w.s)
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+  // la etiqueta buena lleva ":" ("Cliente:"); la cabecera de la tabla es "Cliente" sin ":"
+  const lab = W.find(w => /^cliente\s*:$/i.test(w.s));
+  if (!lab) return null;
+  // primer texto en la misma columna (x cercana) por debajo de la etiqueta
+  const col = W
+    .filter(w => Math.abs(w.x - lab.x) < 3 && w.y > lab.y + 0.2)
+    .sort((a, b) => a.y - b.y);
+  if (!col.length) return null;
+  const nombre = col[0].s.replace(/\s+/g, ' ').trim();
+  return nombre || null;
+}
