@@ -1864,15 +1864,21 @@ function renderHist(){
   </div>`;
 }
 
-// Revertir una entrega: la carga vuelve a "En ruta" y sus pedidos a "Preparado"
+// Revertir una entrega: la carga vuelve a "Planificada" y sus pedidos a "Preparado"
 async function revertirEntrega(cid){
   const c=cargas.find(x=>String(x.id)===String(cid));
   if(!c) return;
-  if(!confirm('¿Marcar la carga "'+c.name+'" como NO entregada?\nVolverá a "En ruta" y sus pedidos a "Preparado".')) return;
+  if(!confirm('¿Marcar la carga "'+c.name+'" como NO entregada?\nVolverá a "Planificada" y sus pedidos a "Preparado".')) return;
   try{
-    await api('PUT','/cargas/'+cid,{...c, status:'ruta'});
+    await api('PUT','/cargas/'+cid,{...c, status:'planificada'});
+    // Devolver explícitamente los pedidos de la carga a 'preparado'
+    // (funciona aunque el server no tenga la lógica inversa)
+    const peds=pedidos.filter(p=>String(p.carga_id)===String(cid));
+    for(const p of peds){
+      await api('PATCH','/pedidos/'+p.id+'/prep',{estado_prep:'preparado'});
+    }
     await loadAll();
-    log('Entrega revertida: "'+c.name+'" vuelve a En ruta','ok');
+    log('Entrega revertida: "'+c.name+'" vuelve a Planificada','ok');
   }catch(e){ log('Error al revertir: '+e.message,'warn'); }
 }
 
