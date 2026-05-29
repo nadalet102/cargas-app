@@ -64,8 +64,10 @@ async function initDB() {
       descripcion TEXT,
       cantidad NUMERIC DEFAULT 0,
       preparada BOOLEAN DEFAULT false,
+      observaciones TEXT,
       orden INTEGER DEFAULT 0
     )`,
+    `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS observaciones TEXT`,
     `CREATE TABLE IF NOT EXISTS preparadores (
       id SERIAL PRIMARY KEY,
       nombre TEXT NOT NULL,
@@ -450,8 +452,8 @@ app.post('/api/pedidos/:id/lineas', async (req, res) => {
       for(let i=0;i<lineas.length;i++){
         const l = lineas[i];
         await pool.query(
-          'INSERT INTO pedido_lineas(pedido_id,referencia,descripcion,cantidad,preparada,orden) VALUES($1,$2,$3,$4,$5,$6)',
-          [req.params.id, l.referencia||null, l.descripcion||null, l.cantidad||0, l.preparada||false, i]
+          'INSERT INTO pedido_lineas(pedido_id,referencia,descripcion,cantidad,preparada,observaciones,orden) VALUES($1,$2,$3,$4,$5,$6,$7)',
+          [req.params.id, l.referencia||null, l.descripcion||null, l.cantidad||0, l.preparada||false, l.observaciones||null, i]
         );
       }
     }
@@ -492,6 +494,14 @@ app.patch('/api/pedidos/:id/preparador', async (req, res) => {
 app.patch('/api/lineas/:id/prep', async (req, res) => {
   try {
     const r = await pool.query('UPDATE pedido_lineas SET preparada=$1 WHERE id=$2 RETURNING *',[req.body.preparada,req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// PATCH observaciones de una línea
+app.patch('/api/lineas/:id/obs', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE pedido_lineas SET observaciones=$1 WHERE id=$2 RETURNING *',[req.body.observaciones||null,req.params.id]);
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
