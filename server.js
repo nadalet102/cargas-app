@@ -2,6 +2,7 @@ const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
+const { extraerLineas } = require('./parseLineas');
 
 const app = express();
 app.use(cors());
@@ -68,6 +69,8 @@ async function initDB() {
       orden INTEGER DEFAULT 0
     )`,
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS observaciones TEXT`,
+    `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS embalaje TEXT`,
+    `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS kgs NUMERIC`,
     `CREATE TABLE IF NOT EXISTS preparadores (
       id SERIAL PRIMARY KEY,
       nombre TEXT NOT NULL,
@@ -343,7 +346,7 @@ app.post('/api/importar-pdf', async (req, res) => {
   const buf = Buffer.from(base64, 'base64');
 
   try {
-    const text = await new Promise((resolve, reject) => {
+    const { text, page0 } = await new Promise((resolve, reject) => {
       const parser = new PDFParser(null, 1);
       parser.on('pdfParser_dataError', e => reject(new Error(e.parserError)));
       parser.on('pdfParser_dataReady', data => {
@@ -353,7 +356,7 @@ app.post('/api/importar-pdf', async (req, res) => {
             catch(e) { return t.R.map(r => r.T).join(''); }
           }).join(' ')
         ).join('\\n');
-        resolve(t);
+        resolve({ text: t, page0: data.Pages[0] });
       });
       parser.parseBuffer(buf);
     });
@@ -406,26 +409,9 @@ app.post('/api/importar-pdf', async (req, res) => {
     const obraMatch = text.match(/externo\s+([A-Z][^\n]{2,40}?)(?:\s{2,}|Direcci)/i);
     const obs = obraMatch ? obraMatch[1].trim() : null;
 
-    // Líneas del pedido: REF DESCRIPCION CANTIDAD ...resto
-    // Formato: GVIBRF024 G Vibrado Forna 200x100x100cm 71,00 208740 142,00 0 363,70 41,00 15.235,39
-    // Ref = código alfanumérico al inicio, cantidad = primer número con decimales tras la descripción
-    const lineas = [];
-    const lineasText = text.replace(/\\n/g,'\n');
-    const lineRegex = /([A-Z]{2,}[A-Z0-9]+)\s+(.+?)\s+(\d+,\d{2})\s+\d/g;
-    let lm;
-    const refExcluidas = ['PORT','TOTAL','IVA','BASE','DTO','DESC','FIN','SUBT','RECARGO','GASTO'];
-    const descExcluidas = /(portes?|transporte|importe|descuento|recargo|gastos?|financ|iva|base imponible|total)/i;
-    while((lm = lineRegex.exec(lineasText)) !== null){
-      const ref = lm[1].trim();
-      // Saltar referencias que no son artículos
-      if(refExcluidas.some(s=>ref.startsWith(s))) continue;
-      const desc = lm[2].trim().replace(/\s+/g,' ');
-      // Saltar descripciones que sean conceptos de importe, no artículos
-      if(descExcluidas.test(desc)) continue;
-      const cant = parseFloat(lm[3].replace(',','.'));
-      if(desc.length < 2 || isNaN(cant) || cant<=0) continue;
-      lineas.push({ referencia: ref, descripcion: desc, cantidad: cant });
-    }
+    // Líneas del pedido: parser por POSICIÓN DE COLUMNA (coordenadas pdf2json)
+    // Devuelve { referencia, descripcion, cantidad, observaciones, es_articulo, embalaje, kgs }
+    const lineas = extraerLineas(page0);
 
     res.json({ num, cliente_nombre, cif_cliente, destino_texto, direccion_descarga, fecha_pedido, kg, porte, obs, lineas });
   } catch(e) {
@@ -452,8 +438,8 @@ app.post('/api/pedidos/:id/lineas', async (req, res) => {
       for(let i=0;i<lineas.length;i++){
         const l = lineas[i];
         await pool.query(
-          'INSERT INTO pedido_lineas(pedido_id,referencia,descripcion,cantidad,preparada,observaciones,orden) VALUES($1,$2,$3,$4,$5,$6,$7)',
-          [req.params.id, l.referencia||null, l.descripcion||null, l.cantidad||0, l.preparada||false, l.observaciones||null, i]
+          'INSERT INTO pedido_lineas(pedido_id,referencia,descripcion,cantidad,preparada,observaciones,orden,embalaje,kgs) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+          [req.params.id, l.referencia||null, l.descripcion||null, l.cantidad||0, l.preparada||false, l.observaciones||null, i, l.embalaje||null, l.kgs||null]
         );
       }
     }
