@@ -2245,8 +2245,14 @@ async function importarPrepPDF(input){
 }
 
 function triggerReimportPDF(pid){
-  const inp=document.getElementById('reimport-pdf-'+pid);
-  if(inp){inp.value='';inp.click();}
+  // Crear el input al vuelo y colgarlo del body: evita fallos de id / overlay en móvil
+  const inp=document.createElement('input');
+  inp.type='file';
+  inp.accept='.pdf,application/pdf';
+  inp.style.display='none';
+  inp.onchange=()=>{ reimportarPDF(pid, inp); setTimeout(()=>inp.remove(),0); };
+  document.body.appendChild(inp);
+  inp.click();
 }
 
 async function reimportarPDF(pid,input){
