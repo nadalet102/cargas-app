@@ -168,6 +168,10 @@ app.put('/api/cargas/:id', async (req, res) => {
       if(status==='entregada'){
         await pool.query("UPDATE pedidos SET estado_prep='entregado' WHERE carga_id=$1",[req.params.id]);
       }
+      // Si se revierte una entrega, devolver sus pedidos a 'preparado'
+      else if(estadoAnterior==='entregada'){
+        await pool.query("UPDATE pedidos SET estado_prep='preparado' WHERE carga_id=$1",[req.params.id]);
+      }
     }
 
     res.json(r.rows[0]);
