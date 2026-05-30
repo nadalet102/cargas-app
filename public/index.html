@@ -295,6 +295,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
   <div class="tab" id="tab-cats" onclick="switchTab('cats')"><i class="ti ti-tag"></i> Categorías</div>
   <div class="tab" id="tab-prep" onclick="switchTab('prep')"><i class="ti ti-clipboard-check"></i> Preparación</div>
   <div class="tab" id="tab-preparados" onclick="switchTab('preparados')"><i class="ti ti-package"></i> Preparados</div>
+  <div class="tab" id="tab-compras" onclick="switchTab('compras')"><i class="ti ti-shopping-cart"></i> Compras <span id="compras-badge" style="background:#FBE3E0;color:#9A2A1B;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;margin-left:3px;display:none">0</span></div>
   <div class="tab" id="tab-bc" onclick="switchTab('bc')"><i class="ti ti-building-store"></i> Bandeja BC</div>
   <div class="tab" id="tab-hist" onclick="switchTab('hist')"><i class="ti ti-history"></i> Historial <span id="hist-badge" style="background:#EAF3DE;color:#27500A;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;margin-left:3px">0</span></div>
   <div class="tab" id="tab-dash" onclick="switchTab('dash')"><i class="ti ti-chart-bar"></i> Resumen</div>
@@ -480,6 +481,20 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 </div>
 </div>
 
+<!-- COMPRAS -->
+<div class="view" id="view-compras">
+<div class="container">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="font-size:16px;font-weight:500">Compras — faltas</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px">Material que el preparador ha marcado como faltante, con el pedido y la cantidad que falta</div>
+    </div>
+    <button onclick="renderCompras()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px"><i class="ti ti-refresh"></i> Actualizar</button>
+  </div>
+  <div id="compras-list"></div>
+</div>
+</div>
+
 <!-- BANDEJA BC -->
 <div class="view" id="view-bc">
 <div class="container">
@@ -654,7 +669,7 @@ function updateCatDropdowns(){
 function renderAll(){renderBCList();renderCargas();updateStats();updateCatDropdowns();}
 
 function switchTab(t){
-  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados'].forEach(id=>{
+  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','compras'].forEach(id=>{
     document.getElementById('tab-'+id).classList.toggle('active',id===t);
     document.getElementById('view-'+id).classList.toggle('active',id===t);
   });
@@ -666,6 +681,7 @@ function switchTab(t){
   if(t==='hist')renderHist();
   if(t==='prep'){fillPreparadorFilters();renderPrepList();}
   if(t==='preparados'){fillPreparadorFilters();renderPreparadosList();}
+  if(t==='compras')renderCompras();
 }
 
 function onSearch(v){searchQ=v.toLowerCase();renderBCList();}
@@ -2481,7 +2497,7 @@ function renderDetalleLineas(pid){
         ${lineas.map(l=>`<tr onclick="toggleLineaPrep('${pid}','${l.id}',${l.preparada?'false':'true'})" style="border-bottom:1px solid var(--border);cursor:pointer;${l.preparada?'opacity:.5':''}">
           <td style="text-align:center;padding:8px"><input type="checkbox" ${l.preparada?'checked':''} onclick="event.stopPropagation()" onchange="toggleLineaPrep('${pid}','${l.id}',this.checked)" style="width:22px;height:22px;cursor:pointer"></td>
           <td style="padding:8px;font-family:monospace;font-weight:600;color:var(--blue-d);${l.preparada?'text-decoration:line-through':''}">${l.referencia||'—'}</td>
-          <td style="padding:8px;${l.preparada?'text-decoration:line-through':''}">${l.descripcion||'—'}</td>
+          <td style="padding:8px;${l.preparada?'text-decoration:line-through':''}">${l.descripcion||'—'}${l.falta>0?` <span style="background:#FBE3E0;color:#9A2A1B;border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700;white-space:nowrap">⚠ Faltan ${fmtN(l.falta)}</span>`:''} <button onclick="event.stopPropagation();marcarFalta('${pid}','${l.id}')" style="background:none;border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:1px 7px;font-size:10px;cursor:pointer;white-space:nowrap">Falta</button></td>
           <td style="padding:8px;text-align:right;font-weight:600;white-space:nowrap">${fmtN(l.cantidad)}<div style="margin-top:3px;display:flex;align-items:center;justify-content:flex-end;gap:3px"><input type="number" min="0" value="${(String(l.embalaje||'').match(/\d+/)||[''])[0]}" onchange="guardarPalets('${pid}','${l.id}',this.value)" onclick="event.stopPropagation()" style="width:44px;font-size:11px;padding:2px 4px;text-align:right;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><span style="font-size:9px;color:var(--text2);white-space:nowrap">${etiquetaEmb(l)}</span></div>${l.kgs?`<div style="font-size:10px;color:var(--text3);font-weight:400">${fmtN(l.kgs)} kg</div>`:''}</td>
           <td style="padding:4px 8px">
             <input type="text" value="${(l.observaciones||'').replace(/"/g,'&quot;')}" placeholder="—" onclick="event.stopPropagation()" onchange="guardarObsLinea('${pid}','${l.id}',this.value)" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
@@ -2630,12 +2646,13 @@ function renderModoPrep(){
           </div>
         </div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
         <div style="display:flex;align-items:center;gap:5px">
           <input type="number" min="0" value="${palVal}" onclick="event.stopPropagation()" onchange="prepPalets('${l.id}',this.value)" style="width:48px;font-size:14px;padding:5px;text-align:center;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text)">
           <span style="font-size:11px;color:var(--text2);white-space:nowrap">${unidad}</span>
         </div>
-        <input type="text" value="${(l.observaciones||'').replace(/"/g,'&quot;')}" placeholder="✎ Nota / cambio…" onclick="event.stopPropagation()" onchange="prepObs('${l.id}',this.value)" style="flex:1;min-width:0;font-size:13px;padding:7px 9px;border:1px solid ${l.observaciones?'#F0C77E':'var(--border2)'};background:${l.observaciones?'#FFFBF2':'var(--surface)'};border-radius:6px;color:var(--text)">
+        <input type="text" value="${(l.observaciones||'').replace(/"/g,'&quot;')}" placeholder="✎ Nota / cambio…" onclick="event.stopPropagation()" onchange="prepObs('${l.id}',this.value)" style="flex:1;min-width:120px;font-size:13px;padding:7px 9px;border:1px solid ${l.observaciones?'#F0C77E':'var(--border2)'};background:${l.observaciones?'#FFFBF2':'var(--surface)'};border-radius:6px;color:var(--text)">
+        <button onclick="event.stopPropagation();marcarFalta('${m.pid}','${l.id}')" style="background:${l.falta>0?'#FBE3E0':'var(--surface)'};border:1px solid ${l.falta>0?'#E8A599':'var(--border2)'};color:#9A2A1B;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"><i class="ti ti-alert-triangle"></i> ${l.falta>0?('Faltan '+fmtN(l.falta)):'Falta'}</button>
       </div>
     </div>`;
   }).join('');
@@ -2671,6 +2688,65 @@ function cerrarModoPrep(){
   const pid=modoPrep?modoPrep.pid:null; modoPrep=null;
   if(pid) renderDetalleLineas(pid);
   renderPrepList(); renderPreparadosList();
+}
+
+// ── FALTAS / COMPRAS ──────────────────────────────────────────────────────────
+async function marcarFalta(pid,lid){
+  const lineas=prepLineasCache[pid]||[];
+  const l=lineas.find(x=>String(x.id)===String(lid));
+  const actual=(l&&l.falta)?l.falta:'';
+  const val=prompt('¿Cuántas unidades faltan de este artículo?\n(0 o vacío = no falta nada)', actual);
+  if(val===null) return;
+  const n=Math.max(0, parseInt(val)||0);
+  try{
+    await api('PATCH','/lineas/'+lid+'/falta',{falta:n});
+    if(l) l.falta=n;
+    renderDetalleLineas(pid);
+    if(modoPrep && String(modoPrep.pid)===String(pid)) renderModoPrep();
+    actualizarFaltasBadge();
+    log(n>0?('Marcado: faltan '+n+' uds'):'Falta quitada','ok');
+  }catch(e){ log('Error marcando falta','warn'); }
+}
+async function actualizarFaltasBadge(){
+  try{ const f=await api('GET','/faltas'); actualizarBadgeCompras(f.length); }catch(e){}
+}
+async function resolverFalta(lid){
+  try{
+    await api('PATCH','/lineas/'+lid+'/falta',{falta:0});
+    for(const pid in prepLineasCache){ const l=prepLineasCache[pid].find(x=>String(x.id)===String(lid)); if(l) l.falta=0; }
+    renderCompras();
+  }catch(e){ log('Error','warn'); }
+}
+function actualizarBadgeCompras(n){
+  const b=document.getElementById('compras-badge'); if(!b) return;
+  b.textContent=n; b.style.display=n>0?'inline-block':'none';
+}
+async function renderCompras(){
+  const el=document.getElementById('compras-list'); if(!el) return;
+  el.innerHTML='<div style="padding:14px;color:var(--text2);font-size:12px">Cargando…</div>';
+  let faltas;
+  try{ faltas=await api('GET','/faltas'); }
+  catch(e){ el.innerHTML='<div class="empty-state"><i class="ti ti-alert-circle"></i>No se pudieron cargar las faltas</div>'; return; }
+  actualizarBadgeCompras(faltas.length);
+  if(!faltas.length){ el.innerHTML='<div class="empty-state"><i class="ti ti-circle-check"></i>No hay faltas pendientes</div>'; return; }
+  const porPedido={};
+  faltas.forEach(f=>{ (porPedido[f.pedido_id]=porPedido[f.pedido_id]||{num:f.pedido_num,cliente:f.cliente,fecha:f.fecha,comercial:f.comercial,items:[]}).items.push(f); });
+  el.innerHTML=`<div style="background:#FFF7F6;border:1px solid #F0C2BB;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#9A2A1B;font-weight:600"><i class="ti ti-alert-triangle"></i> ${faltas.length} falta${faltas.length>1?'s':''} pendiente${faltas.length>1?'s':''} de compra</div>`+
+  Object.values(porPedido).map(p=>`
+    <div class="list-card" style="margin-bottom:12px">
+      <div class="lc-hdr"><span><b style="font-family:monospace;color:var(--blue-d)">${p.num||'—'}</b> · ${p.cliente||''}</span><span style="font-size:11px;color:var(--text2)">${p.fecha?fmtDate(p.fecha):''}${p.comercial?' · '+p.comercial:''}</span></div>
+      ${p.items.map(f=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-family:monospace;font-size:12px;color:var(--blue-d);font-weight:600">${f.referencia||''}</div>
+          <div style="font-size:13px">${(f.descripcion||'').replace(/</g,'&lt;')}</div>
+        </div>
+        <div style="text-align:center;background:#FBE3E0;color:#9A2A1B;border-radius:8px;padding:5px 12px;flex-shrink:0">
+          <div style="font-size:18px;font-weight:800;line-height:1">${fmtN(f.falta)}</div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:.04em">faltan</div>
+        </div>
+        <button onclick="resolverFalta('${f.linea_id}')" style="background:none;border:1px solid #BFE3D4;color:#0F6E56;border-radius:6px;padding:7px 11px;font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0" title="Marcar como comprado / resuelto"><i class="ti ti-check"></i> Resuelto</button>
+      </div>`).join('')}
+    </div>`).join('');
 }
 
 function triggerPrepPDF(){
@@ -3074,7 +3150,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 10;
+const NEEDS_API = 11;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -3108,6 +3184,7 @@ setInterval(loadAll,30000);
 loadAll();
 comprobarServidor();
 comprobarRecordatorioCopia();
+actualizarFaltasBadge();
 
 // PWA: registrar service worker
 if('serviceWorker' in navigator){
