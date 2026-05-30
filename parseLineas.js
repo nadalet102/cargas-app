@@ -26,9 +26,18 @@ function esNum(s) {
 }
 
 // Conceptos que NO son mercancía a preparar (se detecta por la referencia):
-// gasoil, portes, gastos, recargos, financiación, anticipos, abonos, descuentos,
-// saco suelto (accesorio) y envases/palets de jardinería (ENVA…).
-const RE_CONCEPTO = /^(GASOIL|PORT|GASTO|RECARG|FINAN|ANTICIP|ABONO|DTOPP|SACOSUELTO|ENVA)/i;
+// gasoil, portes, gastos, recargos, financiación, anticipos, abonos, descuentos
+// y saco suelto (accesorio).
+const RE_CONCEPTO = /^(GASOIL|PORT|GASTO|RECARG|FINAN|ANTICIP|ABONO|DTOPP|SACOSUELTO)/i;
+
+// Decide si una línea es accesorio (no se prepara). Además de los conceptos de
+// arriba, se ocultan los ENVASES (la funda del big bag), pero NO los palets de
+// jardinería ni otros ENVA que sí se cargan.
+function esAccesorio(codigo, desc) {
+  if (RE_CONCEPTO.test(codigo)) return true;
+  if (/^envase/i.test(String(desc || '').trim())) return true;  // "Envase bb 85x85x65…"
+  return false;
+}
 
 // Un código de artículo real es mayúsculas/dígitos sin espacios (SCCR0046, BBGJ0059,
 // SACOSUELTO, GASOIL…). Sirve para descartar el pie de página (Importe, Forma de pago,
@@ -170,7 +179,7 @@ function extraerLineas(page) {
       descripcion: desc.replace(/\s+/g, ' ').trim(),
       cantidad: cantidad != null ? cantidad : 0,
       observaciones: null,
-      es_articulo: !RE_CONCEPTO.test(codigo),
+      es_articulo: !esAccesorio(codigo, desc),
       // secundarios (útiles para quien carga; la UI puede ignorarlos)
       embalaje,   // p.ej. "12 PALET"
       kgs,        // peso de la línea
