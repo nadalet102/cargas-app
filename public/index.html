@@ -2427,6 +2427,7 @@ async function abrirPedidoDetalle(pid){
   const ov=document.createElement('div');
   ov.id='pedido-detalle-ov';
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 16px';
+  ov.addEventListener('click', e=>{ if(e.target===ov) cerrarPedidoDetalle(); });
   ov.innerHTML=`
     <div style="background:var(--surface);border-radius:12px;width:680px;max-width:100%;margin:auto">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:18px 22px;border-bottom:1px solid var(--border)">
@@ -2914,34 +2915,40 @@ function comprarFalta(lid){
   const f=comprasFaltas.find(x=>String(x.linea_id)===String(lid)); if(!f) return;
   abrirFormCompra(null,{ pedidos_rel:f.pedido_num||'', lineas:[{referencia:f.referencia||'',descripcion:f.descripcion||'',cantidad:f.falta||0,unidad:'',falta_linea_id:f.linea_id}] });
 }
+let _compraFormId=null, _compraAutoTimer=null, _compraSaving=false;
 function abrirFormCompra(id, prefill){
   let c = id ? comprasData.find(x=>String(x.id)===String(id)) : null;
   c = c || prefill || {};
+  _compraFormId = id || null;
   _compraLineasForm = (c.lineas&&c.lineas.length)?c.lineas.map(l=>({...l})):[{referencia:'',descripcion:'',cantidad:'',unidad:'',falta_linea_id:null}];
   const ov=document.createElement('div'); ov.id='compra-form-ov';
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10050;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click', e=>{ if(e.target===ov) cerrarFormCompra(); });
   ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:620px;max-height:92vh;border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden">
-    <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">${id?'Editar pedido de compra':'Nuevo pedido de compra'}</b><button onclick="document.getElementById('compra-form-ov').remove()" style="background:none;border:none;font-size:24px;color:var(--text2);cursor:pointer">×</button></div>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">${id?'Editar pedido de compra':'Nuevo pedido de compra'}</b><button onclick="cerrarFormCompra()" style="background:none;border:none;font-size:24px;color:var(--text2);cursor:pointer">×</button></div>
     <div style="flex:1;overflow-y:auto;padding:16px"><input type="hidden" id="cf-id" value="${id||''}">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <label style="font-size:12px;color:var(--text2)">Proveedor<input id="cf-prov" value="${_h(c.proveedor)}" style="${_inp}"></label>
-        <label style="font-size:12px;color:var(--text2)">Fecha prevista de llegada<input id="cf-fecha" type="date" value="${_fechaISO(c.fecha_prevista)}" style="${_inp}"></label>
-        <label style="font-size:12px;color:var(--text2)">Tolva<input id="cf-tolva" value="${_h(c.tolva)}" style="${_inp}"></label>
-        <label style="font-size:12px;color:var(--text2)">Transportista (compra)<input id="cf-trans" value="${_h(c.transportista)}" style="${_inp}"></label>
-        <label style="font-size:12px;color:var(--text2)">Teléfono transportista<input id="cf-tel" value="${_h(c.transportista_tel)}" style="${_inp}"></label>
+        <label style="font-size:12px;color:var(--text2)">Proveedor<input id="cf-prov" value="${_h(c.proveedor)}" onchange="autoCompra()" style="${_inp}"></label>
+        <label style="font-size:12px;color:var(--text2)">Fecha prevista de llegada<input id="cf-fecha" type="date" value="${_fechaISO(c.fecha_prevista)}" onchange="autoCompra()" style="${_inp}"></label>
+        <label style="font-size:12px;color:var(--text2)">Tolva<input id="cf-tolva" value="${_h(c.tolva)}" onchange="autoCompra()" style="${_inp}"></label>
+        <label style="font-size:12px;color:var(--text2)">Transportista (compra)<input id="cf-trans" value="${_h(c.transportista)}" onchange="autoCompra()" style="${_inp}"></label>
+        <label style="font-size:12px;color:var(--text2)">Teléfono transportista<input id="cf-tel" value="${_h(c.transportista_tel)}" onchange="autoCompra()" style="${_inp}"></label>
         <label style="font-size:12px;color:var(--text2);grid-column:1 / -1">Para pedido(s) de venta <span style="color:var(--text3)">— marca los que necesitan el material (vacío = compra para stock)</span>
           <div id="cf-pedrel-box" style="margin-top:4px;max-height:140px;overflow-y:auto;border:1px solid var(--border2);border-radius:8px;padding:6px;background:var(--surface)"></div>
         </label>
       </div>
-      <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Notas<textarea id="cf-notas" rows="2" style="${_inp}">${_h(c.notas)}</textarea></label>
+      <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Notas<textarea id="cf-notas" rows="2" onchange="autoCompra()" style="${_inp}">${_h(c.notas)}</textarea></label>
       <div style="margin-top:14px;font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:center">Materiales <button class="btn-sec" onclick="addLineaCompra()" style="font-size:11px;padding:5px 10px"><i class="ti ti-plus"></i> Añadir</button></div>
       <div id="cf-lineas" style="margin-top:8px"></div>
     </div>
-    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end"><button class="btn-sec" onclick="document.getElementById('compra-form-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button><button class="btn-primary" onclick="guardarCompra()" style="font-size:13px;padding:10px 18px">Guardar</button></div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;justify-content:flex-end">
+      <span style="font-size:11px;color:var(--text2);margin-right:auto"><i class="ti ti-device-floppy"></i> Se guarda solo</span>
+      <button class="btn-primary" onclick="cerrarFormCompra()" style="font-size:13px;padding:10px 22px">Hecho</button></div>
   </div>`;
   document.body.appendChild(ov);
   renderLineasCompraForm();
   renderPedrelBox(c.pedidos_rel);
+  if(!id && prefill) autoCompra();   // crea el borrador si viene de una falta
 }
 function _pedidosPendientes(){
   const entregadas=new Set((cargas||[]).filter(c=>c.status==='entregada').map(c=>String(c.id)));
@@ -2954,34 +2961,51 @@ function renderPedrelBox(selStr){
   const peds=_pedidosPendientes();
   if(!peds.length){ box.innerHTML='<div style="font-size:12px;color:var(--text3);padding:4px">No hay pedidos pendientes</div>'; return; }
   box.innerHTML=peds.map(p=>{ const val=p.num||('#'+p.id); const ck=sel.has(String(val));
-    return `<label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:13px;color:var(--text);cursor:pointer"><input type="checkbox" class="cf-pedrel-cb" value="${_h(val)}" ${ck?'checked':''} style="width:16px;height:16px;flex-shrink:0"> <b style="font-family:monospace;color:var(--blue-d)">${(''+val).replace(/</g,'&lt;')}</b> <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(p.cliente||'').replace(/</g,'&lt;')}</span></label>`;
+    return `<label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:13px;color:var(--text);cursor:pointer"><input type="checkbox" class="cf-pedrel-cb" value="${_h(val)}" ${ck?'checked':''} onchange="autoCompra()" style="width:16px;height:16px;flex-shrink:0"> <b style="font-family:monospace;color:var(--blue-d)">${(''+val).replace(/</g,'&lt;')}</b> <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(p.cliente||'').replace(/</g,'&lt;')}</span></label>`;
   }).join('');
 }
 function renderLineasCompraForm(){
   const el=document.getElementById('cf-lineas'); if(!el) return;
   el.innerHTML=_compraLineasForm.map((l,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-     <input value="${_h(l.descripcion)}" oninput="_compraLineasForm[${i}].descripcion=this.value" placeholder="Material / descripción" style="flex:2;min-width:0;${_inp};margin-top:0">
-     <input value="${_h(l.cantidad)}" oninput="_compraLineasForm[${i}].cantidad=this.value" type="number" min="0" placeholder="Cant." style="width:62px;${_inp};margin-top:0">
-     <input value="${_h(l.unidad)}" oninput="_compraLineasForm[${i}].unidad=this.value" placeholder="ud (big bags…)" style="flex:1;min-width:0;${_inp};margin-top:0">
-     <button onclick="_compraLineasForm.splice(${i},1);renderLineasCompraForm()" style="background:none;border:none;color:#9A2A1B;font-size:18px;cursor:pointer">×</button></div>`).join('');
+     <input value="${_h(l.descripcion)}" oninput="_compraLineasForm[${i}].descripcion=this.value" onchange="autoCompra()" placeholder="Material / descripción" style="flex:2;min-width:0;${_inp};margin-top:0">
+     <input value="${_h(l.cantidad)}" oninput="_compraLineasForm[${i}].cantidad=this.value" onchange="autoCompra()" type="number" min="0" placeholder="Cant." style="width:62px;${_inp};margin-top:0">
+     <input value="${_h(l.unidad)}" oninput="_compraLineasForm[${i}].unidad=this.value" onchange="autoCompra()" placeholder="ud (big bags…)" style="flex:1;min-width:0;${_inp};margin-top:0">
+     <button onclick="_compraLineasForm.splice(${i},1);renderLineasCompraForm();autoCompra()" style="background:none;border:none;color:#9A2A1B;font-size:18px;cursor:pointer">×</button></div>`).join('');
 }
 function addLineaCompra(){ _compraLineasForm.push({referencia:'',descripcion:'',cantidad:'',unidad:'',falta_linea_id:null}); renderLineasCompraForm(); }
-async function guardarCompra(){
-  const id=document.getElementById('cf-id').value;
-  const fecha=document.getElementById('cf-fecha').value;
+function _gatherCompraBody(){
+  const fecha=document.getElementById('cf-fecha')?.value||'';
   const pedrel=[...document.querySelectorAll('.cf-pedrel-cb:checked')].map(cb=>cb.value).join(', ');
-  const body={ proveedor:document.getElementById('cf-prov').value.trim()||null, fecha_prevista:fecha||null,
-    tolva:document.getElementById('cf-tolva').value.trim()||null, pedidos_rel:pedrel||null,
-    transportista:document.getElementById('cf-trans').value.trim()||null, transportista_tel:document.getElementById('cf-tel').value.trim()||null,
-    notas:document.getElementById('cf-notas').value.trim()||null,
+  const prev=_compraFormId?comprasData.find(x=>String(x.id)===String(_compraFormId)):null;
+  const estado=(prev&&prev.estado==='recibido')?'recibido':(fecha?'pedido':'por_pedir');
+  return { proveedor:(document.getElementById('cf-prov')?.value||'').trim()||null, fecha_prevista:fecha||null,
+    tolva:(document.getElementById('cf-tolva')?.value||'').trim()||null, pedidos_rel:pedrel||null,
+    transportista:(document.getElementById('cf-trans')?.value||'').trim()||null, transportista_tel:(document.getElementById('cf-tel')?.value||'').trim()||null,
+    notas:(document.getElementById('cf-notas')?.value||'').trim()||null, estado,
     lineas:_compraLineasForm.filter(l=>(''+(l.descripcion||l.referencia||'')).trim()||Number(l.cantidad)>0) };
-  const prev=id?comprasData.find(x=>String(x.id)===String(id)):null;
-  if(prev&&prev.estado==='recibido') body.estado='recibido'; else body.estado=fecha?'pedido':'por_pedir';
+}
+function _compraVacia(b){ return !b.proveedor && !b.fecha_prevista && !b.tolva && !b.pedidos_rel && !b.transportista && !b.transportista_tel && !b.notas && (!b.lineas||!b.lineas.length); }
+async function _guardarCompraAhora(){
+  if(_compraSaving) return;
+  if(!document.getElementById('compra-form-ov')) return;
+  const body=_gatherCompraBody();
+  if(!_compraFormId && _compraVacia(body)) return;     // no crear borradores vacíos
+  _compraSaving=true;
   try{
-    if(id) await api('PUT','/compras/'+id,body); else await api('POST','/compras',body);
-    document.getElementById('compra-form-ov')?.remove();
-    log('Pedido de compra guardado','ok'); renderCompras();
-  }catch(e){ log('Error guardando compra: '+e.message,'warn'); }
+    if(_compraFormId){ await api('PUT','/compras/'+_compraFormId,body); }
+    else { const r=await api('POST','/compras',body); _compraFormId=(r&&r.id)||null; const cf=document.getElementById('cf-id'); if(cf&&_compraFormId) cf.value=_compraFormId; }
+    comprasData=await api('GET','/compras');
+  }catch(e){ /* reintentará al siguiente cambio o al cerrar */ }
+  _compraSaving=false;
+}
+function autoCompra(){ clearTimeout(_compraAutoTimer); _compraAutoTimer=setTimeout(_guardarCompraAhora,600); }
+async function cerrarFormCompra(){
+  clearTimeout(_compraAutoTimer);
+  await _guardarCompraAhora();
+  if(_compraFormId){ const c=comprasData.find(x=>String(x.id)===String(_compraFormId)); if(c&&_compraVacia(c)){ try{ await api('DELETE','/compras/'+_compraFormId); }catch(e){} } }
+  document.getElementById('compra-form-ov')?.remove();
+  _compraFormId=null;
+  renderCompras();
 }
 async function cambiarEstadoCompra(id,estado){
   if(estado==='recibido' && !confirm('¿Marcar como recibido?\nSe avisará en los pedidos de venta que tenían faltas.')) return;
