@@ -409,6 +409,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
       <select id="hist-filter-trans" onchange="renderHist()" style="font-size:11px;padding:5px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);color:var(--text)">
         <option value="">Todos los transportistas</option>
       </select>
+      <button onclick="exportarHistorialExcel()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button>
     </div>
   </div>
   <!-- KPIs historial -->
@@ -1880,6 +1881,117 @@ function renderHist(){
       </div>`;
     }).join('')}
   </div>`;
+}
+
+// ── EXPORTAR HISTORIAL ────────────────────────────────────────────────────────
+function _nombreMes(m){ if(!m)return ''; const[y,mo]=m.split('-'); return (MESES[+mo-1]||mo)+' '+y; }
+function _descargarBlob(blob,fname){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=fname; document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},100);
+}
+function _cargarScript(src){
+  return new Promise((res,rej)=>{
+    if([...document.scripts].some(s=>s.src===src)) return res();
+    const s=document.createElement('script'); s.src=src; s.onload=()=>res(); s.onerror=()=>rej(new Error('carga')); document.head.appendChild(s);
+  });
+}
+// lista de viajes según el filtro activo del historial
+function _historialFiltrado(){
+  const selMes=document.getElementById('hist-filter-mes')?.value||'';
+  const selTrans=document.getElementById('hist-filter-trans')?.value||'';
+  let list=cargas.filter(c=>c.status==='entregada');
+  if(selMes) list=list.filter(c=>c.fecha&&String(c.fecha).substring(0,7)===selMes);
+  if(selTrans) list=list.filter(c=>String(c.truck_id)===selTrans);
+  list=list.sort((a,b)=>new Date(a.fecha||0)-new Date(b.fecha||0));
+  return {list, selMes, selTrans};
+}
+
+async function exportarHistorialExcel(){
+  const {list, selMes}=_historialFiltrado();
+  if(!list.length){ log('No hay viajes para exportar con estos filtros','warn'); return; }
+  log('Generando Excel...');
+  try{
+    await _cargarScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js');
+    if(typeof ExcelJS==='undefined') throw new Error('ExcelJS');
+    await _generarExcelHistorial(list, selMes);
+  }catch(e){
+    log('No se pudo cargar Excel (¿sin conexión?), descargo CSV','warn');
+    _exportarHistorialCSV(list);
+  }
+}
+
+async function _generarExcelHistorial(list, selMes){
+  const AZUL='FF185FA5', CLARO='FFEAF3FB', GRIS='FFD0D7DE';
+  const fmtEur='#,##0.00" €"', fmtKg='#,##0';
+  const borde=()=>({top:{style:'thin',color:{argb:GRIS}},left:{style:'thin',color:{argb:GRIS}},bottom:{style:'thin',color:{argb:GRIS}},right:{style:'thin',color:{argb:GRIS}}});
+  const cabecera=cell=>{cell.font={bold:true,color:{argb:'FFFFFFFF'},size:11};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:AZUL}};cell.alignment={vertical:'middle',horizontal:'center'};cell.border=borde();};
+  const wb=new ExcelJS.Workbook(); wb.creator='Cargas Arisac';
+
+  // ── Hoja "Viajes" ──
+  const ws=wb.addWorksheet('Viajes',{views:[{state:'frozen',ySplit:3}]});
+  const cols=[['Fecha',12],['Mes',14],['Carga',24],['Código',12],['Transportista',20],['Pedidos',9],['Clientes',44],['Kg',11],['Portes',12],['Coste',12],['Margen',12]];
+  ws.columns=cols.map(c=>({width:c[1]}));
+  ws.mergeCells(1,1,1,cols.length);
+  const tit=ws.getCell(1,1);
+  tit.value='Historial de viajes'+(selMes?'   ·   '+_nombreMes(selMes):'');
+  tit.font={bold:true,size:14,color:{argb:AZUL}};
+  ws.getRow(1).height=22;
+  const hr=ws.getRow(3); cols.forEach((c,i)=>hr.getCell(i+1).value=c[0]); hr.eachCell(cabecera); hr.height=18;
+  list.forEach(c=>{
+    const ps=cargaPs(c.id), t=getTrans(c.truck_id);
+    const kg=cargaKg(c.id), portes=cargaPortes(c.id);
+    const coste=c.coste!=null?+c.coste:null, margen=coste!=null?portes-coste:null;
+    const r=ws.addRow([
+      c.fecha?new Date(c.fecha):'', _nombreMes(String(c.fecha||'').substring(0,7)),
+      c.name||'', c.codigo_orden||'', t?t.nombre:'', ps.length,
+      ps.map(p=>p.cliente).join(', '), kg, portes, coste, margen
+    ]);
+    r.getCell(1).numFmt='dd/mm/yyyy';
+    r.getCell(8).numFmt=fmtKg; [9,10,11].forEach(i=>r.getCell(i).numFmt=fmtEur);
+    r.eachCell(cell=>{cell.border=borde();cell.alignment={vertical:'middle'};});
+    r.getCell(7).alignment={vertical:'middle',wrapText:true};
+  });
+  const totKg=list.reduce((s,c)=>s+cargaKg(c.id),0);
+  const totP=list.reduce((s,c)=>s+cargaPortes(c.id),0);
+  const totC=list.filter(c=>c.coste!=null).reduce((s,c)=>s+(+c.coste),0);
+  const tr=ws.addRow(['','','','','TOTAL',list.length,'',totKg,totP,totC,totP-totC]);
+  tr.getCell(8).numFmt=fmtKg; [9,10,11].forEach(i=>tr.getCell(i).numFmt=fmtEur);
+  tr.eachCell(cell=>{cell.font={bold:true};cell.border=borde();cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:CLARO}};});
+
+  // ── Hoja "Resumen por mes" ──
+  const porMes={};
+  list.forEach(c=>{
+    const m=c.fecha?String(c.fecha).substring(0,7):'(sin fecha)';
+    (porMes[m]=porMes[m]||{v:0,kg:0,p:0,co:0}); porMes[m].v++; porMes[m].kg+=cargaKg(c.id); porMes[m].p+=cargaPortes(c.id);
+    if(c.coste!=null) porMes[m].co+=+c.coste;
+  });
+  const ws2=wb.addWorksheet('Resumen por mes');
+  ws2.columns=[{width:18},{width:10},{width:12},{width:12},{width:12},{width:12}];
+  const h2=ws2.getRow(1); ['Mes','Viajes','Kg','Portes','Coste','Margen'].forEach((h,i)=>h2.getCell(i+1).value=h); h2.eachCell(cabecera); h2.height=18;
+  Object.keys(porMes).sort().forEach(m=>{
+    const d=porMes[m];
+    const r=ws2.addRow([_nombreMes(m)||m,d.v,d.kg,d.p,d.co,d.p-d.co]);
+    r.getCell(3).numFmt=fmtKg; [4,5,6].forEach(i=>r.getCell(i).numFmt=fmtEur);
+    r.eachCell(cell=>{cell.border=borde();cell.alignment={vertical:'middle'};});
+  });
+
+  const buf=await wb.xlsx.writeBuffer();
+  const fname='historial_viajes'+(selMes?'_'+selMes:'')+'.xlsx';
+  _descargarBlob(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), fname);
+  log('Excel generado: '+fname,'ok');
+}
+
+function _exportarHistorialCSV(list){
+  const rows=[['Fecha','Mes','Carga','Codigo','Transportista','Pedidos','Clientes','Kg','Portes','Coste','Margen']];
+  list.forEach(c=>{
+    const ps=cargaPs(c.id), t=getTrans(c.truck_id), kg=cargaKg(c.id), portes=cargaPortes(c.id);
+    const coste=c.coste!=null?+c.coste:'', margen=coste!==''?portes-coste:'';
+    rows.push([fmtDate(c.fecha),_nombreMes(String(c.fecha||'').substring(0,7)),c.name||'',c.codigo_orden||'',t?t.nombre:'',ps.length,ps.map(p=>p.cliente).join('; '),kg,portes,coste,margen]);
+  });
+  const csv=rows.map(r=>r.map(v=>{const s=String(v??'');return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(';')).join('\n');
+  _descargarBlob(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}),'historial_viajes.csv');
+  log('CSV generado','ok');
 }
 
 // Revertir una entrega: la carga vuelve a "Planificada" y sus pedidos a "Preparado"
