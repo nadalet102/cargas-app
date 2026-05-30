@@ -410,6 +410,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
         <option value="">Todos los transportistas</option>
       </select>
       <button onclick="exportarHistorialExcel()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button>
+      <button onclick="descargarBackup()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px" title="Descargar una copia de seguridad de todos los datos"><i class="ti ti-database-export"></i> Copia de seguridad</button>
+      <button onclick="triggerRestore()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px;color:#9A2A1B" title="Restaurar datos desde una copia"><i class="ti ti-database-import"></i> Restaurar</button>
     </div>
   </div>
   <!-- KPIs historial -->
@@ -1994,6 +1996,39 @@ function _exportarHistorialCSV(list){
   log('CSV generado','ok');
 }
 
+// ── COPIA DE SEGURIDAD ────────────────────────────────────────────────────────
+async function descargarBackup(){
+  log('Generando copia de seguridad...');
+  try{
+    const data=await api('GET','/backup');
+    const fecha=new Date().toISOString().substring(0,16).replace(/[:T]/g,'-');
+    _descargarBlob(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),'backup_cargas_'+fecha+'.json');
+    const n=(data.pedidos||[]).length, c=(data.cargas||[]).length;
+    log('Copia descargada ('+n+' pedidos, '+c+' cargas)','ok');
+  }catch(e){ log('Error generando copia: '+e.message,'warn'); }
+}
+function triggerRestore(){
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='.json,application/json'; inp.style.display='none';
+  inp.onchange=()=>{ restaurarBackup(inp); setTimeout(()=>inp.remove(),0); };
+  document.body.appendChild(inp); inp.click();
+}
+async function restaurarBackup(input){
+  const file=input.files[0]; if(!file) return;
+  let data;
+  try{ data=JSON.parse(await file.text()); }catch(e){ log('El archivo no es un JSON válido','warn'); return; }
+  if(!data.pedidos && !data.cargas){ log('Ese archivo no parece una copia de Cargas','warn'); return; }
+  const nPed=(data.pedidos||[]).length, nCar=(data.cargas||[]).length;
+  const meta=data._meta&&data._meta.fecha?(' del '+new Date(data._meta.fecha).toLocaleString('es-ES')):'';
+  if(!confirm('⚠ RESTAURAR COPIA'+meta+'\n\nEsto BORRARÁ todos los datos actuales y los reemplazará por los de la copia ('+nPed+' pedidos, '+nCar+' cargas).\n\nNo se puede deshacer. ¿Continuar?')) return;
+  if(!confirm('Última confirmación: se perderán los datos actuales que no estén en la copia.')) return;
+  log('Restaurando copia...');
+  try{
+    await api('POST','/restore',data);
+    await loadAll();
+    log('Copia restaurada correctamente','ok');
+  }catch(e){ log('Error restaurando: '+e.message,'warn'); }
+}
+
 // Revertir una entrega: la carga vuelve a "Planificada" y sus pedidos a "Preparado"
 async function revertirEntrega(cid){
   const c=cargas.find(x=>String(x.id)===String(cid));
@@ -2397,13 +2432,13 @@ function renderDetalleLineas(pid){
         <th style="text-align:left;padding:8px;font-size:10px;color:var(--text2);width:160px">OBSERVACIONES</th>
       </tr></thead>
       <tbody>
-        ${lineas.map(l=>`<tr style="border-bottom:1px solid var(--border);${l.preparada?'opacity:.5':''}">
-          <td style="text-align:center;padding:8px"><input type="checkbox" ${l.preparada?'checked':''} onchange="toggleLineaPrep('${pid}','${l.id}',this.checked)" style="width:20px;height:20px;cursor:pointer"></td>
+        ${lineas.map(l=>`<tr onclick="toggleLineaPrep('${pid}','${l.id}',${l.preparada?'false':'true'})" style="border-bottom:1px solid var(--border);cursor:pointer;${l.preparada?'opacity:.5':''}">
+          <td style="text-align:center;padding:8px"><input type="checkbox" ${l.preparada?'checked':''} onclick="event.stopPropagation()" onchange="toggleLineaPrep('${pid}','${l.id}',this.checked)" style="width:22px;height:22px;cursor:pointer"></td>
           <td style="padding:8px;font-family:monospace;font-weight:600;color:var(--blue-d);${l.preparada?'text-decoration:line-through':''}">${l.referencia||'—'}</td>
           <td style="padding:8px;${l.preparada?'text-decoration:line-through':''}">${l.descripcion||'—'}</td>
           <td style="padding:8px;text-align:right;font-weight:600;white-space:nowrap">${fmtN(l.cantidad)}<div style="margin-top:3px;display:flex;align-items:center;justify-content:flex-end;gap:3px"><input type="number" min="0" value="${(String(l.embalaje||'').match(/\d+/)||[''])[0]}" onchange="guardarPalets('${pid}','${l.id}',this.value)" onclick="event.stopPropagation()" style="width:44px;font-size:11px;padding:2px 4px;text-align:right;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><span style="font-size:9px;color:var(--text2);white-space:nowrap">${etiquetaEmb(l)}</span></div>${l.kgs?`<div style="font-size:10px;color:var(--text3);font-weight:400">${fmtN(l.kgs)} kg</div>`:''}</td>
           <td style="padding:4px 8px">
-            <input type="text" value="${(l.observaciones||'').replace(/"/g,'&quot;')}" placeholder="—" onchange="guardarObsLinea('${pid}','${l.id}',this.value)" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
+            <input type="text" value="${(l.observaciones||'').replace(/"/g,'&quot;')}" placeholder="—" onclick="event.stopPropagation()" onchange="guardarObsLinea('${pid}','${l.id}',this.value)" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
           </td>
         </tr>`).join('')}
       </tbody>
@@ -2898,7 +2933,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 8;
+const NEEDS_API = 9;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
