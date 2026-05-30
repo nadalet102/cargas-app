@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 9;
+const API_VERSION = 10;
 
 const app = express();
 app.use(cors());
@@ -63,6 +63,7 @@ async function initDB() {
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS tiene_cambios BOOLEAN DEFAULT false`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS comercial TEXT`,
     `CREATE TABLE IF NOT EXISTS comerciales (id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, activo BOOLEAN DEFAULT true)`,
+    `CREATE TABLE IF NOT EXISTS backups (id SERIAL PRIMARY KEY, fecha TIMESTAMPTZ DEFAULT now(), tipo TEXT DEFAULT 'auto', datos JSONB)`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cif TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS direccion TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cp TEXT`,
@@ -521,16 +522,20 @@ app.get('/api/health', (req, res) => res.json({ ok: true, version: API_VERSION }
 // ── COPIA DE SEGURIDAD ────────────────────────────────────────────────────────
 const BACKUP_TABLES = ['bc_config','transportistas','categorias','preparadores','comerciales','cargas','pedidos','pedido_lineas','bc_inbox'];
 
+// Construye el volcado completo de la base de datos
+async function _dumpDatos() {
+  const data = { _meta: { version: API_VERSION, fecha: new Date().toISOString() } };
+  for (const t of BACKUP_TABLES) {
+    try { const r = await pool.query('SELECT * FROM ' + t); data[t] = r.rows; }
+    catch(e) { data[t] = []; }
+  }
+  return data;
+}
+
 // Descargar copia: vuelca todas las tablas a un JSON
 app.get('/api/backup', async (req, res) => {
-  try {
-    const data = { _meta: { version: API_VERSION, fecha: new Date().toISOString() } };
-    for (const t of BACKUP_TABLES) {
-      try { const r = await pool.query('SELECT * FROM '+t); data[t] = r.rows; }
-      catch(e) { data[t] = []; }
-    }
-    res.json(data);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  try { res.json(await _dumpDatos()); }
+  catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // Restaurar copia: reemplaza TODOS los datos por los del JSON (en una transacción)
@@ -569,6 +574,36 @@ app.post('/api/restore', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+// ── COPIAS AUTOMÁTICAS (guardadas en la BD) ───────────────────────────────────
+async function hacerSnapshot(tipo) {
+  try {
+    const datos = await _dumpDatos();
+    await pool.query('INSERT INTO backups(tipo, datos) VALUES($1, $2)', [tipo || 'auto', datos]);
+    // conservar solo las últimas 14
+    await pool.query('DELETE FROM backups WHERE id NOT IN (SELECT id FROM backups ORDER BY fecha DESC LIMIT 14)');
+  } catch(e) { console.error('snapshot error:', e.message); }
+}
+// listar copias (sin los datos, para no cargar de más)
+app.get('/api/backups', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT id, fecha, tipo FROM backups ORDER BY fecha DESC');
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+// obtener una copia concreta (con datos)
+app.get('/api/backups/:id', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT id, fecha, tipo, datos FROM backups WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'No encontrada' });
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+// forzar una copia ahora
+app.post('/api/backups', async (req, res) => {
+  await hacerSnapshot('manual');
+  res.json({ ok: true });
 });
 
 // PATCH asignar preparador a un pedido
@@ -862,4 +897,9 @@ app.get('/api/bc/pedido-old/:num', async (req, res) => {
 app.get('*', (req, res) => res.sendFile(path.join(__dirname,'public','index.html')));
 
 const PORT = process.env.PORT || 3000;
-initDB().then(() => app.listen(PORT, () => console.log(`Server on port ${PORT}`)));
+initDB().then(() => {
+  app.listen(PORT, () => console.log(`Server on port ${PORT}`));
+  // copia de seguridad automática: una al arrancar y otra cada 24h
+  setTimeout(() => hacerSnapshot('auto'), 5000);
+  setInterval(() => hacerSnapshot('auto'), 24 * 60 * 60 * 1000);
+});
