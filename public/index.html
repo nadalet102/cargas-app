@@ -412,6 +412,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
       <button onclick="exportarHistorialExcel()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button>
       <button onclick="descargarBackup()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px" title="Descargar una copia de seguridad de todos los datos"><i class="ti ti-database-export"></i> Copia de seguridad</button>
       <button onclick="triggerRestore()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px;color:#9A2A1B" title="Restaurar datos desde una copia"><i class="ti ti-database-import"></i> Restaurar</button>
+      <button onclick="verCopiasAuto()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px" title="Copias automáticas guardadas en el servidor"><i class="ti ti-clock-hour-4"></i> Copias automáticas</button>
     </div>
   </div>
   <!-- KPIs historial -->
@@ -2029,6 +2030,48 @@ async function restaurarBackup(input){
   }catch(e){ log('Error restaurando: '+e.message,'warn'); }
 }
 
+// Copias automáticas guardadas en el servidor
+async function verCopiasAuto(){
+  let lista;
+  try{ lista=await api('GET','/backups'); }catch(e){ log('No se pudieron cargar las copias','warn'); return; }
+  const filas = lista.length ? lista.map(b=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px">
+      <div style="font-size:12px"><b>${new Date(b.fecha).toLocaleString('es-ES')}</b> <span style="color:var(--text2)">· ${b.tipo}</span></div>
+      <div style="display:flex;gap:6px">
+        <button onclick="descargarCopiaAuto('${b.id}')" style="font-size:11px;padding:4px 9px;border:1px solid var(--border2);background:var(--surface);border-radius:6px;cursor:pointer">Descargar</button>
+        <button onclick="restaurarCopiaAuto('${b.id}')" style="font-size:11px;padding:4px 9px;border:1px solid #C8860B;background:#fff;color:#7A4E00;border-radius:6px;cursor:pointer">Restaurar</button>
+      </div>
+    </div>`).join('') : '<div style="text-align:center;color:var(--text2);font-size:12px;padding:16px">Aún no hay copias automáticas. Se crean al arrancar el servidor y cada 24 h.</div>';
+  const ov=document.createElement('div');
+  ov.id='copias-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+  ov.innerHTML=`<div style="background:var(--surface);border-radius:12px;width:480px;max-width:100%;max-height:80vh;display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border)"><div style="font-size:15px;font-weight:600">Copias automáticas</div><button onclick="document.getElementById('copias-ov').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3)">×</button></div>
+    <div style="padding:16px 18px;overflow-y:auto">${filas}</div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+async function descargarCopiaAuto(id){
+  try{
+    const b=await api('GET','/backups/'+id);
+    const f=new Date(b.fecha).toISOString().substring(0,16).replace(/[:T]/g,'-');
+    _descargarBlob(new Blob([JSON.stringify(b.datos,null,2)],{type:'application/json'}),'backup_cargas_'+f+'.json');
+    log('Copia descargada','ok');
+  }catch(e){ log('Error descargando copia','warn'); }
+}
+async function restaurarCopiaAuto(id){
+  if(!confirm('⚠ Restaurar esta copia reemplazará TODOS los datos actuales. ¿Continuar?')) return;
+  if(!confirm('Última confirmación: se perderán los datos actuales que no estén en la copia.')) return;
+  log('Restaurando copia...');
+  try{
+    const b=await api('GET','/backups/'+id);
+    await api('POST','/restore',b.datos);
+    await loadAll();
+    document.getElementById('copias-ov')?.remove();
+    log('Copia restaurada correctamente','ok');
+  }catch(e){ log('Error restaurando: '+e.message,'warn'); }
+}
+
 // Revertir una entrega: la carga vuelve a "Planificada" y sus pedidos a "Preparado"
 async function revertirEntrega(cid){
   const c=cargas.find(x=>String(x.id)===String(cid));
@@ -2423,6 +2466,7 @@ function renderDetalleLineas(pid){
       </div>
       <span style="font-size:12px;font-weight:600;color:${pct===100?'#0F6E56':'var(--text2)'}">${nPrep}/${lineas.length}</span>
     </div>
+    ${pct<100?`<button onclick="abrirModoPrep('${pid}')" style="width:100%;margin-bottom:12px;background:#0F6E56;color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-family:'DM Sans',sans-serif"><i class="ti ti-player-play" style="font-size:18px"></i> Modo preparación</button>`:''}
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:var(--surface2);border-bottom:1px solid var(--border)">
         <th style="width:40px;padding:8px"></th>
@@ -2530,6 +2574,104 @@ async function toggleLineaPrep(pid,lid,checked){
       if(target==='preparado') log('Pedido '+(p.num||'')+' preparado','ok');
     }
   }catch(e){ log('Error: '+e.message,'warn'); }
+}
+
+// ── MODO PREPARACIÓN A PANTALLA COMPLETA ──────────────────────────────────────
+let modoPrep=null;
+async function abrirModoPrep(pid){
+  let lineas=prepLineasCache[pid];
+  if(!lineas){ try{ lineas=await api('GET','/pedidos/'+pid+'/lineas'); prepLineasCache[pid]=lineas; }catch(e){ lineas=[]; } }
+  if(!lineas||!lineas.length){ log('Este pedido no tiene líneas','warn'); return; }
+  const i=lineas.findIndex(l=>!l.preparada);
+  modoPrep={pid, lineas, idx:i<0?0:i};
+  let ov=document.getElementById('modo-prep-ov');
+  if(!ov){ ov=document.createElement('div'); ov.id='modo-prep-ov'; ov.style.cssText="position:fixed;inset:0;z-index:10060;background:var(--surface);display:flex;flex-direction:column;font-family:'DM Sans',sans-serif"; document.body.appendChild(ov); }
+  renderModoPrep();
+}
+function _embInfo(l){
+  const esBB=/^BB/i.test(l.referencia||'')||/\bbb\b/i.test(l.descripcion||'');
+  const m=String(l.embalaje||'').match(/(\d+)\s*([A-Za-zÁ-ú]+)?/);
+  if(!m) return {n:0,u:'',txt:'',esBB};
+  const n=parseInt(m[1]), u=(m[2]||'PALET').toUpperCase();
+  let txt;
+  if(u.startsWith('PAQ')) txt=n+' paquete'+(n>1?'s':'');
+  else if(u.startsWith('CAJA')) txt=n+(n>1?' cajas':' caja');
+  else txt=n+(esBB?(' big bag'+(n>1?'s':'')):(' palet'+(n>1?'s':'')));
+  return {n,u,txt,esBB};
+}
+function renderModoPrep(){
+  const m=modoPrep, ov=document.getElementById('modo-prep-ov'); if(!m||!ov) return;
+  const p=pedidos.find(x=>String(x.id)===String(m.pid))||{};
+  const total=m.lineas.length, nPrep=m.lineas.filter(l=>l.preparada).length;
+  const pct=Math.round(nPrep/total*100);
+  const cab=`<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border)">
+      <button onclick="cerrarModoPrep()" style="background:none;border:none;font-size:15px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:4px"><i class="ti ti-x" style="font-size:20px"></i> Salir</button>
+      <div style="text-align:center"><div style="font-size:13px;font-weight:700">${p.num||''}</div><div style="font-size:11px;color:var(--text2)">${p.cliente||''}</div></div>
+      <div style="font-size:14px;font-weight:700;color:#0F6E56">${nPrep}/${total}</div>
+    </div><div style="height:6px;background:var(--border)"><div style="height:100%;width:${pct}%;background:#0F6E56;transition:width .25s"></div></div>`;
+
+  if(nPrep>=total){
+    let euro=0,bb=0,paq=0,caja=0,kg=0;
+    m.lineas.forEach(l=>{const e=_embInfo(l);kg+=Number(l.kgs)||0;if(!e.n)return;if(e.u.startsWith('PAQ'))paq+=e.n;else if(e.u.startsWith('CAJA'))caja+=e.n;else if(e.esBB)bb+=e.n;else euro+=e.n;});
+    const chip=(lbl,v)=>v?`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 18px;text-align:center;min-width:88px"><div style="font-size:24px;font-weight:800;color:var(--blue-d)">${v}</div><div style="font-size:11px;color:var(--text2)">${lbl}</div></div>`:'';
+    ov.innerHTML=cab+`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:24px;text-align:center">
+      <div style="width:84px;height:84px;border-radius:50%;background:#0F6E56;display:flex;align-items:center;justify-content:center"><i class="ti ti-check" style="color:#fff;font-size:48px"></i></div>
+      <div><div style="font-size:22px;font-weight:800">¡Pedido preparado!</div><div style="font-size:14px;color:var(--text2);margin-top:4px">${total} artículo${total>1?'s':''} listo${total>1?'s':''} para cargar</div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">${chip('Palets europ.',euro)}${chip('Big bags',bb)}${chip('Paquetes',paq)}${chip('Cajas',caja)}${chip('Kg',kg?fmtN(kg):0)}</div>
+      <button onclick="cerrarModoPrep()" style="background:#0F6E56;color:#fff;border:none;border-radius:12px;padding:16px 44px;font-size:17px;font-weight:700;cursor:pointer">Hecho</button>
+    </div>`;
+    return;
+  }
+
+  const l=m.lineas[m.idx]||m.lineas[0];
+  const e=_embInfo(l);
+  const obs=l.observaciones?`<div style="background:#FAEEDA;border:1px solid #F0C77E;border-radius:10px;padding:12px 14px;font-size:15px;color:#7A4E00;font-weight:600;display:flex;align-items:center;gap:8px"><i class="ti ti-alert-triangle" style="font-size:20px;flex-shrink:0"></i> <span>${l.observaciones.replace(/</g,'&lt;')}</span></div>`:'';
+  const tag=e.txt?`<span style="display:inline-block;background:${e.esBB?'#EFEAFB':'#E6F1FB'};color:${e.esBB?'#5B3FA8':'#0C447C'};border-radius:20px;padding:6px 16px;font-size:15px;font-weight:700">${e.txt}</span>`:'';
+  ov.innerHTML=cab+`
+    <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;justify-content:center;padding:20px;gap:16px">
+      <div style="text-align:center;font-size:12px;color:var(--text2)">Artículo ${m.idx+1} de ${total}</div>
+      <div style="text-align:center">
+        <div style="font-family:monospace;font-size:18px;color:var(--blue-d);font-weight:700">${l.referencia||''}</div>
+        <div style="font-size:24px;font-weight:800;line-height:1.25;margin-top:6px">${(l.descripcion||'').replace(/</g,'&lt;')}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+        <div style="font-size:54px;font-weight:800;line-height:1">${fmtN(l.cantidad)}<span style="font-size:18px;font-weight:600;color:var(--text2)"> uds</span></div>
+        ${tag}
+        ${l.kgs?`<div style="font-size:14px;color:var(--text3)">${fmtN(l.kgs)} kg</div>`:''}
+      </div>
+      ${obs}
+    </div>
+    <div style="padding:16px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
+      ${l.preparada
+        ? `<button onclick="prepMarcar(false)" style="width:100%;background:#FBE9E7;color:#9A2A1B;border:1px solid #E8A599;border-radius:12px;padding:16px;font-size:17px;font-weight:700;cursor:pointer">↺ Marcar como pendiente</button>`
+        : `<button onclick="prepMarcar(true)" style="width:100%;background:#0F6E56;color:#fff;border:none;border-radius:12px;padding:18px;font-size:19px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px"><i class="ti ti-check" style="font-size:24px"></i> Preparado</button>`}
+      <div style="display:flex;gap:10px">
+        <button onclick="prepNav(-1)" ${m.idx===0?'disabled':''} style="flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:14px;cursor:pointer;opacity:${m.idx===0?'.4':'1'}">‹ Anterior</button>
+        <button onclick="prepNav(1)" ${m.idx>=total-1?'disabled':''} style="flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:14px;cursor:pointer;opacity:${m.idx>=total-1?'.4':'1'}">Siguiente ›</button>
+      </div>
+    </div>`;
+}
+async function prepMarcar(valor){
+  const m=modoPrep; if(!m) return;
+  const l=m.lineas[m.idx]; if(!l) return;
+  await toggleLineaPrep(m.pid, l.id, valor);
+  if(valor){
+    const next=m.lineas.findIndex((x,i)=>i>m.idx && !x.preparada);
+    if(next>=0) m.idx=next;
+    else { const any=m.lineas.findIndex(x=>!x.preparada); if(any>=0) m.idx=any; }
+  }
+  renderModoPrep();
+}
+function prepNav(d){
+  const m=modoPrep; if(!m) return;
+  m.idx=Math.max(0,Math.min(m.lineas.length-1,m.idx+d));
+  renderModoPrep();
+}
+function cerrarModoPrep(){
+  const ov=document.getElementById('modo-prep-ov'); if(ov) ov.remove();
+  const pid=modoPrep?modoPrep.pid:null; modoPrep=null;
+  if(pid) renderDetalleLineas(pid);
+  renderPrepList(); renderPreparadosList();
 }
 
 function triggerPrepPDF(){
@@ -2933,7 +3075,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 9;
+const NEEDS_API = 10;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
