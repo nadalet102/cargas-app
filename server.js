@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 10;
+const API_VERSION = 11;
 
 const app = express();
 app.use(cors());
@@ -83,6 +83,7 @@ async function initDB() {
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS observaciones TEXT`,
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS embalaje TEXT`,
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS kgs NUMERIC`,
+    `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS falta NUMERIC DEFAULT 0`,
     `CREATE TABLE IF NOT EXISTS preparadores (
       id SERIAL PRIMARY KEY,
       nombre TEXT NOT NULL,
@@ -660,6 +661,27 @@ app.patch('/api/lineas/:id/embalaje', async (req, res) => {
   try {
     const r = await pool.query('UPDATE pedido_lineas SET embalaje=$1 WHERE id=$2 RETURNING *',[req.body.embalaje||null,req.params.id]);
     res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// PATCH falta (unidades que faltan) de una línea
+app.patch('/api/lineas/:id/falta', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE pedido_lineas SET falta=$1 WHERE id=$2 RETURNING *',[Number(req.body.falta)||0,req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// Listado de faltas (para Compras): líneas con falta>0 + datos de su pedido
+app.get('/api/faltas', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT l.id AS linea_id, l.referencia, l.descripcion, l.cantidad, l.falta, l.embalaje,
+              p.id AS pedido_id, p.num AS pedido_num, p.cliente, p.fecha, p.comercial
+       FROM pedido_lineas l JOIN pedidos p ON p.id = l.pedido_id
+       WHERE COALESCE(l.falta,0) > 0
+       ORDER BY p.fecha NULLS LAST, p.num, l.referencia`);
+    res.json(r.rows);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
