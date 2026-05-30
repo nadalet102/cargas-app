@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 11;
+const API_VERSION = 12;
 
 const app = express();
 app.use(cors());
@@ -64,6 +64,29 @@ async function initDB() {
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS comercial TEXT`,
     `CREATE TABLE IF NOT EXISTS comerciales (id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, activo BOOLEAN DEFAULT true)`,
     `CREATE TABLE IF NOT EXISTS backups (id SERIAL PRIMARY KEY, fecha TIMESTAMPTZ DEFAULT now(), tipo TEXT DEFAULT 'auto', datos JSONB)`,
+    `CREATE TABLE IF NOT EXISTS compras (
+      id SERIAL PRIMARY KEY,
+      proveedor TEXT,
+      estado TEXT DEFAULT 'por_pedir',
+      fecha_prevista DATE,
+      fecha_recibido DATE,
+      tolva TEXT,
+      transportista TEXT,
+      transportista_tel TEXT,
+      pedidos_rel TEXT,
+      prioridad TEXT DEFAULT 'normal',
+      notas TEXT,
+      creado TIMESTAMPTZ DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS compra_lineas (
+      id SERIAL PRIMARY KEY,
+      compra_id INTEGER REFERENCES compras(id) ON DELETE CASCADE,
+      referencia TEXT,
+      descripcion TEXT,
+      cantidad NUMERIC DEFAULT 0,
+      unidad TEXT,
+      falta_linea_id INTEGER
+    )`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cif TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS direccion TEXT`,
     `ALTER TABLE transportistas ADD COLUMN IF NOT EXISTS cp TEXT`,
@@ -521,7 +544,7 @@ app.patch('/api/pedidos/:id/comercial', async (req, res) => {
 app.get('/api/health', (req, res) => res.json({ ok: true, version: API_VERSION }));
 
 // ── COPIA DE SEGURIDAD ────────────────────────────────────────────────────────
-const BACKUP_TABLES = ['bc_config','transportistas','categorias','preparadores','comerciales','cargas','pedidos','pedido_lineas','bc_inbox'];
+const BACKUP_TABLES = ['bc_config','transportistas','categorias','preparadores','comerciales','compras','cargas','pedidos','pedido_lineas','compra_lineas','bc_inbox'];
 
 // Construye el volcado completo de la base de datos
 async function _dumpDatos() {
@@ -682,6 +705,101 @@ app.get('/api/faltas', async (req, res) => {
        WHERE COALESCE(l.falta,0) > 0
        ORDER BY p.fecha NULLS LAST, p.num, l.referencia`);
     res.json(r.rows);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── COMPRAS (pedidos de compra) ───────────────────────────────────────────────
+// listar todas las compras, cada una con su array de líneas
+app.get('/api/compras', async (req, res) => {
+  try {
+    const cab = await pool.query('SELECT * FROM compras ORDER BY (fecha_prevista IS NULL), fecha_prevista, creado DESC');
+    const lin = await pool.query('SELECT * FROM compra_lineas ORDER BY id');
+    const porCompra = {};
+    lin.rows.forEach(l => { (porCompra[l.compra_id] = porCompra[l.compra_id] || []).push(l); });
+    res.json(cab.rows.map(c => ({ ...c, lineas: porCompra[c.id] || [] })));
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+// crear un pedido de compra con sus líneas
+app.post('/api/compras', async (req, res) => {
+  const c = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const r = await client.query(
+      `INSERT INTO compras(proveedor,estado,fecha_prevista,tolva,transportista,transportista_tel,pedidos_rel,prioridad,notas)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [c.proveedor||null, c.estado||'por_pedir', c.fecha_prevista||null, c.tolva||null,
+       c.transportista||null, c.transportista_tel||null, c.pedidos_rel||null, c.prioridad||'normal', c.notas||null]);
+    const compra = r.rows[0];
+    for (const l of (c.lineas||[])) {
+      await client.query(
+        `INSERT INTO compra_lineas(compra_id,referencia,descripcion,cantidad,unidad,falta_linea_id)
+         VALUES($1,$2,$3,$4,$5,$6)`,
+        [compra.id, l.referencia||null, l.descripcion||null, Number(l.cantidad)||0, l.unidad||null, l.falta_linea_id||null]);
+    }
+    await client.query('COMMIT');
+    res.json({ ok:true, id: compra.id });
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
+});
+// editar cabecera + reemplazar líneas
+app.put('/api/compras/:id', async (req, res) => {
+  const c = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE compras SET proveedor=$1,estado=$2,fecha_prevista=$3,tolva=$4,transportista=$5,
+       transportista_tel=$6,pedidos_rel=$7,prioridad=$8,notas=$9 WHERE id=$10`,
+      [c.proveedor||null, c.estado||'por_pedir', c.fecha_prevista||null, c.tolva||null,
+       c.transportista||null, c.transportista_tel||null, c.pedidos_rel||null, c.prioridad||'normal', c.notas||null, req.params.id]);
+    await client.query('DELETE FROM compra_lineas WHERE compra_id=$1', [req.params.id]);
+    for (const l of (c.lineas||[])) {
+      await client.query(
+        `INSERT INTO compra_lineas(compra_id,referencia,descripcion,cantidad,unidad,falta_linea_id)
+         VALUES($1,$2,$3,$4,$5,$6)`,
+        [req.params.id, l.referencia||null, l.descripcion||null, Number(l.cantidad)||0, l.unidad||null, l.falta_linea_id||null]);
+    }
+    await client.query('COMMIT');
+    res.json({ ok:true });
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
+});
+// cambiar estado (al recibir: quita la falta y avisa en el pedido de venta)
+app.patch('/api/compras/:id/estado', async (req, res) => {
+  const estado = req.body.estado;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const recibido = estado === 'recibido';
+    await client.query('UPDATE compras SET estado=$1, fecha_recibido=$2 WHERE id=$3',
+      [estado, recibido ? new Date() : null, req.params.id]);
+    if (recibido) {
+      const lin = await client.query('SELECT * FROM compra_lineas WHERE compra_id=$1', [req.params.id]);
+      for (const l of lin.rows) {
+        if (!l.falta_linea_id) continue;
+        const pl = await client.query('SELECT pedido_id, descripcion FROM pedido_lineas WHERE id=$1', [l.falta_linea_id]);
+        if (!pl.rows.length) continue;
+        const pedidoId = pl.rows[0].pedido_id;
+        await client.query('UPDATE pedido_lineas SET falta=0 WHERE id=$1', [l.falta_linea_id]);
+        const aviso = '🟢 Llegó material que faltaba: ' + (l.descripcion || pl.rows[0].descripcion || '') + (l.cantidad ? ' (' + l.cantidad + (l.unidad ? ' ' + l.unidad : '') + ')' : '');
+        const fecha = new Date().toLocaleDateString('es-ES');
+        await client.query(
+          `UPDATE pedidos SET tiene_cambios=true,
+             cambios = $1 || E'\n' || COALESCE(cambios,'') WHERE id=$2`,
+          ['[' + fecha + '] ' + aviso, pedidoId]);
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ ok:true });
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
+});
+app.delete('/api/compras/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM compra_lineas WHERE compra_id=$1', [req.params.id]);
+    await pool.query('DELETE FROM compras WHERE id=$1', [req.params.id]);
+    res.json({ ok:true });
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
