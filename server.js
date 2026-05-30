@@ -585,6 +585,7 @@ async function hacerSnapshot(tipo) {
     await pool.query('DELETE FROM backups WHERE id NOT IN (SELECT id FROM backups ORDER BY fecha DESC LIMIT 14)');
   } catch(e) { console.error('snapshot error:', e.message); }
 }
+
 // listar copias (sin los datos, para no cargar de más)
 app.get('/api/backups', async (req, res) => {
   try {
