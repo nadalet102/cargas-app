@@ -294,7 +294,6 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
   <div class="tab active" id="grp-reparto" onclick="switchGroup('reparto')"><i class="ti ti-layout-columns"></i> Reparto</div>
   <div class="tab" id="grp-preparacion" onclick="switchGroup('preparacion')"><i class="ti ti-clipboard-check"></i> Preparación</div>
   <div class="tab" id="grp-compras" onclick="switchGroup('compras')"><i class="ti ti-shopping-cart"></i> Compras <span id="compras-badge" style="background:#FBE3E0;color:#9A2A1B;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;margin-left:3px;display:none">0</span></div>
-  <div class="tab" id="grp-bc" onclick="switchGroup('bc')"><i class="ti ti-building-store"></i> Bandeja BC</div>
   <div class="tab" id="grp-resumen" onclick="switchGroup('resumen')"><i class="ti ti-chart-bar"></i> Resumen</div>
   <div class="tab" id="grp-ajustes" onclick="switchGroup('ajustes')"><i class="ti ti-settings"></i> Ajustes</div>
 </div>
@@ -684,18 +683,16 @@ const NAV_GROUPS = {
   reparto:     { subs:[['plan','Planificación'],['cal','Calendario'],['hist','Historial']] },
   preparacion: { subs:[['prep','Por preparar'],['preparados','Preparados']] },
   compras:     { subs:[['compras','']] },
-  bc:          { subs:[['bc','']] },
   resumen:     { subs:[['dash','']] },
   ajustes:     { subs:[['trans','Transportistas'],['cats','Categorías']] }
 };
-const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',compras:'compras',bc:'bc',dash:'resumen',trans:'ajustes',cats:'ajustes'};
+const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes'};
 let _activeView='plan';
 function _runRenderer(t){
   if(t==='cal')renderCal();
   else if(t==='dash')renderDash();
   else if(t==='trans')renderTrans();
   else if(t==='cats')renderCats();
-  else if(t==='bc'){loadBCConfig().then(()=>{loadBCPedidos();renderClientesExcluidos();});}
   else if(t==='hist')renderHist();
   else if(t==='prep'){fillPreparadorFilters();renderPrepList();}
   else if(t==='preparados'){fillPreparadorFilters();renderPreparadosList();}
