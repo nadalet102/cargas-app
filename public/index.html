@@ -2370,23 +2370,17 @@ function renderDetalleLineas(pid){
   const pct=Math.round(nPrep/lineas.length*100);
   const totKg=lineas.reduce((s,l)=>s+(Number(l.kgs)||0),0);
   const esBigBag=l=>/^BB/i.test(l.referencia||'')||/\bbb\b/i.test(l.descripcion||'');
-  const palOf=l=>{const m=String(l.embalaje||'').match(/(\d+)/);return m?parseInt(m[1]):0;};
-  const totBB=lineas.filter(esBigBag).reduce((s,l)=>s+palOf(l),0);
-  const totEuro=lineas.filter(l=>!esBigBag(l)).reduce((s,l)=>s+palOf(l),0);
+  const embOf=l=>{const m=String(l.embalaje||'').match(/(\d+)\s*([A-Za-zÁ-ú]+)?/);return m?{n:parseInt(m[1]),u:(m[2]||'PALET').toUpperCase()}:{n:0,u:''};};
+  const etiquetaEmb=l=>{const {u}=embOf(l);if(u.startsWith('PAQ'))return 'paq.';if(u.startsWith('CAJA'))return 'caja';return esBigBag(l)?'big bag':'europ.';};
+  let euro=0,bb=0,paq=0,caja=0;
+  lineas.forEach(l=>{const {n,u}=embOf(l);if(!n)return;if(u.startsWith('PAQ'))paq+=n;else if(u.startsWith('CAJA'))caja+=n;else if(esBigBag(l))bb+=n;else euro+=n;});
+  const cards=[['Palets europeos',euro||'—'],['Big bags',bb||'—']];
+  if(paq)cards.push(['Paquetes',paq]);
+  if(caja)cards.push(['Cajas',caja]);
+  cards.push(['Total kg',totKg?fmtN(totKg):'—']);
   cont.innerHTML=`
     <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-      <div style="flex:1;min-width:90px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center">
-        <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">Palets europeos</div>
-        <div style="font-size:19px;font-weight:700;color:var(--blue-d)">${totEuro||'—'}</div>
-      </div>
-      <div style="flex:1;min-width:90px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center">
-        <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">Big bags</div>
-        <div style="font-size:19px;font-weight:700;color:var(--blue-d)">${totBB||'—'}</div>
-      </div>
-      <div style="flex:1;min-width:90px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center">
-        <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">Total kg</div>
-        <div style="font-size:19px;font-weight:700;color:var(--blue-d)">${totKg?fmtN(totKg):'—'}</div>
-      </div>
+      ${cards.map(([lbl,val])=>`<div style="flex:1;min-width:84px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">${lbl}</div><div style="font-size:19px;font-weight:700;color:var(--blue-d)">${val}</div></div>`).join('')}
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
       <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
@@ -2407,7 +2401,7 @@ function renderDetalleLineas(pid){
           <td style="text-align:center;padding:8px"><input type="checkbox" ${l.preparada?'checked':''} onchange="toggleLineaPrep('${pid}','${l.id}',this.checked)" style="width:20px;height:20px;cursor:pointer"></td>
           <td style="padding:8px;font-family:monospace;font-weight:600;color:var(--blue-d);${l.preparada?'text-decoration:line-through':''}">${l.referencia||'—'}</td>
           <td style="padding:8px;${l.preparada?'text-decoration:line-through':''}">${l.descripcion||'—'}</td>
-          <td style="padding:8px;text-align:right;font-weight:600;white-space:nowrap">${fmtN(l.cantidad)}<div style="margin-top:3px;display:flex;align-items:center;justify-content:flex-end;gap:3px"><input type="number" min="0" value="${(String(l.embalaje||'').match(/\d+/)||[''])[0]}" onchange="guardarPalets('${pid}','${l.id}',this.value)" onclick="event.stopPropagation()" style="width:44px;font-size:11px;padding:2px 4px;text-align:right;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><span style="font-size:9px;color:var(--text2);white-space:nowrap">${esBigBag(l)?'big bag':'europ.'}</span></div>${l.kgs?`<div style="font-size:10px;color:var(--text3);font-weight:400">${fmtN(l.kgs)} kg</div>`:''}</td>
+          <td style="padding:8px;text-align:right;font-weight:600;white-space:nowrap">${fmtN(l.cantidad)}<div style="margin-top:3px;display:flex;align-items:center;justify-content:flex-end;gap:3px"><input type="number" min="0" value="${(String(l.embalaje||'').match(/\d+/)||[''])[0]}" onchange="guardarPalets('${pid}','${l.id}',this.value)" onclick="event.stopPropagation()" style="width:44px;font-size:11px;padding:2px 4px;text-align:right;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><span style="font-size:9px;color:var(--text2);white-space:nowrap">${etiquetaEmb(l)}</span></div>${l.kgs?`<div style="font-size:10px;color:var(--text3);font-weight:400">${fmtN(l.kgs)} kg</div>`:''}</td>
           <td style="padding:4px 8px">
             <input type="text" value="${(l.observaciones||'').replace(/"/g,'&quot;')}" placeholder="—" onchange="guardarObsLinea('${pid}','${l.id}',this.value)" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
           </td>
@@ -2437,13 +2431,14 @@ async function asignarPreparador(pid,nombre){
 // Cambiar el nº de palets de una línea
 async function guardarPalets(pid,lid,val){
   const n=parseInt(val);
-  const embalaje=(n&&n>0)?(n+' PALET'):null;
+  const lineas=prepLineasCache[pid]||[];
+  const l=lineas.find(x=>String(x.id)===String(lid));
+  const unidad=(String(l?.embalaje||'').match(/[A-Za-zÁ-ú\.]+/)||['PALET'])[0]; // conserva PALET / PAQ. / CAJA
+  const embalaje=(n&&n>0)?(n+' '+unidad):null;
   try{
     await api('PATCH','/lineas/'+lid+'/embalaje',{embalaje});
-    const lineas=prepLineasCache[pid]||[];
-    const l=lineas.find(x=>String(x.id)===String(lid));
     if(l) l.embalaje=embalaje;
-    renderDetalleLineas(pid); // recalcula el total de palets
+    renderDetalleLineas(pid); // recalcula los totales
   }catch(e){ log('Error guardando palets','warn'); }
 }
 
@@ -2901,8 +2896,27 @@ function renderClientesExcluidos(){
     ).join('')+'</div>';
 }
 
+// Comprueba que el servidor desplegado está al día (evita fallos silenciosos
+// cuando se sube index.html pero no server.js, o no se reinicia).
+const NEEDS_API = 8;
+async function comprobarServidor(){
+  let v=0;
+  try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
+  const ya=document.getElementById('server-warn');
+  if(v < NEEDS_API){
+    if(!ya){
+      const d=document.createElement('div');
+      d.id='server-warn';
+      d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:10050;background:#FBE9E7;color:#9A2A1B;border-bottom:1px solid #E8A599;padding:8px 14px;font-size:12px;text-align:center;font-family:DM Sans,sans-serif';
+      d.innerHTML='⚠ El servidor desplegado está desactualizado: vuelve a subir <b>server.js</b> y reinícialo. Algunas funciones pueden no guardarse bien. <button onclick="document.getElementById(\'server-warn\').remove()" style="margin-left:8px;background:none;border:1px solid #9A2A1B;color:#9A2A1B;border-radius:4px;padding:1px 7px;cursor:pointer">Ocultar</button>';
+      document.body.appendChild(d);
+    }
+  } else if(ya){ ya.remove(); }
+}
+
 setInterval(loadAll,30000);
 loadAll();
+comprobarServidor();
 
 // PWA: registrar service worker
 if('serviceWorker' in navigator){
