@@ -4,6 +4,10 @@ const cors = require('cors');
 const path = require('path');
 const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLineas');
 
+// Versión de la API: súbela cuando cambie server.js. La app compara con la que
+// necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
+const API_VERSION = 8;
+
 const app = express();
 app.use(cors());
 app.use(express.json({limit:'20mb'}));
@@ -510,6 +514,9 @@ app.patch('/api/pedidos/:id/comercial', async (req, res) => {
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
+
+// Salud / versión del servidor (para detectar despliegues desactualizados)
+app.get('/api/health', (req, res) => res.json({ ok: true, version: API_VERSION }));
 
 // PATCH asignar preparador a un pedido
 app.patch('/api/pedidos/:id/preparador', async (req, res) => {
