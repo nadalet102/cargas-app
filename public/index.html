@@ -2466,7 +2466,7 @@ function renderDetalleLineas(pid){
       </div>
       <span style="font-size:12px;font-weight:600;color:${pct===100?'#0F6E56':'var(--text2)'}">${nPrep}/${lineas.length}</span>
     </div>
-    ${pct<100?`<button onclick="abrirModoPrep('${pid}')" style="width:100%;margin-bottom:12px;background:#0F6E56;color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-family:'DM Sans',sans-serif"><i class="ti ti-player-play" style="font-size:18px"></i> Modo preparación</button>`:''}
+    <button onclick="abrirModoPrep('${pid}')" style="width:100%;margin-bottom:12px;background:${pct===100?'#0F6E56':'#0F6E56'};color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-family:'DM Sans',sans-serif"><i class="ti ti-checklist" style="font-size:18px"></i> ${pct===100?'Revisar preparación':'Modo preparación'}</button>
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:var(--surface2);border-bottom:1px solid var(--border)">
         <th style="width:40px;padding:8px"></th>
@@ -2603,69 +2603,66 @@ function renderModoPrep(){
   const m=modoPrep, ov=document.getElementById('modo-prep-ov'); if(!m||!ov) return;
   const p=pedidos.find(x=>String(x.id)===String(m.pid))||{};
   const total=m.lineas.length, nPrep=m.lineas.filter(l=>l.preparada).length;
-  const pct=Math.round(nPrep/total*100);
-  const cab=`<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border)">
-      <button onclick="cerrarModoPrep()" style="background:none;border:none;font-size:15px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:4px"><i class="ti ti-x" style="font-size:20px"></i> Salir</button>
-      <div style="text-align:center"><div style="font-size:13px;font-weight:700">${p.num||''}</div><div style="font-size:11px;color:var(--text2)">${p.cliente||''}</div></div>
-      <div style="font-size:14px;font-weight:700;color:#0F6E56">${nPrep}/${total}</div>
-    </div><div style="height:6px;background:var(--border)"><div style="height:100%;width:${pct}%;background:#0F6E56;transition:width .25s"></div></div>`;
+  const pct=total?Math.round(nPrep/total*100):0;
+  const cab=`<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <button onclick="cerrarModoPrep()" style="background:none;border:none;font-size:15px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:3px"><i class="ti ti-chevron-left" style="font-size:22px"></i> Salir</button>
+      <div style="text-align:center"><div style="font-size:14px;font-weight:700">${p.num||''}</div><div style="font-size:11px;color:var(--text2)">${p.cliente||''}${p.ubicacion?' · '+p.ubicacion:''}</div></div>
+      <div style="font-size:14px;font-weight:700;color:${pct===100?'#0F6E56':'var(--blue-d)'}">${nPrep}/${total}</div>
+    </div><div style="height:6px;background:var(--border);flex-shrink:0"><div style="height:100%;width:${pct}%;background:${pct===100?'#0F6E56':'#185FA5'};transition:width .25s"></div></div>`;
 
-  if(nPrep>=total){
-    let euro=0,bb=0,paq=0,caja=0,kg=0;
-    m.lineas.forEach(l=>{const e=_embInfo(l);kg+=Number(l.kgs)||0;if(!e.n)return;if(e.u.startsWith('PAQ'))paq+=e.n;else if(e.u.startsWith('CAJA'))caja+=e.n;else if(e.esBB)bb+=e.n;else euro+=e.n;});
-    const chip=(lbl,v)=>v?`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 18px;text-align:center;min-width:88px"><div style="font-size:24px;font-weight:800;color:var(--blue-d)">${v}</div><div style="font-size:11px;color:var(--text2)">${lbl}</div></div>`:'';
-    ov.innerHTML=cab+`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:24px;text-align:center">
-      <div style="width:84px;height:84px;border-radius:50%;background:#0F6E56;display:flex;align-items:center;justify-content:center"><i class="ti ti-check" style="color:#fff;font-size:48px"></i></div>
-      <div><div style="font-size:22px;font-weight:800">¡Pedido preparado!</div><div style="font-size:14px;color:var(--text2);margin-top:4px">${total} artículo${total>1?'s':''} listo${total>1?'s':''} para cargar</div></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">${chip('Palets europ.',euro)}${chip('Big bags',bb)}${chip('Paquetes',paq)}${chip('Cajas',caja)}${chip('Kg',kg?fmtN(kg):0)}</div>
-      <button onclick="cerrarModoPrep()" style="background:#0F6E56;color:#fff;border:none;border-radius:12px;padding:16px 44px;font-size:17px;font-weight:700;cursor:pointer">Hecho</button>
-    </div>`;
-    return;
-  }
-
-  const l=m.lineas[m.idx]||m.lineas[0];
-  const e=_embInfo(l);
-  const obs=l.observaciones?`<div style="background:#FAEEDA;border:1px solid #F0C77E;border-radius:10px;padding:12px 14px;font-size:15px;color:#7A4E00;font-weight:600;display:flex;align-items:center;gap:8px"><i class="ti ti-alert-triangle" style="font-size:20px;flex-shrink:0"></i> <span>${l.observaciones.replace(/</g,'&lt;')}</span></div>`:'';
-  const tag=e.txt?`<span style="display:inline-block;background:${e.esBB?'#EFEAFB':'#E6F1FB'};color:${e.esBB?'#5B3FA8':'#0C447C'};border-radius:20px;padding:6px 16px;font-size:15px;font-weight:700">${e.txt}</span>`:'';
-  ov.innerHTML=cab+`
-    <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;justify-content:center;padding:20px;gap:16px">
-      <div style="text-align:center;font-size:12px;color:var(--text2)">Artículo ${m.idx+1} de ${total}</div>
-      <div style="text-align:center">
-        <div style="font-family:monospace;font-size:18px;color:var(--blue-d);font-weight:700">${l.referencia||''}</div>
-        <div style="font-size:24px;font-weight:800;line-height:1.25;margin-top:6px">${(l.descripcion||'').replace(/</g,'&lt;')}</div>
+  const tarjetas=m.lineas.map(l=>{
+    const e=_embInfo(l);
+    const tag=e.txt?`<span style="background:${e.esBB?'#EFEAFB':'#E6F1FB'};color:${e.esBB?'#5B3FA8':'#0C447C'};border-radius:14px;padding:3px 12px;font-size:13px;font-weight:700;white-space:nowrap">${e.txt}</span>`:'';
+    const palVal=(String(l.embalaje||'').match(/\d+/)||[''])[0];
+    const unidad=e.u.startsWith('PAQ')?'paq.':(e.u.startsWith('CAJA')?'caja':(e.esBB?'big bag':'europ.'));
+    return `<div style="border:1px solid ${l.preparada?'#BFE3D4':'var(--border)'};background:${l.preparada?'#F1FAF6':'var(--surface)'};border-radius:12px;padding:12px;margin-bottom:10px">
+      <div style="display:flex;gap:12px;align-items:flex-start;cursor:pointer" onclick="prepToggle('${l.id}')">
+        <div style="width:30px;height:30px;border-radius:50%;border:2px solid ${l.preparada?'#0F6E56':'var(--border2)'};background:${l.preparada?'#0F6E56':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px">${l.preparada?'<i class="ti ti-check" style="color:#fff;font-size:18px"></i>':''}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:monospace;font-size:12px;color:var(--blue-d);font-weight:700">${l.referencia||''}</div>
+          <div style="font-size:16px;font-weight:700;line-height:1.25;${l.preparada?'text-decoration:line-through;color:var(--text2)':''}">${(l.descripcion||'').replace(/</g,'&lt;')}</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px">
+            <span style="font-size:20px;font-weight:800">${fmtN(l.cantidad)}<span style="font-size:12px;font-weight:600;color:var(--text2)"> uds</span></span>
+            ${tag}
+            ${l.kgs?`<span style="font-size:12px;color:var(--text3)">${fmtN(l.kgs)} kg</span>`:''}
+          </div>
+        </div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
-        <div style="font-size:54px;font-weight:800;line-height:1">${fmtN(l.cantidad)}<span style="font-size:18px;font-weight:600;color:var(--text2)"> uds</span></div>
-        ${tag}
-        ${l.kgs?`<div style="font-size:14px;color:var(--text3)">${fmtN(l.kgs)} kg</div>`:''}
-      </div>
-      ${obs}
-    </div>
-    <div style="padding:16px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:10px">
-      ${l.preparada
-        ? `<button onclick="prepMarcar(false)" style="width:100%;background:#FBE9E7;color:#9A2A1B;border:1px solid #E8A599;border-radius:12px;padding:16px;font-size:17px;font-weight:700;cursor:pointer">↺ Marcar como pendiente</button>`
-        : `<button onclick="prepMarcar(true)" style="width:100%;background:#0F6E56;color:#fff;border:none;border-radius:12px;padding:18px;font-size:19px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px"><i class="ti ti-check" style="font-size:24px"></i> Preparado</button>`}
-      <div style="display:flex;gap:10px">
-        <button onclick="prepNav(-1)" ${m.idx===0?'disabled':''} style="flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:14px;cursor:pointer;opacity:${m.idx===0?'.4':'1'}">‹ Anterior</button>
-        <button onclick="prepNav(1)" ${m.idx>=total-1?'disabled':''} style="flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:14px;cursor:pointer;opacity:${m.idx>=total-1?'.4':'1'}">Siguiente ›</button>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
+        <div style="display:flex;align-items:center;gap:5px">
+          <input type="number" min="0" value="${palVal}" onclick="event.stopPropagation()" onchange="prepPalets('${l.id}',this.value)" style="width:48px;font-size:14px;padding:5px;text-align:center;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text)">
+          <span style="font-size:11px;color:var(--text2);white-space:nowrap">${unidad}</span>
+        </div>
+        <input type="text" value="${(l.observaciones||'').replace(/"/g,'&quot;')}" placeholder="✎ Nota / cambio…" onclick="event.stopPropagation()" onchange="prepObs('${l.id}',this.value)" style="flex:1;min-width:0;font-size:13px;padding:7px 9px;border:1px solid ${l.observaciones?'#F0C77E':'var(--border2)'};background:${l.observaciones?'#FFFBF2':'var(--surface)'};border-radius:6px;color:var(--text)">
       </div>
     </div>`;
+  }).join('');
+
+  const footer = nPrep>=total
+    ? `<div style="flex-shrink:0;padding:13px 16px;border-top:1px solid var(--border);background:#F1FAF6;display:flex;align-items:center;justify-content:space-between;gap:10px">
+         <div style="font-size:14px;font-weight:700;color:#0F6E56"><i class="ti ti-circle-check"></i> Todo preparado (${total})</div>
+         <button onclick="cerrarModoPrep()" style="background:#0F6E56;color:#fff;border:none;border-radius:10px;padding:11px 22px;font-size:15px;font-weight:700;cursor:pointer">Hecho</button>
+       </div>`
+    : `<div style="flex-shrink:0;padding:11px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px">
+         <span style="font-size:13px;color:var(--text2)">Faltan ${total-nPrep} de ${total}</span>
+         <button onclick="cerrarModoPrep()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 20px;font-size:14px;cursor:pointer">Cerrar</button>
+       </div>`;
+
+  ov.innerHTML=cab+`<div style="flex:1;overflow-y:auto;padding:14px 14px 4px">${tarjetas}</div>`+footer;
 }
-async function prepMarcar(valor){
+async function prepToggle(lid){
   const m=modoPrep; if(!m) return;
-  const l=m.lineas[m.idx]; if(!l) return;
-  await toggleLineaPrep(m.pid, l.id, valor);
-  if(valor){
-    const next=m.lineas.findIndex((x,i)=>i>m.idx && !x.preparada);
-    if(next>=0) m.idx=next;
-    else { const any=m.lineas.findIndex(x=>!x.preparada); if(any>=0) m.idx=any; }
-  }
+  const l=m.lineas.find(x=>String(x.id)===String(lid)); if(!l) return;
+  await toggleLineaPrep(m.pid, lid, !l.preparada);
   renderModoPrep();
 }
-function prepNav(d){
+async function prepObs(lid,val){
   const m=modoPrep; if(!m) return;
-  m.idx=Math.max(0,Math.min(m.lineas.length-1,m.idx+d));
-  renderModoPrep();
+  await guardarObsLinea(m.pid, lid, val);   // guarda la nota y actualiza la caché
+}
+async function prepPalets(lid,val){
+  const m=modoPrep; if(!m) return;
+  await guardarPalets(m.pid, lid, val);     // no re-render: conserva el foco del input
 }
 function cerrarModoPrep(){
   const ov=document.getElementById('modo-prep-ov'); if(ov) ov.remove();
