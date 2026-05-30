@@ -255,8 +255,12 @@ app.put('/api/pedidos/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/pedidos/:id', async (req, res) => {
-  try { await pool.query('DELETE FROM pedidos WHERE id=$1',[req.params.id]); res.json({ok:true}); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+  try {
+    // Borrar primero las líneas (por si la FK en producción no tiene ON DELETE CASCADE)
+    await pool.query('DELETE FROM pedido_lineas WHERE pedido_id=$1',[req.params.id]);
+    await pool.query('DELETE FROM pedidos WHERE id=$1',[req.params.id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.patch('/api/pedidos/:id/carga', async (req, res) => {
   const { carga_id } = req.body;
