@@ -39,6 +39,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 .tab{padding:12px 14px;font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;gap:5px;transition:all .12s}
 .tab:hover{color:var(--text)}
 .tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+.csub{padding:9px 14px;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.csub.active{color:var(--blue);border-bottom-color:var(--blue)}
 .view{display:none}
 .view.active{display:block}
 .container{max-width:1200px;margin:0 auto;padding:16px 20px}
@@ -289,17 +291,17 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 </div>
 
 <div class="tabs-bar">
-  <div class="tab active" id="tab-plan" onclick="switchTab('plan')"><i class="ti ti-layout-columns"></i> Planificación</div>
-  <div class="tab" id="tab-cal" onclick="switchTab('cal')"><i class="ti ti-calendar"></i> Calendario</div>
-  <div class="tab" id="tab-trans" onclick="switchTab('trans')"><i class="ti ti-truck"></i> Transportistas</div>
-  <div class="tab" id="tab-cats" onclick="switchTab('cats')"><i class="ti ti-tag"></i> Categorías</div>
-  <div class="tab" id="tab-prep" onclick="switchTab('prep')"><i class="ti ti-clipboard-check"></i> Preparación</div>
-  <div class="tab" id="tab-preparados" onclick="switchTab('preparados')"><i class="ti ti-package"></i> Preparados</div>
-  <div class="tab" id="tab-compras" onclick="switchTab('compras')"><i class="ti ti-shopping-cart"></i> Compras <span id="compras-badge" style="background:#FBE3E0;color:#9A2A1B;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;margin-left:3px;display:none">0</span></div>
-  <div class="tab" id="tab-bc" onclick="switchTab('bc')"><i class="ti ti-building-store"></i> Bandeja BC</div>
-  <div class="tab" id="tab-hist" onclick="switchTab('hist')"><i class="ti ti-history"></i> Historial <span id="hist-badge" style="background:#EAF3DE;color:#27500A;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;margin-left:3px">0</span></div>
-  <div class="tab" id="tab-dash" onclick="switchTab('dash')"><i class="ti ti-chart-bar"></i> Resumen</div>
+  <div class="tab active" id="grp-reparto" onclick="switchGroup('reparto')"><i class="ti ti-layout-columns"></i> Reparto</div>
+  <div class="tab" id="grp-preparacion" onclick="switchGroup('preparacion')"><i class="ti ti-clipboard-check"></i> Preparación</div>
+  <div class="tab" id="grp-compras" onclick="switchGroup('compras')"><i class="ti ti-shopping-cart"></i> Compras <span id="compras-badge" style="background:#FBE3E0;color:#9A2A1B;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;margin-left:3px;display:none">0</span></div>
+  <div class="tab" id="grp-bc" onclick="switchGroup('bc')"><i class="ti ti-building-store"></i> Bandeja BC</div>
+  <div class="tab" id="grp-resumen" onclick="switchGroup('resumen')"><i class="ti ti-chart-bar"></i> Resumen</div>
+  <div class="tab" id="grp-ajustes" onclick="switchGroup('ajustes')"><i class="ti ti-settings"></i> Ajustes</div>
 </div>
+<div id="subtab-bar" style="display:flex;gap:4px;padding:0 14px;border-bottom:1px solid var(--border);overflow-x:auto;background:var(--surface)"></div>
+
+<!-- pestañas internas (id antiguos) se conservan para compatibilidad -->
+<div id="tab-plan" style="display:none"></div><div id="tab-cal" style="display:none"></div><div id="tab-trans" style="display:none"></div><div id="tab-cats" style="display:none"></div><div id="tab-prep" style="display:none"></div><div id="tab-preparados" style="display:none"></div><div id="tab-compras" style="display:none"></div><div id="tab-bc" style="display:none"></div><div id="tab-hist" style="display:none"><span id="hist-badge">0</span></div><div id="tab-dash" style="display:none"></div>
 
 <!-- PLAN -->
 <div class="view active" id="view-plan">
@@ -484,14 +486,24 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 <!-- COMPRAS -->
 <div class="view" id="view-compras">
 <div class="container">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-    <div>
-      <div style="font-size:16px;font-weight:500">Compras — faltas</div>
-      <div style="font-size:12px;color:var(--text2);margin-top:2px">Material que el preparador ha marcado como faltante, con el pedido y la cantidad que falta</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div style="font-size:16px;font-weight:500">Compras</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button onclick="abrirFormCompra()" class="btn-primary" style="font-size:12px;padding:7px 12px;display:flex;align-items:center;gap:5px"><i class="ti ti-plus"></i> Nuevo pedido de compra</button>
+      <button onclick="renderCompras()" class="btn-sec" style="font-size:12px;padding:7px 11px;display:flex;align-items:center;gap:5px"><i class="ti ti-refresh"></i></button>
     </div>
-    <button onclick="renderCompras()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px"><i class="ti ti-refresh"></i> Actualizar</button>
   </div>
-  <div id="compras-list"></div>
+  <div id="compras-subtabs" style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px;overflow-x:auto">
+    <div class="csub active" data-sub="porpedir" onclick="setComprasSub('porpedir')">Por pedir <span id="csub-badge" style="background:#FBE3E0;color:#9A2A1B;padding:0 6px;border-radius:8px;font-size:10px;margin-left:2px;display:none">0</span></div>
+    <div class="csub" data-sub="pedidos" onclick="setComprasSub('pedidos')">Pedidos</div>
+    <div class="csub" data-sub="calendario" onclick="setComprasSub('calendario')">Calendario</div>
+    <div class="csub" data-sub="historial" onclick="setComprasSub('historial')">Historial</div>
+  </div>
+  <div id="compras-filtros" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <input id="compras-buscar" type="text" placeholder="Buscar material o proveedor…" oninput="renderComprasSub()" style="flex:1;min-width:160px;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text)">
+    <input id="compras-prov" type="text" placeholder="Proveedor" oninput="renderComprasSub()" style="width:150px;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text)">
+  </div>
+  <div id="compras-content"></div>
 </div>
 </div>
 
@@ -668,21 +680,51 @@ function updateCatDropdowns(){
 }
 function renderAll(){renderBCList();renderCargas();updateStats();updateCatDropdowns();}
 
-function switchTab(t){
-  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','compras'].forEach(id=>{
-    document.getElementById('tab-'+id).classList.toggle('active',id===t);
-    document.getElementById('view-'+id).classList.toggle('active',id===t);
-  });
+const NAV_GROUPS = {
+  reparto:     { subs:[['plan','Planificación'],['cal','Calendario'],['hist','Historial']] },
+  preparacion: { subs:[['prep','Por preparar'],['preparados','Preparados']] },
+  compras:     { subs:[['compras','']] },
+  bc:          { subs:[['bc','']] },
+  resumen:     { subs:[['dash','']] },
+  ajustes:     { subs:[['trans','Transportistas'],['cats','Categorías']] }
+};
+const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',compras:'compras',bc:'bc',dash:'resumen',trans:'ajustes',cats:'ajustes'};
+let _activeView='plan';
+function _runRenderer(t){
   if(t==='cal')renderCal();
-  if(t==='dash')renderDash();
-  if(t==='trans')renderTrans();
-  if(t==='cats')renderCats();
-  if(t==='bc'){loadBCConfig().then(()=>{loadBCPedidos();renderClientesExcluidos();});}
-  if(t==='hist')renderHist();
-  if(t==='prep'){fillPreparadorFilters();renderPrepList();}
-  if(t==='preparados'){fillPreparadorFilters();renderPreparadosList();}
-  if(t==='compras')renderCompras();
+  else if(t==='dash')renderDash();
+  else if(t==='trans')renderTrans();
+  else if(t==='cats')renderCats();
+  else if(t==='bc'){loadBCConfig().then(()=>{loadBCPedidos();renderClientesExcluidos();});}
+  else if(t==='hist')renderHist();
+  else if(t==='prep'){fillPreparadorFilters();renderPrepList();}
+  else if(t==='preparados'){fillPreparadorFilters();renderPreparadosList();}
+  else if(t==='compras')renderCompras();
 }
+function renderSubtabBar(g, activeView){
+  const bar=document.getElementById('subtab-bar'); if(!bar) return;
+  const subs=(NAV_GROUPS[g]||{}).subs||[];
+  if(subs.length<=1){ bar.style.display='none'; bar.innerHTML=''; return; }
+  bar.style.display='flex';
+  bar.innerHTML=subs.map(([v,lbl])=>`<div class="csub ${v===activeView?'active':''}" onclick="switchView('${v}')">${lbl}</div>`).join('');
+}
+function switchView(t){
+  _activeView=t;
+  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','compras'].forEach(id=>{
+    const v=document.getElementById('view-'+id); if(v) v.classList.toggle('active',id===t);
+  });
+  const g=VIEW_GROUP[t]||'reparto';
+  document.querySelectorAll('.tabs-bar .tab').forEach(e=>e.classList.remove('active'));
+  document.getElementById('grp-'+g)?.classList.add('active');
+  renderSubtabBar(g, t);
+  _runRenderer(t);
+}
+function switchGroup(g){
+  const subs=(NAV_GROUPS[g]||{}).subs||[];
+  switchView(subs[0]?subs[0][0]:'plan');
+}
+// compatibilidad con llamadas antiguas
+function switchTab(t){ switchView(t); }
 
 function onSearch(v){searchQ=v.toLowerCase();renderBCList();}
 
@@ -2721,32 +2763,243 @@ function actualizarBadgeCompras(n){
   const b=document.getElementById('compras-badge'); if(!b) return;
   b.textContent=n; b.style.display=n>0?'inline-block':'none';
 }
+// ── COMPRAS: planner (subpestañas, formulario, calendario) ───────────────────
+let comprasData=[], comprasFaltas=[], comprasSub='porpedir', ccalMode='mes', ccalRef=new Date();
+const _inp='width:100%;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:3px;box-sizing:border-box';
+let _compraLineasForm=[];
+function _h(v){ return (v==null?'':String(v)).replace(/"/g,'&quot;'); }
+function _hoyISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _fechaISO(f){ return (''+(f||'')).substring(0,10); }
+function _esHoyC(f){ return _fechaISO(f)===_hoyISO(); }
+function _esPasadoC(f){ return f && _fechaISO(f)<_hoyISO(); }
+function _isoOf(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _inicioSemana(d){ const x=new Date(d); const g=(x.getDay()+6)%7; x.setDate(x.getDate()-g); x.setHours(0,0,0,0); return x; }
+
 async function renderCompras(){
-  const el=document.getElementById('compras-list'); if(!el) return;
+  const el=document.getElementById('compras-content'); if(!el) return;
   el.innerHTML='<div style="padding:14px;color:var(--text2);font-size:12px">Cargando…</div>';
-  let faltas;
-  try{ faltas=await api('GET','/faltas'); }
-  catch(e){ el.innerHTML='<div class="empty-state"><i class="ti ti-alert-circle"></i>No se pudieron cargar las faltas</div>'; return; }
-  actualizarBadgeCompras(faltas.length);
-  if(!faltas.length){ el.innerHTML='<div class="empty-state"><i class="ti ti-circle-check"></i>No hay faltas pendientes</div>'; return; }
-  const porPedido={};
-  faltas.forEach(f=>{ (porPedido[f.pedido_id]=porPedido[f.pedido_id]||{num:f.pedido_num,cliente:f.cliente,fecha:f.fecha,comercial:f.comercial,items:[]}).items.push(f); });
-  el.innerHTML=`<div style="background:#FFF7F6;border:1px solid #F0C2BB;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#9A2A1B;font-weight:600"><i class="ti ti-alert-triangle"></i> ${faltas.length} falta${faltas.length>1?'s':''} pendiente${faltas.length>1?'s':''} de compra</div>`+
-  Object.values(porPedido).map(p=>`
-    <div class="list-card" style="margin-bottom:12px">
-      <div class="lc-hdr"><span><b style="font-family:monospace;color:var(--blue-d)">${p.num||'—'}</b> · ${p.cliente||''}</span><span style="font-size:11px;color:var(--text2)">${p.fecha?fmtDate(p.fecha):''}${p.comercial?' · '+p.comercial:''}</span></div>
-      ${p.items.map(f=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)">
-        <div style="flex:1;min-width:0">
-          <div style="font-family:monospace;font-size:12px;color:var(--blue-d);font-weight:600">${f.referencia||''}</div>
-          <div style="font-size:13px">${(f.descripcion||'').replace(/</g,'&lt;')}</div>
-        </div>
-        <div style="text-align:center;background:#FBE3E0;color:#9A2A1B;border-radius:8px;padding:5px 12px;flex-shrink:0">
-          <div style="font-size:18px;font-weight:800;line-height:1">${fmtN(f.falta)}</div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:.04em">faltan</div>
-        </div>
-        <button onclick="resolverFalta('${f.linea_id}')" style="background:none;border:1px solid #BFE3D4;color:#0F6E56;border-radius:6px;padding:7px 11px;font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0" title="Marcar como comprado / resuelto"><i class="ti ti-check"></i> Resuelto</button>
-      </div>`).join('')}
-    </div>`).join('');
+  try{ comprasData=await api('GET','/compras'); comprasFaltas=await api('GET','/faltas'); }
+  catch(e){ el.innerHTML='<div class="empty-state"><i class="ti ti-alert-circle"></i>No se pudo cargar</div>'; return; }
+  const usadas=new Set();
+  comprasData.forEach(c=>(c.lineas||[]).forEach(l=>{ if(l.falta_linea_id) usadas.add(String(l.falta_linea_id)); }));
+  comprasFaltas=comprasFaltas.filter(f=>!usadas.has(String(f.linea_id)));
+  const nporpedir=comprasFaltas.length + comprasData.filter(c=>c.estado==='por_pedir').length;
+  const b=document.getElementById('csub-badge'); if(b){ b.textContent=nporpedir; b.style.display=nporpedir>0?'inline-block':'none'; }
+  actualizarBadgeCompras(nporpedir);
+  renderComprasSub();
+}
+function setComprasSub(s){
+  comprasSub=s;
+  document.querySelectorAll('#compras-subtabs .csub').forEach(e=>e.classList.toggle('active', e.dataset.sub===s));
+  const f=document.getElementById('compras-filtros'); if(f) f.style.display=(s==='calendario')?'none':'flex';
+  renderComprasSub();
+}
+function renderComprasSub(){
+  const el=document.getElementById('compras-content'); if(!el) return;
+  if(comprasSub==='porpedir') return renderComprasPorPedir(el);
+  if(comprasSub==='pedidos') return renderComprasPedidos(el);
+  if(comprasSub==='calendario') return renderComprasCalendario(el);
+  if(comprasSub==='historial') return renderComprasHistorial(el);
+}
+function _comprasFiltradas(lista){
+  const q=(document.getElementById('compras-buscar')?.value||'').toLowerCase();
+  const prov=(document.getElementById('compras-prov')?.value||'').toLowerCase();
+  return lista.filter(c=>{
+    if(prov && !(c.proveedor||'').toLowerCase().includes(prov)) return false;
+    if(q){ const txt=((c.proveedor||'')+' '+(c.pedidos_rel||'')+' '+(c.notas||'')+' '+(c.lineas||[]).map(l=>(l.descripcion||'')+' '+(l.referencia||'')).join(' ')).toLowerCase(); if(!txt.includes(q)) return false; }
+    return true;
+  });
+}
+function _telBtn(c){
+  if(!c.transportista_tel) return '';
+  return `<a href="tel:${(''+c.transportista_tel).replace(/[^0-9+]/g,'')}" onclick="event.stopPropagation()" style="background:#E6F1FB;color:#0C447C;border-radius:6px;padding:6px 11px;font-size:12px;text-decoration:none;white-space:nowrap"><i class="ti ti-phone"></i> ${(c.transportista||'Llamar').replace(/</g,'&lt;')}</a>`;
+}
+function _compraCard(c, acciones){
+  const lineas=(c.lineas||[]).map(l=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:3px 0"><span>${(l.descripcion||l.referencia||'—').replace(/</g,'&lt;')}</span><span style="color:var(--text2);white-space:nowrap">${fmtN(l.cantidad)} ${(l.unidad||'').replace(/</g,'&lt;')}</span></div>`).join('');
+  const eta=c.fecha_prevista?fmtDate(c.fecha_prevista):'sin fecha';
+  const hoy=_esHoyC(c.fecha_prevista), tarde=c.estado==='pedido'&&_esPasadoC(c.fecha_prevista);
+  return `<div class="list-card" style="margin-bottom:12px;${hoy?'border-color:#0F6E56;':tarde?'border-color:#E8A599;':''}">
+    <div class="lc-hdr"><span><b>${(c.proveedor||'Sin proveedor').replace(/</g,'&lt;')}</b>${c.tolva?` · <span style="color:var(--text2)">tolva ${(''+c.tolva).replace(/</g,'&lt;')}</span>`:''}</span>
+      <span style="font-size:11px;${hoy?'color:#0F6E56;font-weight:700':tarde?'color:#9A2A1B;font-weight:700':'color:var(--text2)'}">${hoy?'LLEGA HOY':tarde?'RETRASADO · '+eta:eta}</span></div>
+    <div style="padding:8px 16px">${lineas||'<span style="font-size:12px;color:var(--text3)">Sin materiales</span>'}</div>
+    ${c.pedidos_rel?`<div style="padding:0 16px 6px;font-size:11px;color:var(--text2)"><i class="ti ti-link"></i> Para pedido(s): ${(''+c.pedidos_rel).replace(/</g,'&lt;')}</div>`:''}
+    ${c.notas?`<div style="padding:0 16px 6px;font-size:12px;color:var(--text2)">${c.notas.replace(/</g,'&lt;')}</div>`:''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px;border-top:1px solid var(--border)">${_telBtn(c)}${acciones}</div></div>`;
+}
+function renderComprasPorPedir(el){
+  let html='';
+  const fq=(document.getElementById('compras-buscar')?.value||'').toLowerCase();
+  const faltas=comprasFaltas.filter(f=>!fq || ((f.descripcion||'')+' '+(f.referencia||'')+' '+(f.pedido_num||'')).toLowerCase().includes(fq));
+  if(faltas.length){
+    html+=`<div style="font-size:12px;font-weight:600;color:#9A2A1B;margin:4px 0 8px"><i class="ti ti-alert-triangle"></i> Faltas marcadas en preparación</div>`;
+    html+=faltas.map(f=>`<div class="list-card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:10px;padding:10px 16px">
+      <div style="flex:1;min-width:0"><div style="font-family:monospace;font-size:11px;color:var(--blue-d)">${(f.referencia||'').replace(/</g,'&lt;')}</div>
+        <div style="font-size:13px">${(f.descripcion||'').replace(/</g,'&lt;')}</div>
+        <div style="font-size:11px;color:var(--text2)">Pedido ${(f.pedido_num||'').replace?(''+f.pedido_num).replace(/</g,'&lt;'):f.pedido_num} · ${(f.cliente||'').replace(/</g,'&lt;')}</div></div>
+      <div style="text-align:center;background:#FBE3E0;color:#9A2A1B;border-radius:8px;padding:4px 10px"><div style="font-size:16px;font-weight:800;line-height:1">${fmtN(f.falta)}</div><div style="font-size:9px">faltan</div></div>
+      <button class="btn-primary" onclick="comprarFalta('${f.linea_id}')" style="font-size:11px;padding:7px 11px;white-space:nowrap"><i class="ti ti-shopping-cart-plus"></i> Comprar</button>
+    </div></div>`).join('');
+  }
+  const cps=_comprasFiltradas(comprasData.filter(c=>c.estado==='por_pedir'));
+  if(cps.length){
+    html+=`<div style="font-size:12px;font-weight:600;color:var(--text2);margin:14px 0 8px">Pedidos de compra sin enviar / sin fecha</div>`;
+    html+=cps.map(c=>_compraCard(c,`<button class="btn-sec" onclick="abrirFormCompra(${c.id})" style="font-size:11px;padding:6px 10px"><i class="ti ti-edit"></i> Editar</button>
+       <button class="btn-primary" onclick="cambiarEstadoCompra(${c.id},'pedido')" style="font-size:11px;padding:6px 10px"><i class="ti ti-send"></i> Marcar pedido</button>
+       <button class="btn-sec" onclick="borrarCompra(${c.id})" style="font-size:11px;padding:6px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button>`)).join('');
+  }
+  el.innerHTML = html || '<div class="empty-state"><i class="ti ti-circle-check"></i>Nada por pedir</div>';
+}
+function renderComprasPedidos(el){
+  const cps=_comprasFiltradas(comprasData.filter(c=>c.estado==='pedido')).sort((a,b)=>(''+(a.fecha_prevista||'9999')).localeCompare(''+(b.fecha_prevista||'9999')));
+  if(!cps.length){ el.innerHTML='<div class="empty-state"><i class="ti ti-truck"></i>No hay pedidos de compra en camino</div>'; return; }
+  el.innerHTML=cps.map(c=>_compraCard(c,`<button class="btn-sec" onclick="abrirFormCompra(${c.id})" style="font-size:11px;padding:6px 10px"><i class="ti ti-edit"></i> Editar</button>
+     <button class="btn-primary" onclick="cambiarEstadoCompra(${c.id},'recibido')" style="font-size:11px;padding:6px 10px;background:#0F6E56"><i class="ti ti-package-import"></i> Recibido</button>
+     <button class="btn-sec" onclick="cambiarEstadoCompra(${c.id},'por_pedir')" style="font-size:11px;padding:6px 10px" title="Volver a por pedir">↺</button>`)).join('');
+}
+function renderComprasHistorial(el){
+  const cps=_comprasFiltradas(comprasData.filter(c=>c.estado==='recibido')).sort((a,b)=>(''+(b.fecha_recibido||'')).localeCompare(''+(a.fecha_recibido||'')));
+  const head=`<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn-sec" onclick="exportarComprasExcel()" style="font-size:11px;padding:6px 11px"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button></div>`;
+  if(!cps.length){ el.innerHTML=head+'<div class="empty-state"><i class="ti ti-history"></i>Sin compras recibidas</div>'; return; }
+  el.innerHTML=head+cps.map(c=>{
+    const lineas=(c.lineas||[]).map(l=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0"><span>${(l.descripcion||l.referencia||'').replace(/</g,'&lt;')}</span><span style="color:var(--text2)">${fmtN(l.cantidad)} ${(l.unidad||'').replace(/</g,'&lt;')}</span></div>`).join('');
+    return `<div class="list-card" style="margin-bottom:10px;opacity:.92"><div class="lc-hdr"><span><b>${(c.proveedor||'—').replace(/</g,'&lt;')}</b></span><span style="font-size:11px;color:#0F6E56"><i class="ti ti-check"></i> Recibido ${c.fecha_recibido?fmtDate(c.fecha_recibido):''}</span></div>
+      <div style="padding:8px 16px">${lineas}</div>
+      <div style="padding:6px 16px;border-top:1px solid var(--border)"><button class="btn-sec" onclick="cambiarEstadoCompra(${c.id},'pedido')" style="font-size:11px;padding:5px 10px">↺ Reabrir</button> <button class="btn-sec" onclick="borrarCompra(${c.id})" style="font-size:11px;padding:5px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button></div></div>`;
+  }).join('');
+}
+// ── Calendario de compras ──
+function renderComprasCalendario(el){
+  const cps=comprasData.filter(c=>c.fecha_prevista && c.estado!=='recibido');
+  const porDia={}; cps.forEach(c=>{ const k=_fechaISO(c.fecha_prevista); (porDia[k]=porDia[k]||[]).push(c); });
+  const tab=(m,t)=>`<button onclick="setCalMode('${m}')" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:7px;cursor:pointer;${ccalMode===m?'background:var(--blue);color:#fff;border-color:var(--blue)':'background:var(--surface);color:var(--text)'}">${t}</button>`;
+  const nav=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap">
+     <div style="display:flex;gap:4px">${tab('mes','Mes')}${tab('semana','Semana')}${tab('dia','Día')}</div>
+     <div style="display:flex;align-items:center;gap:6px">
+       <button class="btn-sec" onclick="calNav(-1)" style="font-size:14px;padding:4px 11px">‹</button>
+       <span style="font-size:13px;font-weight:600;min-width:130px;text-align:center">${_calTitulo()}</span>
+       <button class="btn-sec" onclick="calNav(1)" style="font-size:14px;padding:4px 11px">›</button>
+       <button class="btn-sec" onclick="calHoy()" style="font-size:11px;padding:5px 10px">Hoy</button></div></div>`;
+  let body = ccalMode==='mes'?_calMes(porDia):ccalMode==='semana'?_calSemana(porDia):_calDia(porDia);
+  el.innerHTML=nav+body;
+}
+function setCalMode(m){ ccalMode=m; renderComprasSub(); }
+function calNav(d){ if(ccalMode==='mes') ccalRef.setMonth(ccalRef.getMonth()+d); else if(ccalMode==='semana') ccalRef.setDate(ccalRef.getDate()+7*d); else ccalRef.setDate(ccalRef.getDate()+d); ccalRef=new Date(ccalRef); renderComprasSub(); }
+function calHoy(){ ccalRef=new Date(); renderComprasSub(); }
+function _calTitulo(){
+  if(ccalMode==='mes') return MESES[ccalRef.getMonth()]+' '+ccalRef.getFullYear();
+  if(ccalMode==='dia') return ccalRef.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+  const ini=_inicioSemana(ccalRef); const fin=new Date(ini); fin.setDate(ini.getDate()+6);
+  return ini.getDate()+' '+MESES[ini.getMonth()].slice(0,3)+' – '+fin.getDate()+' '+MESES[fin.getMonth()].slice(0,3);
+}
+function _chipDia(items){ return items.map(c=>{ const t=(c.lineas||[]).map(l=>l.descripcion||l.referencia).filter(Boolean).join(', ')||'compra';
+  return `<div onclick="abrirFormCompra(${c.id})" style="background:${c.estado==='pedido'?'#E6F1FB':'#FFF3E6'};color:${c.estado==='pedido'?'#0C447C':'#7A4E00'};border-radius:5px;padding:2px 5px;font-size:10px;margin-bottom:2px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${((c.proveedor||'—')+': '+t).replace(/</g,'&lt;')}</div>`; }).join(''); }
+function _calMes(porDia){
+  const y=ccalRef.getFullYear(), m=ccalRef.getMonth(); const ini=_inicioSemana(new Date(y,m,1)); const hoy=_hoyISO();
+  let dias='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
+  ['L','M','X','J','V','S','D'].forEach(d=>dias+=`<div style="text-align:center;font-size:10px;color:var(--text2);font-weight:600">${d}</div>`);
+  const cur=new Date(ini);
+  for(let i=0;i<42;i++){ const iso=_isoOf(cur); const items=porDia[iso]||[]; const otroMes=cur.getMonth()!==m; const esHoy=iso===hoy;
+    dias+=`<div style="min-height:62px;border:1px solid ${esHoy?'#0F6E56':'var(--border)'};border-radius:6px;padding:3px;background:${esHoy?'#F1FAF6':otroMes?'var(--surface2)':'var(--surface)'};opacity:${otroMes?'.45':'1'}"><div style="font-size:10px;color:${esHoy?'#0F6E56':'var(--text2)'};font-weight:${esHoy?'700':'400'};margin-bottom:2px">${cur.getDate()}</div>${_chipDia(items)}</div>`;
+    cur.setDate(cur.getDate()+1); }
+  return dias+'</div>';
+}
+function _calItemRow(c){ const t=(c.lineas||[]).map(l=>(l.descripcion||l.referencia||'')+' ('+fmtN(l.cantidad)+' '+(l.unidad||'')+')').join(', ');
+  return `<div onclick="abrirFormCompra(${c.id})" style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer"><span style="font-size:13px"><b>${(c.proveedor||'—').replace(/</g,'&lt;')}</b> — ${t.replace(/</g,'&lt;')}</span><span style="font-size:11px;color:var(--text2);white-space:nowrap">${c.estado==='pedido'?'en camino':'por pedir'}</span></div>`; }
+function _calSemana(porDia){ const ini=_inicioSemana(ccalRef); const hoy=_hoyISO(); let html='';
+  for(let i=0;i<7;i++){ const d=new Date(ini); d.setDate(ini.getDate()+i); const iso=_isoOf(d); const items=porDia[iso]||[]; const esHoy=iso===hoy;
+    html+=`<div class="list-card" style="margin-bottom:6px;${esHoy?'border-color:#0F6E56':''}"><div style="padding:8px 14px;font-size:12px;font-weight:600;${esHoy?'color:#0F6E56':''}">${d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'short'})}${esHoy?' · HOY':''}</div><div style="padding:0 14px 10px">${items.length?items.map(_calItemRow).join(''):'<span style="font-size:12px;color:var(--text3)">—</span>'}</div></div>`; }
+  return html;
+}
+function _calDia(porDia){ const iso=_isoOf(ccalRef); const items=porDia[iso]||[];
+  return `<div class="list-card"><div style="padding:0 14px">${items.length?items.map(_calItemRow).join(''):'<div class="empty-state" style="padding:24px"><i class="ti ti-calendar-off"></i>Nada llega este día</div>'}</div></div>`; }
+// ── Formulario de pedido de compra ──
+function comprarFalta(lid){
+  const f=comprasFaltas.find(x=>String(x.linea_id)===String(lid)); if(!f) return;
+  abrirFormCompra(null,{ pedidos_rel:f.pedido_num||'', lineas:[{referencia:f.referencia||'',descripcion:f.descripcion||'',cantidad:f.falta||0,unidad:'',falta_linea_id:f.linea_id}] });
+}
+function abrirFormCompra(id, prefill){
+  let c = id ? comprasData.find(x=>String(x.id)===String(id)) : null;
+  c = c || prefill || {};
+  _compraLineasForm = (c.lineas&&c.lineas.length)?c.lineas.map(l=>({...l})):[{referencia:'',descripcion:'',cantidad:'',unidad:'',falta_linea_id:null}];
+  const ov=document.createElement('div'); ov.id='compra-form-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10050;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:620px;max-height:92vh;border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">${id?'Editar pedido de compra':'Nuevo pedido de compra'}</b><button onclick="document.getElementById('compra-form-ov').remove()" style="background:none;border:none;font-size:24px;color:var(--text2);cursor:pointer">×</button></div>
+    <div style="flex:1;overflow-y:auto;padding:16px"><input type="hidden" id="cf-id" value="${id||''}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <label style="font-size:12px;color:var(--text2)">Proveedor<input id="cf-prov" value="${_h(c.proveedor)}" style="${_inp}"></label>
+        <label style="font-size:12px;color:var(--text2)">Fecha prevista de llegada<input id="cf-fecha" type="date" value="${_fechaISO(c.fecha_prevista)}" style="${_inp}"></label>
+        <label style="font-size:12px;color:var(--text2)">Tolva<input id="cf-tolva" value="${_h(c.tolva)}" style="${_inp}"></label>
+        <label style="font-size:12px;color:var(--text2)">Transportista (compra)<input id="cf-trans" value="${_h(c.transportista)}" style="${_inp}"></label>
+        <label style="font-size:12px;color:var(--text2)">Teléfono transportista<input id="cf-tel" value="${_h(c.transportista_tel)}" style="${_inp}"></label>
+        <label style="font-size:12px;color:var(--text2);grid-column:1 / -1">Para pedido(s) de venta <span style="color:var(--text3)">— marca los que necesitan el material (vacío = compra para stock)</span>
+          <div id="cf-pedrel-box" style="margin-top:4px;max-height:140px;overflow-y:auto;border:1px solid var(--border2);border-radius:8px;padding:6px;background:var(--surface)"></div>
+        </label>
+      </div>
+      <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Notas<textarea id="cf-notas" rows="2" style="${_inp}">${_h(c.notas)}</textarea></label>
+      <div style="margin-top:14px;font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:center">Materiales <button class="btn-sec" onclick="addLineaCompra()" style="font-size:11px;padding:5px 10px"><i class="ti ti-plus"></i> Añadir</button></div>
+      <div id="cf-lineas" style="margin-top:8px"></div>
+    </div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end"><button class="btn-sec" onclick="document.getElementById('compra-form-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button><button class="btn-primary" onclick="guardarCompra()" style="font-size:13px;padding:10px 18px">Guardar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  renderLineasCompraForm();
+  renderPedrelBox(c.pedidos_rel);
+}
+function _pedidosPendientes(){
+  const entregadas=new Set((cargas||[]).filter(c=>c.status==='entregada').map(c=>String(c.id)));
+  return (pedidos||[]).filter(p=>!(p.carga_id && entregadas.has(String(p.carga_id))))
+    .slice().sort((a,b)=>(''+(a.num||'')).localeCompare(''+(b.num||''),'es',{numeric:true}));
+}
+function renderPedrelBox(selStr){
+  const box=document.getElementById('cf-pedrel-box'); if(!box) return;
+  const sel=new Set((selStr||'').split(',').map(s=>s.trim()).filter(Boolean));
+  const peds=_pedidosPendientes();
+  if(!peds.length){ box.innerHTML='<div style="font-size:12px;color:var(--text3);padding:4px">No hay pedidos pendientes</div>'; return; }
+  box.innerHTML=peds.map(p=>{ const val=p.num||('#'+p.id); const ck=sel.has(String(val));
+    return `<label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:13px;color:var(--text);cursor:pointer"><input type="checkbox" class="cf-pedrel-cb" value="${_h(val)}" ${ck?'checked':''} style="width:16px;height:16px;flex-shrink:0"> <b style="font-family:monospace;color:var(--blue-d)">${(''+val).replace(/</g,'&lt;')}</b> <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(p.cliente||'').replace(/</g,'&lt;')}</span></label>`;
+  }).join('');
+}
+function renderLineasCompraForm(){
+  const el=document.getElementById('cf-lineas'); if(!el) return;
+  el.innerHTML=_compraLineasForm.map((l,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+     <input value="${_h(l.descripcion)}" oninput="_compraLineasForm[${i}].descripcion=this.value" placeholder="Material / descripción" style="flex:2;min-width:0;${_inp};margin-top:0">
+     <input value="${_h(l.cantidad)}" oninput="_compraLineasForm[${i}].cantidad=this.value" type="number" min="0" placeholder="Cant." style="width:62px;${_inp};margin-top:0">
+     <input value="${_h(l.unidad)}" oninput="_compraLineasForm[${i}].unidad=this.value" placeholder="ud (big bags…)" style="flex:1;min-width:0;${_inp};margin-top:0">
+     <button onclick="_compraLineasForm.splice(${i},1);renderLineasCompraForm()" style="background:none;border:none;color:#9A2A1B;font-size:18px;cursor:pointer">×</button></div>`).join('');
+}
+function addLineaCompra(){ _compraLineasForm.push({referencia:'',descripcion:'',cantidad:'',unidad:'',falta_linea_id:null}); renderLineasCompraForm(); }
+async function guardarCompra(){
+  const id=document.getElementById('cf-id').value;
+  const fecha=document.getElementById('cf-fecha').value;
+  const pedrel=[...document.querySelectorAll('.cf-pedrel-cb:checked')].map(cb=>cb.value).join(', ');
+  const body={ proveedor:document.getElementById('cf-prov').value.trim()||null, fecha_prevista:fecha||null,
+    tolva:document.getElementById('cf-tolva').value.trim()||null, pedidos_rel:pedrel||null,
+    transportista:document.getElementById('cf-trans').value.trim()||null, transportista_tel:document.getElementById('cf-tel').value.trim()||null,
+    notas:document.getElementById('cf-notas').value.trim()||null,
+    lineas:_compraLineasForm.filter(l=>(''+(l.descripcion||l.referencia||'')).trim()||Number(l.cantidad)>0) };
+  const prev=id?comprasData.find(x=>String(x.id)===String(id)):null;
+  if(prev&&prev.estado==='recibido') body.estado='recibido'; else body.estado=fecha?'pedido':'por_pedir';
+  try{
+    if(id) await api('PUT','/compras/'+id,body); else await api('POST','/compras',body);
+    document.getElementById('compra-form-ov')?.remove();
+    log('Pedido de compra guardado','ok'); renderCompras();
+  }catch(e){ log('Error guardando compra: '+e.message,'warn'); }
+}
+async function cambiarEstadoCompra(id,estado){
+  if(estado==='recibido' && !confirm('¿Marcar como recibido?\nSe avisará en los pedidos de venta que tenían faltas.')) return;
+  try{ await api('PATCH','/compras/'+id+'/estado',{estado}); log('Actualizado','ok'); renderCompras(); }catch(e){ log('Error','warn'); }
+}
+async function borrarCompra(id){ if(!confirm('¿Borrar este pedido de compra?')) return; try{ await api('DELETE','/compras/'+id); renderCompras(); }catch(e){ log('Error','warn'); } }
+async function exportarComprasExcel(){
+  const cps=comprasData.filter(c=>c.estado==='recibido');
+  const rows=[['Proveedor','Recibido','Material','Cantidad','Unidad','Para pedido','Tolva','Transportista']];
+  cps.forEach(c=>(c.lineas||[]).forEach(l=>rows.push([c.proveedor||'',c.fecha_recibido?fmtDate(c.fecha_recibido):'',l.descripcion||l.referencia||'',fmtN(l.cantidad),l.unidad||'',c.pedidos_rel||'',c.tolva||'',c.transportista||''])));
+  try{
+    await _cargarScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js');
+    const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('Compras'); rows.forEach(r=>ws.addRow(r)); ws.getRow(1).font={bold:true};
+    const buf=await wb.xlsx.writeBuffer(); _descargarBlob(new Blob([buf]),'compras_'+_hoyISO()+'.xlsx');
+  }catch(e){ _descargarBlob(new Blob([rows.map(r=>r.join(';')).join('\n')],{type:'text/csv'}),'compras_'+_hoyISO()+'.csv'); }
 }
 
 function triggerPrepPDF(){
@@ -3150,7 +3403,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 11;
+const NEEDS_API = 12;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -3182,6 +3435,7 @@ function comprobarRecordatorioCopia(){
 
 setInterval(loadAll,30000);
 loadAll();
+switchView('plan');
 comprobarServidor();
 comprobarRecordatorioCopia();
 actualizarFaltasBadge();
