@@ -2820,6 +2820,7 @@ async function renderCompras(){
   el.innerHTML='<div style="padding:14px;color:var(--text2);font-size:12px">Cargando…</div>';
   try{ comprasData=await api('GET','/compras'); comprasFaltas=await api('GET','/faltas'); }
   catch(e){ el.innerHTML='<div class="empty-state"><i class="ti ti-alert-circle"></i>No se pudo cargar</div>'; return; }
+  if(!silosData.length){ try{ silosData=await api('GET','/silos'); }catch(e){} }
   const usadas=new Set();
   comprasData.forEach(c=>(c.lineas||[]).forEach(l=>{ if(l.falta_linea_id) usadas.add(String(l.falta_linea_id)); }));
   comprasFaltas=comprasFaltas.filter(f=>!usadas.has(String(f.linea_id)));
@@ -2978,7 +2979,7 @@ function abrirFormCompra(id, prefill){
           <option value="pedido"${c.estado==='pedido'?' selected':''}>Pedido / planificado</option>
           ${c.estado==='recibido'?'<option value="recibido" selected>Recibido</option>':''}
         </select></label>
-        <label style="font-size:12px;color:var(--text2)">Tolva<input id="cf-tolva" value="${_h(c.tolva)}" onchange="autoCompra()" style="${_inp}"></label>
+        <label style="font-size:12px;color:var(--text2)">Tolva<select id="cf-tolva" onchange="autoCompra()" style="${_inp}"><option value="">(sin asignar)</option>${(silosData||[]).map(s=>`<option value="${(s.nombre||'').replace(/"/g,'&quot;')}" ${c.tolva===s.nombre?'selected':''}>${s.nombre}</option>`).join('')}</select></label>
         <label style="font-size:12px;color:var(--text2)">Transportista (compra)<input id="cf-trans" value="${_h(c.transportista)}" onchange="autoCompra()" style="${_inp}"></label>
         <label style="font-size:12px;color:var(--text2)">Teléfono transportista<input id="cf-tel" value="${_h(c.transportista_tel)}" onchange="autoCompra()" style="${_inp}"></label>
         <label style="font-size:12px;color:var(--text2);grid-column:1 / -1">Para pedido(s) de venta <span style="color:var(--text3)">— marca los que necesitan el material (vacío = compra para stock)</span>
@@ -3476,7 +3477,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 17;
+const NEEDS_API = 19;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -3532,17 +3533,25 @@ async function delMatPrima(id){
 async function cargarSilos(){
   if(!matPrimas.length) await cargarMatPrimas(false);
   try{ silosData=await api('GET','/silos'); }catch(e){ silosData=[]; }
-  try{ comprasMpData=await api('GET','/compras-mp'); }catch(e){}
+  try{ viajesData=await api('GET','/viajes'); }catch(e){}
+  try{ comprasData=await api('GET','/compras'); }catch(e){}
   renderSilos();
 }
 function siloSVGProd(pct,col,uid){
-  const fillTop=18+(1-pct/100)*92;
   const id='sp'+uid;
-  return `<svg viewBox="0 0 100 138" width="92" height="124" style="display:block;margin:0 auto">
-    <defs><clipPath id="${id}"><path d="M16 16 Q16 8 24 8 L76 8 Q84 8 84 16 L84 104 L58 130 L42 130 L16 104 Z"/></clipPath></defs>
-    <g clip-path="url(#${id})"><rect x="0" y="0" width="100" height="138" fill="#EFEBE3"/><rect x="0" y="${fillTop}" width="100" height="${138-fillTop}" fill="${col}"/></g>
-    <path d="M16 16 Q16 8 24 8 L76 8 Q84 8 84 16 L84 104 L58 130 L42 130 L16 104 Z" fill="none" stroke="#C9C2B5" stroke-width="2.5"/>
-    <text x="50" y="60" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="23" font-weight="800" fill="${pct>=55?'#fff':'#23211C'}">${pct}%</text>
+  const p=Math.max(0,Math.min(100,pct));
+  const fillTop = 142 - (p/100)*(142-12);
+  const outline='M28,12 L92,12 Q102,12 102,22 L102,90 L66,142 L54,142 L18,90 L18,22 Q18,12 28,12 Z';
+  return `<svg viewBox="0 0 120 158" width="104" height="138" style="display:block;margin:0 auto">
+    <defs><clipPath id="${id}"><path d="${outline}"/></clipPath></defs>
+    <g clip-path="url(#${id})">
+      <rect x="0" y="0" width="120" height="158" fill="#EAEDF1"/>
+      <rect x="0" y="${fillTop.toFixed(1)}" width="120" height="${(158-fillTop).toFixed(1)}" fill="${col}"/>
+    </g>
+    <path d="${outline}" fill="none" stroke="#A7AFBA" stroke-width="2.5"/>
+    <line x1="18" y1="90" x2="102" y2="90" stroke="#A7AFBA" stroke-width="1.4" stroke-dasharray="3 3"/>
+    <rect x="51" y="142" width="18" height="8" rx="1.5" fill="#A7AFBA"/>
+    <text x="60" y="56" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="25" font-weight="800" fill="${p>=63?'#fff':col}">${p}%</text>
   </svg>`;
 }
 function renderSilos(){
@@ -3567,14 +3576,110 @@ function renderSilos(){
       <div style="font-size:12px;color:var(--text2)">${fmtN(kg)} / ${fmtN(cap)} kg</div>
       <div style="display:flex;gap:5px;margin-top:10px">
         <button onclick="abrirLlenarSilo(${s.id})" style="flex:1;border:none;border-radius:8px;padding:8px 4px;font-size:11px;font-weight:700;cursor:pointer;background:#E9F0F8;color:var(--blue-d)"><i class="ti ti-arrow-down"></i> Llenar</button>
-        <button onclick="vaciarSilo(${s.id})" style="flex:1;border:none;border-radius:8px;padding:8px 4px;font-size:11px;font-weight:700;cursor:pointer;background:#FBE7D2;color:#7A4E00">Vaciar</button>
+        <button onclick="abrirProducirSilo(${s.id})" style="flex:1;border:none;border-radius:8px;padding:8px 4px;font-size:11px;font-weight:700;cursor:pointer;background:#FBE7D2;color:#7A4E00">Producir</button>
       </div>
+      <button onclick="abrirTraspaso(${s.id})" style="width:100%;margin-top:5px;border:1px solid var(--border);border-radius:8px;padding:7px;font-size:11px;cursor:pointer;background:var(--surface);color:var(--text2)">⇄ Traspasar a otra tolva</button>
       <button onclick="toggleVaciando(${s.id},${!vaciando})" style="width:100%;margin-top:5px;border:1px solid ${vaciando?'#E8A599':'var(--border)'};border-radius:8px;padding:7px;font-size:11px;cursor:pointer;background:${vaciando?'#FBE3E0':'var(--surface)'};color:${vaciando?'#9A2A1B':'var(--text2)'}">${vaciando?'Quitar "vaciando"':'Marcar "estoy vaciando"'}</button>
       ${progSiloHTML(s)}
     </div>`;
-  }).join('')+'</div>';
+  }).join('')+'</div>'+comprasProximasHTML();
 }
-function progSiloHTML(s){ return ''; }
+function comprasProximasHTML(){
+  const hoy=_hoyISO();
+  const dm=new Date(); dm.setDate(dm.getDate()+1); const man=_isoOf(dm);
+  const tieneSilo=c=>(silosData||[]).some(s=>s.nombre===c.tolva);
+  const cps=(comprasData||[]).filter(c=>c.fecha_prevista && c.estado!=='recibido' && (_fechaISO(c.fecha_prevista)===hoy||_fechaISO(c.fecha_prevista)===man) && !tieneSilo(c))
+    .sort((a,b)=>(''+a.fecha_prevista).localeCompare(''+b.fecha_prevista));
+  const row=c=>{
+    const t=(c.lineas||[]).map(l=>(l.descripcion||l.referencia||'')+' ('+fmtN(l.cantidad)+(l.unidad?(' '+l.unidad):'')+')').filter(Boolean).join(', ');
+    const dia=_fechaISO(c.fecha_prevista)===hoy?'Hoy':'Mañana';
+    const cl=c.estado==='pedido'?['#E6F1FB','#0C447C']:['#FFF3E6','#7A4E00'];
+    return `<div onclick="abrirFormCompra(${c.id})" style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:9px;margin-bottom:7px;cursor:pointer">
+       <span style="font-size:13px"><span style="font-size:10px;font-weight:700;background:${cl[0]};color:${cl[1]};border-radius:6px;padding:2px 7px;margin-right:6px">${dia}</span><b>${(c.proveedor||'—').replace(/</g,'&lt;')}</b> — ${t.replace(/</g,'&lt;')}</span>
+       <span style="font-size:11px;color:var(--text2);white-space:nowrap">${c.estado==='pedido'?'en camino':'por pedir'}</span></div>`;
+  };
+  if(!cps.length) return '';
+  return `<div style="margin-top:20px">
+     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+       <span style="font-size:13px;font-weight:600"><i class="ti ti-calendar-due"></i> Compras sin tolva · hoy y mañana</span>
+       <span onclick="switchView('prodcal')" style="font-size:11px;color:var(--blue);cursor:pointer">Ver calendario ›</span></div>
+     ${cps.map(row).join('')}</div>`;
+}
+function comprasSiloHTML(s){
+  const hoy=_hoyISO();
+  const dm=new Date(); dm.setDate(dm.getDate()+1); const man=_isoOf(dm);
+  const cps=(comprasData||[]).filter(c=>c.tolva===s.nombre && c.fecha_prevista && c.estado!=='recibido' && (_fechaISO(c.fecha_prevista)===hoy||_fechaISO(c.fecha_prevista)===man))
+    .sort((a,b)=>(''+a.fecha_prevista).localeCompare(''+b.fecha_prevista));
+  if(!cps.length) return '';
+  return cps.map(c=>{
+    const t=(c.lineas||[]).map(l=>(l.descripcion||l.referencia||'')).filter(Boolean).join(', ');
+    const dia=_fechaISO(c.fecha_prevista)===hoy?'Hoy':'Mañana';
+    return `<div onclick="abrirFormCompra(${c.id})" style="display:flex;align-items:center;gap:5px;font-size:10px;padding:3px 0;border-bottom:1px solid var(--border);cursor:pointer">
+       <span style="font-size:8px;font-weight:700;background:#E6F1FB;color:#0C447C;border-radius:5px;padding:1px 5px">${dia}</span>
+       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><i class="ti ti-shopping-cart" style="font-size:10px"></i> ${(c.proveedor||'compra').replace(/</g,'&lt;')}${t?(' · '+t.replace(/</g,'&lt;')):''}</span></div>`;
+  }).join('');
+}
+function progSiloHTML(s){
+  const items=(viajesData||[]).filter(v=>v.estado==='pendiente' && String(v.silo_id)===String(s.id));
+  const rows=items.map(v=>`<div style="display:flex;align-items:center;gap:5px;font-size:10px;padding:3px 0;border-bottom:1px solid var(--border)">
+       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.hora?('<b>'+v.hora+'</b> '):''}${(v.material||'—').replace(/</g,'&lt;')} · ${fmtN(v.kg)}kg${v.origen==='produccion'?' <span style="color:var(--text3)">(prod.)</span>':''}</span>
+       <button onclick="subirProgramado('${v.id}',${s.id})" title="Subir a esta tolva" style="background:#E9F0F8;color:#0C447C;border:none;border-radius:5px;padding:2px 6px;font-size:9px;font-weight:700;cursor:pointer">SUBIR</button>
+       <button onclick="cambiarTolvaProg('${v.id}')" title="Cambiar de tolva" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;padding:0">⇄</button>
+       <button onclick="borrarViaje('${v.id}')" title="Quitar" style="background:none;border:none;color:#9A2A1B;cursor:pointer;font-size:12px;padding:0;line-height:1">×</button>
+     </div>`).join('');
+  return `<div style="margin-top:8px;border-top:1px dashed var(--border);padding-top:6px;text-align:left">
+     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><span style="font-size:10px;color:var(--text2);font-weight:600"><i class="ti ti-clock"></i> Programación</span><button onclick="programarSilo(${s.id})" style="background:none;border:none;color:var(--blue);font-size:11px;cursor:pointer">+ Programar</button></div>
+     ${comprasSiloHTML(s)}${rows||(comprasSiloHTML(s)?'':'<div style="font-size:10px;color:var(--text3)">Sin entradas programadas</div>')}</div>`;
+}
+function programarSilo(siloId){
+  const ov=document.createElement('div'); ov.id='progsilo-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10062;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const opts=matPrimas.filter(m=>m.activo!==false).map(m=>`<option value="${(m.nombre||'').replace(/"/g,'&quot;')}">`).join('');
+  const s=silosData.find(x=>String(x.id)===String(siloId));
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:460px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:15px">Programar llegada a ${s?s.nombre:''}</b>
+    <div style="font-size:11px;color:var(--text2);margin:2px 0 12px">Se crea como viaje pendiente del camión a esta tolva</div>
+    <input type="hidden" id="pg-silo" value="${siloId}">
+    <label style="font-size:12px;color:var(--text2);display:block">Material<input id="pg-mat" list="pg-mat-list" placeholder="Buscar…" style="${inp}"><datalist id="pg-mat-list">${opts}</datalist></label>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Kg por viaje<input id="pg-kg" type="number" min="0" style="${inp}"></label>
+      <label style="font-size:12px;color:var(--text2);flex:1">Hora<input id="pg-hora" type="time" style="${inp}"></label></div>
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Nº de viajes<input id="pg-n" type="number" min="1" value="1" style="${inp}"></label>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('progsilo-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="guardarProgramado()" style="font-size:13px;padding:10px 18px">Programar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+async function guardarProgramado(){
+  const siloId=document.getElementById('pg-silo').value;
+  const nombre=(document.getElementById('pg-mat').value||'').trim();
+  let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
+  if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
+  const body={ mp_id:mp?mp.id:null, kg:Number(document.getElementById('pg-kg').value)||0, silo_id:siloId, hora:document.getElementById('pg-hora').value||null, n_viajes:Number(document.getElementById('pg-n').value)||1, origen:'manual' };
+  try{ await api('POST','/viajes',body); document.getElementById('progsilo-ov')?.remove(); await cargarSilos(); }catch(e){ log('Error al programar','warn'); }
+}
+async function subirProgramado(viajeId, siloId){
+  const v=viajesData.find(x=>String(x.id)===String(viajeId));
+  const s=silosData.find(x=>String(x.id)===String(siloId));
+  if(!v||!s) return;
+  if(s.mp_id && Number(s.kg_actual)>0 && v.mp_id && String(s.mp_id)!==String(v.mp_id)){
+    if(!confirm('Ojo: '+s.nombre+' ya tiene '+(s.producto||'otro material')+'. ¿Subir igualmente?')) return;
+  }
+  try{ await api('PATCH','/viajes/'+viajeId+'/completar',{destino_tipo:'silo',destino_silo_id:siloId,kg_final:v.kg}); await cargarSilos(); }
+  catch(e){ log('Error al subir material','warn'); }
+}
+async function cambiarTolvaProg(viajeId){
+  const v=viajesData.find(x=>String(x.id)===String(viajeId)); if(!v) return;
+  const opciones=silosData.map((s,i)=>`${i+1}) ${s.nombre}${s.producto?(' · '+s.producto):''}`).join('\n');
+  const r=prompt('¿A qué tolva la cambio? Escribe el número:\n'+opciones);
+  const idx=parseInt(r)-1;
+  if(isNaN(idx)||!silosData[idx]) return;
+  try{ await api('PUT','/viajes/'+viajeId,{mp_id:v.mp_id,kg:v.kg,silo_id:silosData[idx].id,notas:v.notas}); await cargarSilos(); }
+  catch(e){ log('Error','warn'); }
+}
 function abrirLlenarSilo(id){
   const s=silosData.find(x=>String(x.id)===String(id)); if(!s) return;
   const ov=document.createElement('div'); ov.id='silo-llenar-ov';
@@ -3606,11 +3711,77 @@ async function confirmarLlenar(id){
   catch(e){ log('Error al llenar','warn'); }
 }
 async function vaciarSilo(id){
-  if(!confirm('¿Vaciar este silo? (De momento lo deja a 0. La producción al vaciar la añadimos en la siguiente fase.)')) return;
-  try{ await api('POST','/silos/'+id+'/vaciar'); await cargarSilos(); }catch(e){ log('Error','warn'); }
+  if(!confirm('¿Vaciar este silo del todo? Lo deja a 0 y sin material (úsalo para limpiar restos, no para producir).')) return;
+  try{ await api('POST','/silos/'+id+'/vaciar'); document.getElementById('prodsilo-ov')?.remove(); await cargarSilos(); }catch(e){ log('Error','warn'); }
+}
+let _prodSiloTipo='saco';
+function abrirProducirSilo(id){
+  const s=silosData.find(x=>String(x.id)===String(id)); if(!s) return;
+  _prodSiloTipo='saco';
+  const ov=document.createElement('div'); ov.id='prodsilo-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10061;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  const vacio=!s.mp_id||Number(s.kg_actual)<=0;
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:460px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:15px">Producir desde ${s.nombre}</b>
+    <div style="font-size:12px;color:var(--text2);margin:2px 0 14px">Material: <b>${s.producto?(''+s.producto).replace(/</g,'&lt;'):'vacío'}</b> · ${fmtN(s.kg_actual)} / ${fmtN(s.capacidad_kg)} kg</div>
+    ${vacio?'<div style="font-size:13px;color:#7A4E00;background:#FFF3E6;border-radius:8px;padding:10px;margin-bottom:12px">El silo está vacío: no hay material para producir.</div>':`
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <button id="ps-tab-saco" onclick="psTipo('saco')" class="btn-primary" style="flex:1;font-size:13px;padding:9px">Sacos</button>
+      <button id="ps-tab-bb" onclick="psTipo('bb')" class="btn-sec" style="flex:1;font-size:13px;padding:9px">Big Bag</button></div>
+    <div style="display:flex;gap:10px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Nº de unidades<input id="ps-uni" type="number" min="0" style="${inp}" oninput="psHint()"></label>
+      <label style="font-size:12px;color:var(--text2);flex:1">Kg por unidad<input id="ps-kgu" type="number" min="0" style="${inp}" oninput="psHint()"></label></div>
+    <div id="ps-hint" style="font-size:12px;color:var(--text2);margin-top:6px"></div>
+    <div style="font-size:11px;color:var(--text3);margin-top:6px">Cada vez que registres, baja el silo (descargas parciales). Repite para más tandas.</div>`}
+    <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:16px;flex-wrap:wrap">
+      <button class="btn-sec" onclick="vaciarSilo(${id})" style="font-size:12px;padding:10px 14px;color:#9A2A1B">Vaciar del todo</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-sec" onclick="document.getElementById('prodsilo-ov').remove()" style="font-size:13px;padding:10px 16px">Cerrar</button>
+        ${vacio?'':`<button class="btn-primary" onclick="confirmarProducir(${id})" style="font-size:13px;padding:10px 18px;background:#0F6E56">Registrar producción</button>`}</div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  setTimeout(()=>document.getElementById('ps-uni')?.focus(),60);
+}
+function psTipo(t){ _prodSiloTipo=t; document.getElementById('ps-tab-saco').className=t==='saco'?'btn-primary':'btn-sec'; document.getElementById('ps-tab-bb').className=t==='bb'?'btn-primary':'btn-sec'; }
+function psHint(){ const u=Number(document.getElementById('ps-uni')?.value)||0,k=Number(document.getElementById('ps-kgu')?.value)||0; const el=document.getElementById('ps-hint'); if(el) el.textContent='Saldrán '+fmtN(u*k)+' kg del silo'; }
+async function confirmarProducir(id){
+  const u=Number(document.getElementById('ps-uni').value)||0, k=Number(document.getElementById('ps-kgu').value)||0;
+  if(!u||!k){ log('Pon unidades y kg por unidad','warn'); return; }
+  try{ await api('POST','/silos/'+id+'/producir',{tipo:_prodSiloTipo,unidades:u,kg_unidad:k}); document.getElementById('prodsilo-ov')?.remove(); await cargarSilos(); log('Producción registrada','ok'); }
+  catch(e){ log('Error al producir','warn'); }
 }
 async function toggleVaciando(id,val){
   try{ await api('PATCH','/silos/'+id+'/vaciando',{vaciando:val}); await cargarSilos(); }catch(e){ log('Error','warn'); }
+}
+function abrirTraspaso(id){
+  const s=silosData.find(x=>String(x.id)===String(id)); if(!s) return;
+  if(!s.mp_id||Number(s.kg_actual)<=0){ log('Este silo está vacío','warn'); return; }
+  const ov=document.createElement('div'); ov.id='traspaso-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10062;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const destinos=silosData.filter(x=>String(x.id)!==String(id))
+    .map(x=>`<option value="${x.id}">${x.nombre}${x.producto?(' · '+x.producto):' · vacío'} (${fmtN(x.kg_actual)}/${fmtN(x.capacidad_kg)})</option>`).join('');
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:460px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:15px">Traspasar desde ${s.nombre}</b>
+    <div style="font-size:12px;color:var(--text2);margin:2px 0 14px">${s.producto?(''+s.producto).replace(/</g,'&lt;'):''} · ${fmtN(s.kg_actual)} kg disponibles</div>
+    <label style="font-size:12px;color:var(--text2);display:block">A qué tolva<select id="tr-dest" style="${inp}">${destinos}</select></label>
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Kg a pasar<input id="tr-kg" type="number" min="0" value="${Math.round(Number(s.kg_actual))}" style="${inp}"></label>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('traspaso-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarTraspaso(${id})" style="font-size:13px;padding:10px 18px">Traspasar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+async function confirmarTraspaso(id){
+  const dest=document.getElementById('tr-dest').value;
+  const kg=Number(document.getElementById('tr-kg').value)||0;
+  if(!dest||!kg){ log('Indica destino y kg','warn'); return; }
+  try{ await api('POST','/silos/'+id+'/traspasar',{destino_silo_id:dest,kg}); document.getElementById('traspaso-ov')?.remove(); await cargarSilos(); }
+  catch(e){ log('Error en el traspaso','warn'); }
 }
 
 // ── PRODUCCIÓN BB / Sacos / Final (Fase 2) ────────────────────────────────────
@@ -3886,7 +4057,7 @@ async function confirmarCompletar(id){
   try{ await api('PATCH','/viajes/'+id+'/completar',body); document.getElementById('viaje-comp-ov')?.remove(); await cargarViajes(); }
   catch(e){ log('Error al descargar','warn'); }
 }
-async function borrarViaje(id){ if(!confirm('¿Borrar este viaje?')) return; try{ await api('DELETE','/viajes/'+id); await cargarViajes(); }catch(e){ log('Error','warn'); } }
+async function borrarViaje(id){ if(!confirm('¿Quitar este viaje?')) return; try{ await api('DELETE','/viajes/'+id); if(_activeView==='silos') await cargarSilos(); else await cargarViajes(); }catch(e){ log('Error','warn'); } }
 async function exportarParteCamion(){
   const hoy=_hoyISO();
   const delDia=viajesData.filter(v=>(v.hecho_at && _fechaISO(v.hecho_at)===hoy) || (v.estado==='pendiente' && v.fecha && _fechaISO(v.fecha)===hoy));
