@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 25;
+const API_VERSION = 26;
 
 const app = express();
 app.use(cors());
@@ -111,6 +111,7 @@ async function initDB() {
     `ALTER TABLE viajes ADD COLUMN IF NOT EXISTS hora TEXT`,
     `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS preparado BOOLEAN DEFAULT false`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS cliente TEXT`,
+    `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS orden INTEGER DEFAULT 0`,
     `CREATE TABLE IF NOT EXISTS pedidos_cli (
       id SERIAL PRIMARY KEY,
       cliente TEXT,
@@ -1016,7 +1017,7 @@ app.get('/api/producciones', async (req, res) => {
        LEFT JOIN silos s ON s.id = p.silo_id
        LEFT JOIN pedidos_cli_lineas pcl ON pcl.id = p.origen_linea_id
        LEFT JOIN pedidos_cli pc ON pc.id = pcl.pedido_id
-       ORDER BY (p.estado='hecho'), p.creado DESC`);
+       ORDER BY (p.estado='hecho'), p.orden DESC, p.creado DESC`);
     res.json(r.rows);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
@@ -1068,6 +1069,20 @@ app.patch('/api/producciones/:id/estado', async (req, res) => {
 app.delete('/api/producciones/:id', async (req, res) => {
   try { await pool.query('DELETE FROM producciones WHERE id=$1', [req.params.id]); res.json({ok:true}); }
   catch(e) { res.status(500).json({error:e.message}); }
+});
+// reordenar prioridad: recibe ids en el orden deseado (el primero = más prioridad)
+app.post('/api/producciones/reordenar', async (req, res) => {
+  const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (let i = 0; i < ids.length; i++) {
+      await client.query('UPDATE producciones SET orden=$1 WHERE id=$2', [ids.length - i, ids[i]]);
+    }
+    await client.query('COMMIT');
+    res.json({ ok:true });
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
 });
 
 // ── CAMIÓN (viajes de suministro) ─────────────────────────────────────────────
