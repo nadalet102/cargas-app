@@ -2982,12 +2982,12 @@ function comprarFalta(lid){
 let _faltaSacosInfo=null;
 function _faltaInfo(lid){
   const f=comprasFaltas.find(x=>String(x.linea_id)===String(lid));
-  if(f) return {lid, descripcion:f.descripcion||'', falta:f.falta||0, pedido_num:f.pedido_num||''};
+  if(f) return {lid, descripcion:f.descripcion||'', falta:f.falta||0, pedido_num:f.pedido_num||'', cliente:f.cliente||''};
   for(const pid in (prepLineasCache||{})){
     const l=(prepLineasCache[pid]||[]).find(x=>String(x.id)===String(lid));
-    if(l){ const ped=(typeof pedidos!=='undefined'?pedidos:[]).find(x=>String(x.id)===String(pid))||{}; return {lid, descripcion:l.descripcion||'', falta:l.falta||0, pedido_num:ped.num||''}; }
+    if(l){ const ped=(typeof pedidos!=='undefined'?pedidos:[]).find(x=>String(x.id)===String(pid))||{}; return {lid, descripcion:l.descripcion||'', falta:l.falta||0, pedido_num:ped.num||'', cliente:ped.cliente||''}; }
   }
-  return {lid, descripcion:'', falta:0, pedido_num:''};
+  return {lid, descripcion:'', falta:0, pedido_num:'', cliente:''};
 }
 function enviarFaltaASacos(lid){
   const info=_faltaInfo(lid); _faltaSacosInfo=info;
@@ -2998,6 +2998,7 @@ function enviarFaltaASacos(lid){
   const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
   ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:460px;border-radius:16px 16px 0 0;padding:18px">
     <b style="font-size:15px">Enviar a Producción Sacos</b>
+    ${info.cliente?`<div style="background:#0C447C;color:#fff;border-radius:8px;padding:6px 11px;margin:8px 0 4px;font-size:14px;font-weight:800"><i class="ti ti-user" style="font-size:13px"></i> ${(''+info.cliente).replace(/</g,'&lt;')}</div>`:''}
     <div style="font-size:12px;color:var(--text2);margin:2px 0 12px">${(info.descripcion||'').replace(/</g,'&lt;')}${info.pedido_num?(' · pedido '+(''+info.pedido_num).replace(/</g,'&lt;')):''}</div>
     <label style="font-size:12px;color:var(--text2);display:block">Material<input id="fs-mat" list="fs-mat-list" placeholder="Materia prima…" value="${(info.descripcion||'').replace(/"/g,'&quot;')}" style="${inp}"><datalist id="fs-mat-list">${opts}</datalist></label>
     <div style="display:flex;gap:10px;margin-top:10px">
@@ -3019,7 +3020,7 @@ async function confirmarFaltaASacos(){
   let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
   if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
   try{
-    await api('POST','/producciones',{ tipo:'saco', mp_id:mp?mp.id:null, unidades:uni, kg_unidad:kgu, notas:(info.descripcion||'')+(info.pedido_num?(' · pedido '+info.pedido_num):'') });
+    await api('POST','/producciones',{ tipo:'saco', mp_id:mp?mp.id:null, unidades:uni, kg_unidad:kgu, cliente:info.cliente||null, notas:(info.descripcion||'')+(info.pedido_num?(' · pedido '+info.pedido_num):'') });
     await api('PATCH','/lineas/'+lid+'/falta',{falta:0});   // sale de la lista de faltas (se gestiona en producción)
     for(const pid in prepLineasCache){ const l=prepLineasCache[pid].find(x=>String(x.id)===String(lid)); if(l) l.falta=0; }
     if(comprasFaltas&&comprasFaltas.length) comprasFaltas=comprasFaltas.filter(x=>String(x.linea_id)!==String(lid));
@@ -3548,7 +3549,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 24;
+const NEEDS_API = 25;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
