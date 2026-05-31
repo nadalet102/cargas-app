@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 22;
+const API_VERSION = 23;
 
 const app = express();
 app.use(cors());
@@ -1207,11 +1207,15 @@ app.post('/api/pedidos-cli', async (req, res) => {
   try {
     await client.query('BEGIN');
     const p = (await client.query('INSERT INTO pedidos_cli(cliente,notas) VALUES($1,$2) RETURNING *', [b.cliente||null, b.notas||null])).rows[0];
-    // ¿cliente automático? (coincidencia por nombre, sin distinguir mayúsculas)
+    // ¿cliente automático? (match tolerante: sin mayúsculas/acentos/puntuación/"S.L.", y por contención)
     let auto = false;
     if (b.cliente) {
-      const ca = (await client.query('SELECT 1 FROM clientes_auto WHERE lower(trim(nombre))=lower(trim($1)) LIMIT 1', [b.cliente])).rows;
-      auto = ca.length > 0;
+      const norm = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+        .replace(/[.,;:_/\\-]/g,' ').replace(/\b(s\s*l|s\s*a|s\s*l\s*u|sociedad limitada|sociedad anonima|cb|scp)\b/g,' ')
+        .replace(/\s+/g,' ').trim();
+      const cn = norm(b.cliente);
+      const all = (await client.query('SELECT nombre FROM clientes_auto')).rows;
+      auto = all.some(r => { const an = norm(r.nombre); return an && cn && (cn.includes(an) || an.includes(cn)); });
     }
     let autoTareas = 0;
     for (const l of (b.lineas||[])) {
@@ -1238,7 +1242,7 @@ app.post('/api/pedidos-cli', async (req, res) => {
       }
     }
     await client.query('COMMIT');
-    res.json({ ...p, auto, autoTareas });
+    res.json({ ...p, auto, autoTareas, cliente: b.cliente||null });
   } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
   finally { client.release(); }
 });
