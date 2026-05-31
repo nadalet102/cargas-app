@@ -2992,7 +2992,7 @@ function abrirFormCompra(id, prefill){
           <option value="pedido"${c.estado==='pedido'?' selected':''}>Pedido / planificado</option>
           ${c.estado==='recibido'?'<option value="recibido" selected>Recibido</option>':''}
         </select></label>
-        <label style="font-size:12px;color:var(--text2)">Tolva<select id="cf-tolva" onchange="autoCompra()" style="${_inp}"><option value="">(sin asignar)</option>${(silosData||[]).map(s=>`<option value="${(s.nombre||'').replace(/"/g,'&quot;')}" ${c.tolva===s.nombre?'selected':''}>${s.nombre}</option>`).join('')}</select></label>
+        <label style="font-size:12px;color:var(--text2)">Tolva / destino<select id="cf-tolva" onchange="autoCompra()" style="${_inp}"><option value="">(sin asignar)</option>${(silosData||[]).map(s=>`<option value="${(s.nombre||'').replace(/"/g,'&quot;')}" ${c.tolva===s.nombre?'selected':''}>${s.nombre}</option>`).join('')}<option value="Acopio" ${c.tolva==='Acopio'?'selected':''}>Acopio (no va a tolva)</option></select></label>
         <label style="font-size:12px;color:var(--text2)">Transportista (compra)<input id="cf-trans" value="${_h(c.transportista)}" onchange="autoCompra()" style="${_inp}"></label>
         <label style="font-size:12px;color:var(--text2)">Teléfono transportista<input id="cf-tel" value="${_h(c.transportista_tel)}" onchange="autoCompra()" style="${_inp}"></label>
         <label style="font-size:12px;color:var(--text2);grid-column:1 / -1">Para pedido(s) de venta <span style="color:var(--text3)">— marca los que necesitan el material (vacío = compra para stock)</span>
@@ -3490,7 +3490,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 21;
+const NEEDS_API = 22;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -4285,22 +4285,33 @@ function renderPedidosCli(){
 }
 function pedidoCliCard(p){
   const lins=p.lineas||[];
-  const done=lins.filter(l=>l.estado==='hecho').length;
+  const prep=lins.filter(l=>l.preparado).length;
+  const todoPrep = lins.length>0 && prep===lins.length;
   const lineHtml=lins.map(l=>{
-    const eb={pendiente:['#FBE3E0','#9A2A1B','Pendiente'],en_produccion:['#E9F0F8','#0C447C','En producción'],hecho:['#EAF3EE','#0F6E56','Hecho']}[l.estado]||['#eee','#555',l.estado];
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
-       <div style="flex:1;font-size:13px">${fmtN(l.cantidad)}${l.unidad?(' '+(''+l.unidad).replace(/</g,'&lt;')):''} · ${(l.descripcion||'').replace(/</g,'&lt;')}</div>
-       <span style="font-size:9px;font-weight:700;background:${eb[0]};color:${eb[1]};border-radius:7px;padding:2px 7px">${eb[2]}</span>
-       ${l.estado==='pendiente'?`<button onclick="abrirAProduccion('${l.id}')" class="btn-sec" style="font-size:10px;padding:4px 8px;white-space:nowrap">A producción</button>`:''}</div>`;
+    const eb = l.preparado ? ['#1E8C6E','#fff','PREPARADO']
+      : ({pendiente:['#FBE3E0','#9A2A1B','Pendiente'],en_produccion:['#E9F0F8','#0C447C','En producción'],hecho:['#EAF3EE','#0F6E56','Producido']}[l.estado]||['#eee','#555',l.estado]);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:10px;margin-bottom:6px;background:${l.preparado?'#EAF7F1':'var(--surface)'};border:1px solid ${l.preparado?'#1E8C6E':'var(--border)'}">
+       <div style="flex:1;min-width:0">
+         <div style="font-size:18px;font-weight:800;line-height:1.1">${fmtN(l.cantidad)}${l.unidad?(' <span style="font-size:12px;font-weight:600;color:var(--text2)">'+(''+l.unidad).replace(/</g,'&lt;')+'</span>'):''}</div>
+         <div style="font-size:13px;color:var(--text);margin-top:2px">${(l.descripcion||'').replace(/</g,'&lt;')||'<span style="color:var(--text3)">—</span>'}</div>
+       </div>
+       <span style="font-size:11px;font-weight:800;background:${eb[0]};color:${eb[1]};border-radius:8px;padding:5px 10px;white-space:nowrap">${eb[2]}</span>
+       <button onclick="toggleLineaPreparada('${l.id}',${l.preparado?'false':'true'})" style="border:1px solid ${l.preparado?'#E8A599':'#1E8C6E'};background:${l.preparado?'#fff':'#1E8C6E'};color:${l.preparado?'#9A2A1B':'#fff'};border-radius:8px;padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">${l.preparado?'Quitar':'Preparar'}</button>
+       ${(!l.preparado && l.estado==='pendiente')?`<button onclick="abrirAProduccion('${l.id}')" class="btn-sec" style="font-size:10px;padding:6px 8px;white-space:nowrap">A prod.</button>`:''}</div>`;
   }).join('');
-  return `<div class="list-card" style="margin-bottom:12px">
-     <div class="lc-hdr"><span><b>${(p.cliente||'(sin cliente)').replace(/</g,'&lt;')}</b></span><span style="font-size:11px;color:var(--text2)">${done}/${lins.length} hechas</span></div>
-     <div style="padding:4px 16px">${lineHtml||'<div style="font-size:12px;color:var(--text3);padding:8px 0">Sin líneas</div>'}</div>
-     ${p.notas?`<div style="padding:0 16px 6px;font-size:12px;color:var(--text2)">${p.notas.replace(/</g,'&lt;')}</div>`:''}
-     <div style="display:flex;gap:6px;padding:8px 16px;border-top:1px solid var(--border)">
-       <button onclick="abrirFormPedidoCli('${p.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px"><i class="ti ti-edit"></i> Editar</button>
-       <button onclick="borrarPedidoCli('${p.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button></div></div>`;
+  return `<div class="list-card" style="margin-bottom:14px;border:2px solid ${todoPrep?'#1E8C6E':'var(--border)'}">
+     <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;${todoPrep?'background:#EAF7F1;':''}border-bottom:1px solid var(--border)">
+       <span style="font-size:17px;font-weight:800">${(p.cliente||'(sin cliente)').replace(/</g,'&lt;')}</span>
+       <span style="font-size:12px;font-weight:800;${todoPrep?'color:#0F6E56':'color:var(--text2)'}">${todoPrep?'✓ PREPARADO':(prep+'/'+lins.length+' preparadas')}</span></div>
+     <div style="padding:10px 12px">${lineHtml||'<div style="font-size:12px;color:var(--text3);padding:6px">Sin líneas</div>'}</div>
+     ${p.notas?`<div style="padding:0 14px 8px;font-size:12px;color:var(--text2)">${p.notas.replace(/</g,'&lt;')}</div>`:''}
+     <div style="display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--border)">
+       <button onclick="marcarPedidoPreparado('${p.id}',${todoPrep?'false':'true'})" class="btn-primary" style="font-size:12px;padding:9px 13px;background:${todoPrep?'#9A2A1B':'#0F6E56'}"><i class="ti ti-${todoPrep?'x':'checks'}"></i> ${todoPrep?'Quitar preparado':'Marcar todo preparado'}</button>
+       <button onclick="abrirFormPedidoCli('${p.id}')" class="btn-sec" style="font-size:12px;padding:9px 12px"><i class="ti ti-edit"></i> Editar</button>
+       <button onclick="borrarPedidoCli('${p.id}')" class="btn-sec" style="font-size:12px;padding:9px 12px;color:#9A2A1B"><i class="ti ti-trash"></i></button></div></div>`;
 }
+async function toggleLineaPreparada(id,val){ try{ await api('PATCH','/pedidos-cli/lineas/'+id+'/preparado',{preparado:val}); await cargarPedidosCli(); }catch(e){ log('Error','warn'); } }
+async function marcarPedidoPreparado(id,val){ if(val && !confirm('¿Marcar TODO el pedido como preparado?')) return; try{ await api('PATCH','/pedidos-cli/'+id+'/preparado',{preparado:val}); await cargarPedidosCli(); }catch(e){ log('Error','warn'); } }
 function abrirFormPedidoCli(id){
   const p = id? pedidosCliData.find(x=>String(x.id)===String(id)) : null;
   _pedLineas = (p && p.lineas && p.lineas.length) ? p.lineas.map(l=>({id:l.id,descripcion:l.descripcion||'',cantidad:l.cantidad!=null?l.cantidad:'',unidad:l.unidad||''})) : [{descripcion:'',cantidad:'',unidad:''}];
