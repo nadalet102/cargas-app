@@ -4584,12 +4584,26 @@ comprobarServidor();
 comprobarRecordatorioCopia();
 actualizarFaltasBadge();
 
-// PWA: registrar service worker
+// PWA: registrar service worker con auto-actualización
 if('serviceWorker' in navigator){
+  let _swReloaded=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(_swReloaded) return; _swReloaded=true; location.reload();
+  });
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('SW error:',e));
+    navigator.serviceWorker.register('/sw.js').then(reg=>{
+      reg.update();
+      setInterval(()=>{ try{ reg.update(); }catch(e){} }, 60000);
+    }).catch(e=>console.warn('SW error:',e));
   });
 }
+// Etiqueta de versión visible (para comprobar qué versión está cargada)
+window.addEventListener('load',()=>{
+  try{ const t=document.createElement('div'); t.textContent='v'+NEEDS_API;
+    t.style.cssText='position:fixed;left:6px;bottom:6px;font-size:9px;color:var(--text3);opacity:.55;z-index:3;pointer-events:none;background:var(--surface);padding:1px 5px;border-radius:5px';
+    document.body.appendChild(t);
+  }catch(e){}
+});
 </script>
 </body>
 </html>
