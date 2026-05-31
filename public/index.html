@@ -3026,7 +3026,7 @@ async function confirmarFaltaASacos(){
     await api('POST','/compras',{ estado:'por_pedir', pedidos_rel:info.pedido_num||null, notas:'También en Producción Sacos'+(info.cliente?(' · '+info.cliente):''),
       lineas:[{ referencia:info.referencia||'', descripcion:info.descripcion||'', cantidad:info.falta||uni, unidad:'', falta_linea_id:lid }] });
     document.getElementById('fs-ov')?.remove();
-    try{ await cargarCompras(); }catch(e){}
+    try{ renderCompras(); }catch(e){}
     if(document.getElementById('modo-prep-ov')) renderModoPrep();
     actualizarFaltasBadge();
     log('Enviado a Producción Sacos y avisado a Compras · '+uni+' saco(s)','ok');
@@ -3890,7 +3890,7 @@ function renderProd(tipo){
   const noHechas=all.filter(p=>p.estado!=='hecho');
   const uPend=noHechas.reduce((s,p)=>s+Number(p.unidades||0),0);
   const kPend=noHechas.reduce((s,p)=>s+Number(p.kg_total||0),0);
-  const uHech=all.filter(p=>p.estado==='hecho').reduce((s,p)=>s+Number(p.unidades||0),0);
+  const uHech=all.filter(p=>p.estado==='hecho' && p.hecho_at && _fechaISO(p.hecho_at)===_hoyISO()).reduce((s,p)=>s+Number(p.unidades||0),0);
   const envasePl=tipo==='bb'?'big bags':'sacos';
   const fbtn=(v,lbl)=>`<button onclick="setProdFiltro('${tipo}','${v}')" style="font-size:11px;padding:6px 11px;border-radius:8px;border:1px solid var(--border);cursor:pointer;${filtro===v?'background:var(--blue);color:#fff;border-color:var(--blue)':'background:var(--surface);color:var(--text2)'}">${lbl} (${cont(v)})</button>`;
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
@@ -4533,7 +4533,7 @@ async function guardarPedidoCli(){
 }
 async function borrarPedidoCli(id){ if(!confirm('¿Borrar este pedido?')) return; try{ await api('DELETE','/pedidos-cli/'+id); await cargarPedidosCli(); }catch(e){ log('Error','warn'); } }
 function abrirAProduccion(lineId){
-  let desc=''; pedidosCliData.forEach(p=>(p.lineas||[]).forEach(l=>{ if(String(l.id)===String(lineId)) desc=l.descripcion||''; }));
+  let desc='', cant=''; pedidosCliData.forEach(p=>(p.lineas||[]).forEach(l=>{ if(String(l.id)===String(lineId)){ desc=l.descripcion||''; cant=(l.cantidad!=null?l.cantidad:''); } }));
   _apTipo='saco';
   const ov=document.createElement('div'); ov.id='ap-ov';
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10062;display:flex;align-items:flex-end;justify-content:center';
@@ -4547,8 +4547,8 @@ function abrirAProduccion(lineId){
       <button id="ap-tab-bb" onclick="apTipo('bb')" class="btn-sec" style="flex:1;font-size:13px;padding:9px">Big Bag</button></div>
     <label style="font-size:12px;color:var(--text2);display:block">Material<input id="ap-mat" list="ap-mat-list" placeholder="Buscar…" value="${(desc||'').replace(/"/g,'&quot;')}" style="${inp}"><datalist id="ap-mat-list">${opts}</datalist></label>
     <div style="display:flex;gap:10px;margin-top:10px">
-      <label style="font-size:12px;color:var(--text2);flex:1">Nº de unidades<input id="ap-uni" type="number" min="0" style="${inp}"></label>
-      <label style="font-size:12px;color:var(--text2);flex:1">Kg por unidad<input id="ap-kgu" type="number" min="0" style="${inp}"></label></div>
+      <label style="font-size:12px;color:var(--text2);flex:1">Nº de unidades<input id="ap-uni" type="number" min="0" value="${cant}" style="${inp}"></label>
+      <label style="font-size:12px;color:var(--text2);flex:1">Kg por unidad<input id="ap-kgu" type="number" min="0" value="${_lastKgU.saco!=null?_lastKgU.saco:''}" style="${inp}"></label></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
       <button class="btn-sec" onclick="document.getElementById('ap-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
       <button class="btn-primary" onclick="confirmarAProduccion('${lineId}')" style="font-size:13px;padding:10px 18px">Enviar</button></div>
@@ -4561,6 +4561,7 @@ async function confirmarAProduccion(lineId){
   let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
   if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
   const body={ tipo:_apTipo, mp_id:mp?mp.id:null, unidades:Number(document.getElementById('ap-uni').value)||0, kg_unidad:Number(document.getElementById('ap-kgu').value)||0, origen_linea_id:lineId };
+  if(body.kg_unidad) _lastKgU[_apTipo]=body.kg_unidad;
   try{ await api('POST','/producciones',body); document.getElementById('ap-ov')?.remove(); await cargarPedidosCli(); log('Línea enviada a producción','ok'); }
   catch(e){ log('Error al enviar','warn'); }
 }
