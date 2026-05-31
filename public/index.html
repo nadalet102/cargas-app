@@ -2375,18 +2375,20 @@ function filtrarPedidos(estadoFiltro, prefijo){
 
 function pedidoRowHTML(p, modo){
   const estado=p.estado_prep;
+  const hayFalta=(prepLineasCache[p.id]||[]).some(l=>l.falta>0);
   const badgeEstado = estado==='preparado'
     ? '<span class="badge b-green" style="font-size:10px"><i class="ti ti-check"></i> Preparado</span>'
     : estado==='en_preparacion'
     ? '<span class="badge" style="font-size:10px;background:#E3F0FF;color:#1257A3"><i class="ti ti-progress-check" style="font-size:10px"></i> En preparación</span>'
     : '<span class="badge b-amber" style="font-size:10px">Pendiente</span>';
-  return `<div style="border-bottom:1px solid var(--border);${p.tiene_cambios?'border-left:4px solid #E8920A;background:#FFF9F0':''}">
+  return `<div style="border-bottom:1px solid var(--border);${hayFalta?'border-left:4px solid #9A2A1B;background:#FFF1EE':(p.tiene_cambios?'border-left:4px solid #E8920A;background:#FFF9F0':'')}">
     <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer" onclick="abrirPedidoDetalle('${p.id}')">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-weight:600;font-family:monospace;color:var(--blue-d)">${p.num||'—'}</span>
           <span style="font-weight:500">${p.cliente}</span>
           ${badgeEstado}
+          ${hayFalta?'<span class="badge" style="font-size:10px;background:#FBE3E0;color:#9A2A1B;font-weight:700"><i class="ti ti-alert-triangle" style="font-size:10px"></i> Faltas</span>':''}
           ${p.tiene_cambios?'<span class="badge" style="font-size:10px;background:#FAEEDA;color:#9A6700"><i class="ti ti-bell" style="font-size:10px"></i> Actualizado</span>':''}
           ${p.comercial?`<span class="badge" style="font-size:10px;background:#EFEAFB;color:#5B3FA8"><i class="ti ti-briefcase" style="font-size:10px"></i> ${p.comercial}</span>`:''}
           ${p.preparador?`<span class="badge" style="font-size:10px;background:#E6F1FB;color:#0C447C"><i class="ti ti-user" style="font-size:10px"></i> ${p.preparador}</span>`:''}
@@ -2580,6 +2582,7 @@ function renderDetalleLineas(pid){
       <span style="font-size:12px;font-weight:600;color:${pct===100?'#0F6E56':'var(--text2)'}">${nPrep}/${lineas.length}</span>
     </div>
     <button onclick="abrirModoPrep('${pid}')" style="width:100%;margin-bottom:12px;background:${pct===100?'#0F6E56':'#0F6E56'};color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-family:'DM Sans',sans-serif"><i class="ti ti-checklist" style="font-size:18px"></i> ${pct===100?'Revisar preparación':'Modo preparación'}</button>
+    ${lineas.some(l=>l.falta>0)?`<div style="background:#FBE3E0;border:1px solid #E8A599;color:#9A2A1B;border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:13px;font-weight:700"><i class="ti ti-alert-triangle"></i> Este pedido tiene faltas: ${lineas.filter(l=>l.falta>0).length} artículo(s)</div>`:''}
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:var(--surface2);border-bottom:1px solid var(--border)">
         <th style="width:40px;padding:8px"></th>
@@ -2589,10 +2592,10 @@ function renderDetalleLineas(pid){
         <th style="text-align:left;padding:8px;font-size:10px;color:var(--text2);width:160px">OBSERVACIONES</th>
       </tr></thead>
       <tbody>
-        ${lineas.map(l=>`<tr onclick="toggleLineaPrep('${pid}','${l.id}',${l.preparada?'false':'true'})" style="border-bottom:1px solid var(--border);cursor:pointer;${l.preparada?'opacity:.5':''}">
-          <td style="text-align:center;padding:8px"><input type="checkbox" ${l.preparada?'checked':''} onclick="event.stopPropagation()" onchange="toggleLineaPrep('${pid}','${l.id}',this.checked)" style="width:22px;height:22px;cursor:pointer"></td>
+        ${lineas.map(l=>`<tr onclick="toggleLineaPrep('${pid}','${l.id}',${l.preparada?'false':'true'})" style="border-bottom:1px solid var(--border);cursor:pointer;${l.preparada?'opacity:.5':''}${l.falta>0?'background:#FFF1EE;':''}">
+          <td style="text-align:center;padding:8px;${l.falta>0?'border-left:3px solid #9A2A1B':''}"><input type="checkbox" ${l.preparada?'checked':''} onclick="event.stopPropagation()" onchange="toggleLineaPrep('${pid}','${l.id}',this.checked)" style="width:22px;height:22px;cursor:pointer"></td>
           <td style="padding:8px;font-family:monospace;font-weight:600;color:var(--blue-d);${l.preparada?'text-decoration:line-through':''}">${l.referencia||'—'}</td>
-          <td style="padding:8px;${l.preparada?'text-decoration:line-through':''}">${l.descripcion||'—'}${l.falta>0?` <span style="background:#FBE3E0;color:#9A2A1B;border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700;white-space:nowrap">⚠ Faltan ${fmtN(l.falta)}</span>`:''} <button onclick="event.stopPropagation();marcarFalta('${pid}','${l.id}')" style="background:none;border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:1px 7px;font-size:10px;cursor:pointer;white-space:nowrap">Falta</button>${l.falta>0?` <button onclick="event.stopPropagation();enviarFaltaASacos('${l.id}')" style="background:#FBE7D2;border:1px solid #7A4E00;color:#7A4E00;border-radius:6px;padding:1px 7px;font-size:10px;cursor:pointer;white-space:nowrap">A prod. sacos</button>`:''}</td>
+          <td style="padding:8px;${l.preparada?'text-decoration:line-through':''}">${l.descripcion||'—'}${l.falta>0?` <span style="background:#FBE3E0;color:#9A2A1B;border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700;white-space:nowrap">⚠ Faltan ${fmtN(l.falta)}</span>`:''} <button onclick="event.stopPropagation();marcarFalta('${pid}','${l.id}')" style="background:${l.falta>0?'#9A2A1B':'none'};border:1px solid ${l.falta>0?'#9A2A1B':'var(--border2)'};color:${l.falta>0?'#fff':'var(--text2)'};border-radius:6px;padding:1px 7px;font-size:10px;font-weight:${l.falta>0?'700':'400'};cursor:pointer;white-space:nowrap">${l.falta>0?'✓ Falta':'Falta'}</button>${l.falta>0?` <button onclick="event.stopPropagation();enviarFaltaASacos('${l.id}')" style="background:#FBE7D2;border:1px solid #7A4E00;color:#7A4E00;border-radius:6px;padding:1px 7px;font-size:10px;cursor:pointer;white-space:nowrap">A prod. sacos</button>`:''}</td>
           <td style="padding:8px;text-align:right;font-weight:600;white-space:nowrap">${fmtN(l.cantidad)}<div style="margin-top:3px;display:flex;align-items:center;justify-content:flex-end;gap:3px"><input type="number" min="0" value="${(String(l.embalaje||'').match(/\d+/)||[''])[0]}" onchange="guardarPalets('${pid}','${l.id}',this.value)" onclick="event.stopPropagation()" style="width:44px;font-size:11px;padding:2px 4px;text-align:right;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><span style="font-size:9px;color:var(--text2);white-space:nowrap">${etiquetaEmb(l)}</span></div>${l.kgs?`<div style="font-size:10px;color:var(--text3);font-weight:400">${fmtN(l.kgs)} kg</div>`:''}</td>
           <td style="padding:4px 8px">
             <input type="text" value="${(l.observaciones||'').replace(/"/g,'&quot;')}" placeholder="—" onclick="event.stopPropagation()" onchange="guardarObsLinea('${pid}','${l.id}',this.value)" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
