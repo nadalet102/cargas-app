@@ -2592,7 +2592,7 @@ function renderDetalleLineas(pid){
         ${lineas.map(l=>`<tr onclick="toggleLineaPrep('${pid}','${l.id}',${l.preparada?'false':'true'})" style="border-bottom:1px solid var(--border);cursor:pointer;${l.preparada?'opacity:.5':''}">
           <td style="text-align:center;padding:8px"><input type="checkbox" ${l.preparada?'checked':''} onclick="event.stopPropagation()" onchange="toggleLineaPrep('${pid}','${l.id}',this.checked)" style="width:22px;height:22px;cursor:pointer"></td>
           <td style="padding:8px;font-family:monospace;font-weight:600;color:var(--blue-d);${l.preparada?'text-decoration:line-through':''}">${l.referencia||'—'}</td>
-          <td style="padding:8px;${l.preparada?'text-decoration:line-through':''}">${l.descripcion||'—'}${l.falta>0?` <span style="background:#FBE3E0;color:#9A2A1B;border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700;white-space:nowrap">⚠ Faltan ${fmtN(l.falta)}</span>`:''} <button onclick="event.stopPropagation();marcarFalta('${pid}','${l.id}')" style="background:none;border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:1px 7px;font-size:10px;cursor:pointer;white-space:nowrap">Falta</button></td>
+          <td style="padding:8px;${l.preparada?'text-decoration:line-through':''}">${l.descripcion||'—'}${l.falta>0?` <span style="background:#FBE3E0;color:#9A2A1B;border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700;white-space:nowrap">⚠ Faltan ${fmtN(l.falta)}</span>`:''} <button onclick="event.stopPropagation();marcarFalta('${pid}','${l.id}')" style="background:none;border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:1px 7px;font-size:10px;cursor:pointer;white-space:nowrap">Falta</button>${l.falta>0?` <button onclick="event.stopPropagation();enviarFaltaASacos('${l.id}')" style="background:#FBE7D2;border:1px solid #7A4E00;color:#7A4E00;border-radius:6px;padding:1px 7px;font-size:10px;cursor:pointer;white-space:nowrap">A prod. sacos</button>`:''}</td>
           <td style="padding:8px;text-align:right;font-weight:600;white-space:nowrap">${fmtN(l.cantidad)}<div style="margin-top:3px;display:flex;align-items:center;justify-content:flex-end;gap:3px"><input type="number" min="0" value="${(String(l.embalaje||'').match(/\d+/)||[''])[0]}" onchange="guardarPalets('${pid}','${l.id}',this.value)" onclick="event.stopPropagation()" style="width:44px;font-size:11px;padding:2px 4px;text-align:right;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)"><span style="font-size:9px;color:var(--text2);white-space:nowrap">${etiquetaEmb(l)}</span></div>${l.kgs?`<div style="font-size:10px;color:var(--text3);font-weight:400">${fmtN(l.kgs)} kg</div>`:''}</td>
           <td style="padding:4px 8px">
             <input type="text" value="${(l.observaciones||'').replace(/"/g,'&quot;')}" placeholder="—" onclick="event.stopPropagation()" onchange="guardarObsLinea('${pid}','${l.id}',this.value)" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
@@ -2748,6 +2748,7 @@ function renderModoPrep(){
         </div>
         <input type="text" value="${(l.observaciones||'').replace(/"/g,'&quot;')}" placeholder="✎ Nota / cambio…" onclick="event.stopPropagation()" onchange="prepObs('${l.id}',this.value)" style="flex:1;min-width:120px;font-size:13px;padding:7px 9px;border:1px solid ${l.observaciones?'#F0C77E':'var(--border2)'};background:${l.observaciones?'#FFFBF2':'var(--surface)'};border-radius:6px;color:var(--text)">
         <button onclick="event.stopPropagation();marcarFalta('${m.pid}','${l.id}')" style="background:${l.falta>0?'#FBE3E0':'var(--surface)'};border:1px solid ${l.falta>0?'#E8A599':'var(--border2)'};color:#9A2A1B;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"><i class="ti ti-alert-triangle"></i> ${l.falta>0?('Faltan '+fmtN(l.falta)):'Falta'}</button>
+        ${l.falta>0?`<button onclick="event.stopPropagation();enviarFaltaASacos('${l.id}')" style="background:#FBE7D2;border:1px solid #7A4E00;color:#7A4E00;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"><i class="ti ti-package"></i> A prod. sacos</button>`:''}
       </div>
     </div>`;
   }).join('');
@@ -2975,20 +2976,29 @@ function comprarFalta(lid){
   const f=comprasFaltas.find(x=>String(x.linea_id)===String(lid)); if(!f) return;
   abrirFormCompra(null,{ pedidos_rel:f.pedido_num||'', lineas:[{referencia:f.referencia||'',descripcion:f.descripcion||'',cantidad:f.falta||0,unidad:'',falta_linea_id:f.linea_id}] });
 }
+let _faltaSacosInfo=null;
+function _faltaInfo(lid){
+  const f=comprasFaltas.find(x=>String(x.linea_id)===String(lid));
+  if(f) return {lid, descripcion:f.descripcion||'', falta:f.falta||0, pedido_num:f.pedido_num||''};
+  for(const pid in (prepLineasCache||{})){
+    const l=(prepLineasCache[pid]||[]).find(x=>String(x.id)===String(lid));
+    if(l){ const ped=(typeof pedidos!=='undefined'?pedidos:[]).find(x=>String(x.id)===String(pid))||{}; return {lid, descripcion:l.descripcion||'', falta:l.falta||0, pedido_num:ped.num||''}; }
+  }
+  return {lid, descripcion:'', falta:0, pedido_num:''};
+}
 function enviarFaltaASacos(lid){
-  const f=comprasFaltas.find(x=>String(x.linea_id)===String(lid)); if(!f) return;
+  const info=_faltaInfo(lid); _faltaSacosInfo=info;
   const ov=document.createElement('div'); ov.id='fs-ov';
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10063;display:flex;align-items:flex-end;justify-content:center';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10070;display:flex;align-items:flex-end;justify-content:center';
   ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
   const opts=matPrimas.filter(m=>m.activo!==false).map(m=>`<option value="${(m.nombre||'').replace(/"/g,'&quot;')}">`).join('');
   const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
   ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:460px;border-radius:16px 16px 0 0;padding:18px">
     <b style="font-size:15px">Enviar a Producción Sacos</b>
-    <div style="font-size:12px;color:var(--text2);margin:2px 0 12px">${(f.descripcion||'').replace(/</g,'&lt;')}${f.pedido_num?(' · pedido '+(''+f.pedido_num).replace(/</g,'&lt;')):''}</div>
-    <input type="hidden" id="fs-lid" value="${lid}">
-    <label style="font-size:12px;color:var(--text2);display:block">Material<input id="fs-mat" list="fs-mat-list" placeholder="Materia prima…" value="${(f.descripcion||'').replace(/"/g,'&quot;')}" style="${inp}"><datalist id="fs-mat-list">${opts}</datalist></label>
+    <div style="font-size:12px;color:var(--text2);margin:2px 0 12px">${(info.descripcion||'').replace(/</g,'&lt;')}${info.pedido_num?(' · pedido '+(''+info.pedido_num).replace(/</g,'&lt;')):''}</div>
+    <label style="font-size:12px;color:var(--text2);display:block">Material<input id="fs-mat" list="fs-mat-list" placeholder="Materia prima…" value="${(info.descripcion||'').replace(/"/g,'&quot;')}" style="${inp}"><datalist id="fs-mat-list">${opts}</datalist></label>
     <div style="display:flex;gap:10px;margin-top:10px">
-      <label style="font-size:12px;color:var(--text2);flex:1">Nº de sacos<input id="fs-uni" type="number" min="0" value="${f.falta||''}" style="${inp}"></label>
+      <label style="font-size:12px;color:var(--text2);flex:1">Nº de sacos<input id="fs-uni" type="number" min="0" value="${info.falta||''}" style="${inp}"></label>
       <label style="font-size:12px;color:var(--text2);flex:1">Kg por saco<input id="fs-kgu" type="number" min="0" value="${_lastKgU.saco!=null?_lastKgU.saco:''}" style="${inp}"></label></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
       <button class="btn-sec" onclick="document.getElementById('fs-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
@@ -2997,8 +3007,8 @@ function enviarFaltaASacos(lid){
   document.body.appendChild(ov);
 }
 async function confirmarFaltaASacos(){
-  const lid=document.getElementById('fs-lid').value;
-  const f=comprasFaltas.find(x=>String(x.linea_id)===String(lid)); if(!f) return;
+  const info=_faltaSacosInfo; if(!info) return;
+  const lid=info.lid;
   const nombre=(document.getElementById('fs-mat').value||'').trim();
   const uni=Number(document.getElementById('fs-uni').value)||0;
   const kgu=Number(document.getElementById('fs-kgu').value)||0;
@@ -3006,12 +3016,15 @@ async function confirmarFaltaASacos(){
   let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
   if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
   try{
-    await api('POST','/producciones',{ tipo:'saco', mp_id:mp?mp.id:null, unidades:uni, kg_unidad:kgu, notas:(f.descripcion||'')+(f.pedido_num?(' · pedido '+f.pedido_num):'') });
+    await api('POST','/producciones',{ tipo:'saco', mp_id:mp?mp.id:null, unidades:uni, kg_unidad:kgu, notas:(info.descripcion||'')+(info.pedido_num?(' · pedido '+info.pedido_num):'') });
     await api('PATCH','/lineas/'+lid+'/falta',{falta:0});   // sale de la lista de faltas (se gestiona en producción)
+    for(const pid in prepLineasCache){ const l=prepLineasCache[pid].find(x=>String(x.id)===String(lid)); if(l) l.falta=0; }
+    if(comprasFaltas&&comprasFaltas.length) comprasFaltas=comprasFaltas.filter(x=>String(x.linea_id)!==String(lid));
     document.getElementById('fs-ov')?.remove();
-    await cargarCompras();
+    if(document.getElementById('modo-prep-ov')) renderModoPrep();
+    try{ renderCompras(); }catch(e){}
     actualizarFaltasBadge();
-    log('Enviado a Producción Sacos · falta quitada de la lista','ok');
+    log('Enviado a Producción Sacos · '+uni+' saco(s)','ok');
   }catch(e){ log('Error: '+e.message,'warn'); }
 }
 let _compraFormId=null, _compraAutoTimer=null, _compraSaving=false;
