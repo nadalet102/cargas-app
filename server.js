@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 21;
+const API_VERSION = 22;
 
 const app = express();
 app.use(cors());
@@ -109,6 +109,7 @@ async function initDB() {
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS falta NUMERIC DEFAULT 0`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS origen_linea_id INTEGER`,
     `ALTER TABLE viajes ADD COLUMN IF NOT EXISTS hora TEXT`,
+    `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS preparado BOOLEAN DEFAULT false`,
     `CREATE TABLE IF NOT EXISTS pedidos_cli (
       id SERIAL PRIMARY KEY,
       cliente TEXT,
@@ -121,7 +122,8 @@ async function initDB() {
       descripcion TEXT,
       cantidad NUMERIC DEFAULT 0,
       unidad TEXT,
-      estado TEXT DEFAULT 'pendiente'
+      estado TEXT DEFAULT 'pendiente',
+      preparado BOOLEAN DEFAULT false
     )`,
     `CREATE TABLE IF NOT EXISTS clientes_auto (
       id SERIAL PRIMARY KEY,
@@ -1250,9 +1252,10 @@ app.put('/api/pedidos-cli/:id', async (req, res) => {
     const prev = (await client.query('SELECT * FROM pedidos_cli_lineas WHERE pedido_id=$1', [req.params.id])).rows;
     await client.query('DELETE FROM pedidos_cli_lineas WHERE pedido_id=$1', [req.params.id]);
     for (const l of (b.lineas||[])) {
-      const est = (l.id && prev.find(x => x.id === l.id)) ? prev.find(x => x.id === l.id).estado : 'pendiente';
-      await client.query('INSERT INTO pedidos_cli_lineas(pedido_id,descripcion,cantidad,unidad,estado) VALUES($1,$2,$3,$4,$5)',
-        [req.params.id, l.descripcion||null, Number(l.cantidad)||0, l.unidad||null, est]);
+      const pr = (l.id && prev.find(x => x.id === l.id)) ? prev.find(x => x.id === l.id) : null;
+      const est = pr ? pr.estado : 'pendiente';
+      await client.query('INSERT INTO pedidos_cli_lineas(pedido_id,descripcion,cantidad,unidad,estado,preparado) VALUES($1,$2,$3,$4,$5,$6)',
+        [req.params.id, l.descripcion||null, Number(l.cantidad)||0, l.unidad||null, est, pr ? pr.preparado : false]);
     }
     await client.query('COMMIT');
     res.json({ ok:true });
@@ -1261,6 +1264,16 @@ app.put('/api/pedidos-cli/:id', async (req, res) => {
 });
 app.delete('/api/pedidos-cli/:id', async (req, res) => {
   try { await pool.query('DELETE FROM pedidos_cli WHERE id=$1', [req.params.id]); res.json({ok:true}); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+// marcar una línea como preparada / no preparada
+app.patch('/api/pedidos-cli/lineas/:id/preparado', async (req, res) => {
+  try { await pool.query('UPDATE pedidos_cli_lineas SET preparado=$1 WHERE id=$2', [!!req.body.preparado, req.params.id]); res.json({ok:true}); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+// marcar TODO el pedido como preparado / no preparado
+app.patch('/api/pedidos-cli/:id/preparado', async (req, res) => {
+  try { await pool.query('UPDATE pedidos_cli_lineas SET preparado=$1 WHERE pedido_id=$2', [!!req.body.preparado, req.params.id]); res.json({ok:true}); }
   catch(e) { res.status(500).json({error:e.message}); }
 });
 
