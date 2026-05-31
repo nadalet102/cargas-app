@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 23;
+const API_VERSION = 24;
 
 const app = express();
 app.use(cors());
@@ -1009,10 +1009,12 @@ app.post('/api/silos/:id/traspasar', async (req, res) => {
 app.get('/api/producciones', async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT p.*, mp.nombre AS material, s.nombre AS silo_nombre
+      `SELECT p.*, mp.nombre AS material, s.nombre AS silo_nombre, pc.cliente AS cliente
        FROM producciones p
        LEFT JOIN materias_primas mp ON mp.id = p.mp_id
        LEFT JOIN silos s ON s.id = p.silo_id
+       LEFT JOIN pedidos_cli_lineas pcl ON pcl.id = p.origen_linea_id
+       LEFT JOIN pedidos_cli pc ON pc.id = pcl.pedido_id
        ORDER BY (p.estado='hecho'), p.creado DESC`);
     res.json(r.rows);
   } catch(e) { res.status(500).json({error:e.message}); }
@@ -1221,7 +1223,8 @@ app.post('/api/pedidos-cli', async (req, res) => {
     for (const l of (b.lineas||[])) {
       const lin = (await client.query('INSERT INTO pedidos_cli_lineas(pedido_id,descripcion,cantidad,unidad) VALUES($1,$2,$3,$4) RETURNING *',
         [p.id, l.descripcion||null, Number(l.cantidad)||0, l.unidad||null])).rows[0];
-      if (auto) {
+      const esPalet = /\b(palet|pallet|paleta)\b/i.test(l.descripcion||'');
+      if (auto && !esPalet) {
         // intentar emparejar material por nombre; si no, queda sin material
         let mp_id = null;
         if (l.descripcion) {
