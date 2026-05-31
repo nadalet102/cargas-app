@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 19;
+const API_VERSION = 21;
 
 const app = express();
 app.use(cors());
@@ -122,6 +122,11 @@ async function initDB() {
       cantidad NUMERIC DEFAULT 0,
       unidad TEXT,
       estado TEXT DEFAULT 'pendiente'
+    )`,
+    `CREATE TABLE IF NOT EXISTS clientes_auto (
+      id SERIAL PRIMARY KEY,
+      nombre TEXT NOT NULL,
+      creado TIMESTAMPTZ DEFAULT now()
     )`,
     `CREATE TABLE IF NOT EXISTS preparadores (
       id SERIAL PRIMARY KEY,
@@ -630,7 +635,7 @@ app.patch('/api/pedidos/:id/comercial', async (req, res) => {
 app.get('/api/health', (req, res) => res.json({ ok: true, version: API_VERSION }));
 
 // ── COPIA DE SEGURIDAD ────────────────────────────────────────────────────────
-const BACKUP_TABLES = ['bc_config','transportistas','categorias','preparadores','comerciales','materias_primas','silos','producciones','viajes','compras_mp','compras','cargas','pedidos','pedido_lineas','compra_lineas','pedidos_cli','pedidos_cli_lineas','bc_inbox'];
+const BACKUP_TABLES = ['bc_config','transportistas','categorias','preparadores','comerciales','materias_primas','silos','producciones','viajes','compras_mp','compras','cargas','pedidos','pedido_lineas','compra_lineas','pedidos_cli','pedidos_cli_lineas','clientes_auto','bc_inbox'];
 
 // Construye el volcado completo de la base de datos
 async function _dumpDatos() {
@@ -1200,12 +1205,38 @@ app.post('/api/pedidos-cli', async (req, res) => {
   try {
     await client.query('BEGIN');
     const p = (await client.query('INSERT INTO pedidos_cli(cliente,notas) VALUES($1,$2) RETURNING *', [b.cliente||null, b.notas||null])).rows[0];
+    // ¿cliente automático? (coincidencia por nombre, sin distinguir mayúsculas)
+    let auto = false;
+    if (b.cliente) {
+      const ca = (await client.query('SELECT 1 FROM clientes_auto WHERE lower(trim(nombre))=lower(trim($1)) LIMIT 1', [b.cliente])).rows;
+      auto = ca.length > 0;
+    }
+    let autoTareas = 0;
     for (const l of (b.lineas||[])) {
-      await client.query('INSERT INTO pedidos_cli_lineas(pedido_id,descripcion,cantidad,unidad) VALUES($1,$2,$3,$4)',
-        [p.id, l.descripcion||null, Number(l.cantidad)||0, l.unidad||null]);
+      const lin = (await client.query('INSERT INTO pedidos_cli_lineas(pedido_id,descripcion,cantidad,unidad) VALUES($1,$2,$3,$4) RETURNING *',
+        [p.id, l.descripcion||null, Number(l.cantidad)||0, l.unidad||null])).rows[0];
+      if (auto) {
+        // intentar emparejar material por nombre; si no, queda sin material
+        let mp_id = null;
+        if (l.descripcion) {
+          const m = (await client.query("SELECT id FROM materias_primas WHERE lower(nombre)=lower($1) LIMIT 1", [l.descripcion])).rows[0];
+          mp_id = m ? m.id : null;
+        }
+        // kg por big bag = kg de la línea / nº de unidades (lo que pone el pedido)
+        const uni = Number(l.cantidad) || 0;
+        const kgsLinea = Number(l.kgs) || 0;
+        const kgu = (uni > 0 && kgsLinea > 0) ? Math.round((kgsLinea / uni) * 100) / 100 : 0;
+        const kgt = kgsLinea > 0 ? kgsLinea : uni * kgu;
+        await client.query(
+          `INSERT INTO producciones(tipo,mp_id,unidades,kg_unidad,kg_total,estado,notas,origen_linea_id)
+           VALUES('bb',$1,$2,$3,$4,'pendiente',$5,$6)`,
+          [mp_id, uni, kgu, kgt, l.descripcion||null, lin.id]);
+        await client.query("UPDATE pedidos_cli_lineas SET estado='en_produccion' WHERE id=$1", [lin.id]);
+        autoTareas++;
+      }
     }
     await client.query('COMMIT');
-    res.json(p);
+    res.json({ ...p, auto, autoTareas });
   } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
   finally { client.release(); }
 });
@@ -1230,6 +1261,20 @@ app.put('/api/pedidos-cli/:id', async (req, res) => {
 });
 app.delete('/api/pedidos-cli/:id', async (req, res) => {
   try { await pool.query('DELETE FROM pedidos_cli WHERE id=$1', [req.params.id]); res.json({ok:true}); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── CLIENTES AUTOMÁTICOS (→ Big Bag) ──────────────────────────────────────────
+app.get('/api/clientes-auto', async (req, res) => {
+  try { res.json((await pool.query('SELECT * FROM clientes_auto ORDER BY nombre')).rows); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+app.post('/api/clientes-auto', async (req, res) => {
+  try { const r = await pool.query('INSERT INTO clientes_auto(nombre) VALUES($1) RETURNING *', [(req.body.nombre||'').trim()]); res.json(r.rows[0]); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+app.delete('/api/clientes-auto/:id', async (req, res) => {
+  try { await pool.query('DELETE FROM clientes_auto WHERE id=$1', [req.params.id]); res.json({ok:true}); }
   catch(e) { res.status(500).json({error:e.message}); }
 });
 
