@@ -380,6 +380,18 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 </div>
 </div>
 
+<!-- CLIENTES AUTOMÁTICOS -->
+<div class="view" id="view-clientesauto">
+<div class="container" style="max-width:560px">
+  <div style="margin-bottom:12px"><div style="font-size:16px;font-weight:500">Clientes automáticos → Big Bag</div><div style="font-size:12px;color:var(--text2)">Al importar un pedido de estos clientes, sus líneas crean tareas de Big Bag pendientes automáticamente.</div></div>
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <input id="cauto-nuevo" type="text" placeholder="Nombre del cliente (como sale en el PDF)" style="flex:1;font-size:13px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text)" onkeydown="if(event.key==='Enter')addClienteAuto()">
+    <button class="btn-primary" onclick="addClienteAuto()" style="font-size:13px;padding:9px 16px"><i class="ti ti-plus"></i> Añadir</button>
+  </div>
+  <div id="cauto-list"></div>
+</div>
+</div>
+
 <!-- DASHBOARD -->
 <div class="view" id="view-dash">
 <div class="container">
@@ -722,15 +734,16 @@ const NAV_GROUPS = {
   compras:     { subs:[['compras','']] },
   produccion:  { subs:[['silos','Silos'],['matprima','Materia prima'],['pedidoscli','Pedidos'],['prodbb','Prod. BB'],['prodsacos','Prod. Sacos'],['camion','Camión'],['prodcal','Calendario'],['prodfinal','Prod. Final']] },
   resumen:     { subs:[['dash','']] },
-  ajustes:     { subs:[['trans','Transportistas'],['cats','Categorías']] }
+  ajustes:     { subs:[['trans','Transportistas'],['cats','Categorías'],['clientesauto','Clientes auto']] }
 };
-const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
+const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
 let _activeView='plan';
 function _runRenderer(t){
   if(t==='cal')renderCal();
   else if(t==='dash')renderDash();
   else if(t==='trans')renderTrans();
   else if(t==='cats')renderCats();
+  else if(t==='clientesauto')cargarClientesAuto();
   else if(t==='hist')renderHist();
   else if(t==='prep'){fillPreparadorFilters();renderPrepList();}
   else if(t==='preparados'){fillPreparadorFilters();renderPreparadosList();}
@@ -753,7 +766,7 @@ function renderSubtabBar(g, activeView){
 }
 function switchView(t){
   _activeView=t;
-  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','compras','silos','matprima','prodbb','prodsacos','prodfinal','camion','prodcal','pedidoscli'].forEach(id=>{
+  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','compras','silos','matprima','prodbb','prodsacos','prodfinal','camion','prodcal','pedidoscli','clientesauto'].forEach(id=>{
     const v=document.getElementById('view-'+id); if(v) v.classList.toggle('active',id===t);
   });
   const g=VIEW_GROUP[t]||'reparto';
@@ -3477,7 +3490,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 19;
+const NEEDS_API = 21;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -4242,11 +4255,31 @@ async function cargarPedidosCli(){
   try{ pedidosCliData=await api('GET','/pedidos-cli'); }catch(e){ pedidosCliData=[]; }
   renderPedidosCli();
 }
+async function importarPedidoCliPDF(input){
+  const file=input.files[0]; if(!file) return;
+  log('Leyendo PDF…');
+  const base64=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.onerror=()=>rej(new Error('Error leyendo archivo')); r.readAsDataURL(file); });
+  try{
+    const datos=await api('POST','/importar-pdf',{base64});
+    const lineas=(datos.lineas||[]).filter(l=>l && (l.descripcion||l.referencia) && l.es_articulo!==false)
+      .map(l=>({ descripcion:(l.descripcion||l.referencia||'').trim(), cantidad:Number(l.cantidad)||0, unidad:(l.embalaje||'')||null, kgs:Number(l.kgs)||0 }));
+    if(!lineas.length){ log('No se han encontrado líneas en el PDF','warn'); input.value=''; return; }
+    const cliente=datos.cliente_nombre||null;
+    const r=await api('POST','/pedidos-cli',{ cliente, notas: datos.num?('Pedido '+datos.num):null, lineas });
+    await cargarPedidosCli();
+    if(r && r.auto) log('Pedido de '+(cliente||'cliente')+' importado · cliente automático → '+r.autoTareas+' tarea(s) Big Bag creada(s)','ok');
+    else log('Pedido de '+(cliente||'cliente')+' importado ('+lineas.length+' líneas)','ok');
+  }catch(e){ log('Error importando PDF: '+e.message,'warn'); }
+  input.value='';
+}
 function renderPedidosCli(){
   const el=document.getElementById('pedidoscli-content'); if(!el) return;
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div><div style="font-size:16px;font-weight:500">Pedidos de cliente</div><div style="font-size:12px;color:var(--text2)">Manda cada línea a producción (BB o sacos)</div></div>
-      <button class="btn-primary" onclick="abrirFormPedidoCli()" style="font-size:12px;padding:8px 13px"><i class="ti ti-plus"></i> Nuevo pedido</button></div>`;
+      <div style="display:flex;gap:6px">
+        <button class="btn-sec" onclick="document.getElementById('pcli-pdf-file').click()" style="font-size:12px;padding:8px 12px"><i class="ti ti-file-import"></i> Importar PDF</button>
+        <button class="btn-primary" onclick="abrirFormPedidoCli()" style="font-size:12px;padding:8px 13px"><i class="ti ti-plus"></i> Nuevo pedido</button></div>
+      <input type="file" id="pcli-pdf-file" accept=".pdf" style="display:none" onchange="importarPedidoCliPDF(this)"></div>`;
   html += pedidosCliData.length ? pedidosCliData.map(pedidoCliCard).join('') : '<div class="empty-state"><i class="ti ti-clipboard-list"></i>Sin pedidos de cliente</div>';
   el.innerHTML=html;
 }
@@ -4353,6 +4386,19 @@ async function confirmarAProduccion(lineId){
   try{ await api('POST','/producciones',body); document.getElementById('ap-ov')?.remove(); await cargarPedidosCli(); log('Línea enviada a producción','ok'); }
   catch(e){ log('Error al enviar','warn'); }
 }
+
+// ── CLIENTES AUTOMÁTICOS (Ajustes) ────────────────────────────────────────────
+let clientesAuto=[];
+async function cargarClientesAuto(){ try{ clientesAuto=await api('GET','/clientes-auto'); }catch(e){ clientesAuto=[]; } renderClientesAuto(); }
+function renderClientesAuto(){
+  const el=document.getElementById('cauto-list'); if(!el) return;
+  if(!clientesAuto.length){ el.innerHTML='<div class="empty-state"><i class="ti ti-users"></i>Sin clientes automáticos todavía</div>'; return; }
+  el.innerHTML=clientesAuto.map(c=>`<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
+     <i class="ti ti-bolt" style="color:#B5710E"></i><span style="flex:1;font-size:14px">${(c.nombre||'').replace(/</g,'&lt;')}</span>
+     <button onclick="delClienteAuto(${c.id})" style="background:none;border:none;color:#9A2A1B;cursor:pointer;font-size:16px" title="Quitar"><i class="ti ti-trash"></i></button></div>`).join('');
+}
+async function addClienteAuto(){ const inp=document.getElementById('cauto-nuevo'); const v=(inp.value||'').trim(); if(!v) return; try{ await api('POST','/clientes-auto',{nombre:v}); inp.value=''; await cargarClientesAuto(); }catch(e){ log('Error','warn'); } }
+async function delClienteAuto(id){ if(!confirm('¿Quitar este cliente automático?')) return; try{ await api('DELETE','/clientes-auto/'+id); await cargarClientesAuto(); }catch(e){ log('Error','warn'); } }
 
 setInterval(loadAll,30000);
 loadAll();
