@@ -4294,40 +4294,72 @@ function viajeCard(v){
        <button onclick="abrirFormViaje('${v.id}')" class="btn-sec" style="font-size:11px;padding:7px 10px"><i class="ti ti-edit"></i></button>
        <button onclick="borrarViaje('${v.id}')" class="btn-sec" style="font-size:11px;padding:7px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button></div></div>`;
 }
+const MATERIALES_CAMION=['Planche','Blanca 0-2','Mortero 0-2','Forna 2-4','Forna 4-6','Forna 6-12','Forna 12-20','Forna 20-25','Machaca 25-60'];
+let _vf=null;
 function abrirFormViaje(id){
-  const v = id? viajesData.find(x=>String(x.id)===String(id)) : {};
+  const v = id? viajesData.find(x=>String(x.id)===String(id)) : null;
+  _vf = { id:id||null, material:(v&&v.material)||'', kg:(v&&v.kg!=null?v.kg:''),
+          destino: v ? (v.silo_id?{tipo:'silo',silo_id:v.silo_id}:null) : null,
+          step: (v&&v.material)?2:1 };
   const ov=document.createElement('div'); ov.id='viaje-form-ov';
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10060;display:flex;align-items:flex-end;justify-content:center';
   ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
-  const opts=matPrimas.filter(m=>m.activo!==false).map(m=>`<option value="${(m.nombre||'').replace(/"/g,'&quot;')}">`).join('');
-  const siloOpts=silosData.map(s=>`<option value="${s.id}" ${String(v.silo_id)===String(s.id)?'selected':''}>${s.nombre}${s.producto?(' · '+s.producto):''}</option>`).join('');
-  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
-  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px">
-    <b style="font-size:15px">${id?'Editar viaje':'Nuevo viaje'}</b>
-    <input type="hidden" id="vf-id" value="${id||''}">
-    <label style="font-size:12px;color:var(--text2);display:block;margin-top:12px">Material<input id="vf-mat" list="vf-mat-list" placeholder="Buscar…" value="${v.material?(''+v.material).replace(/"/g,'&quot;'):''}" style="${inp}"><datalist id="vf-mat-list">${opts}</datalist></label>
-    <div style="display:flex;gap:10px;margin-top:10px">
-      <label style="font-size:12px;color:var(--text2);flex:1">Kg por viaje<input id="vf-kg" type="number" min="0" value="${v.kg!=null?v.kg:''}" style="${inp}"></label>
-      <label style="font-size:12px;color:var(--text2);flex:1">A qué tolva<select id="vf-silo" style="${inp}"><option value="">(sin asignar)</option>${siloOpts}</select></label></div>
-    ${id?'':`<label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Nº de viajes (se crean en cola)<input id="vf-n" type="number" min="1" value="1" style="${inp}"></label>`}
-    <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Notas<input id="vf-notas" value="${v.notas?(''+v.notas).replace(/"/g,'&quot;'):''}" style="${inp}"></label>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-      <button class="btn-sec" onclick="document.getElementById('viaje-form-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
-      <button class="btn-primary" onclick="guardarViaje()" style="font-size:13px;padding:10px 18px">Guardar</button></div>
-  </div>`;
+  ov.innerHTML='<div id="vf-panel" style="background:var(--bg);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px"></div>';
   document.body.appendChild(ov);
+  vfRender();
 }
-async function guardarViaje(){
-  const id=document.getElementById('vf-id').value;
-  const nombre=(document.getElementById('vf-mat').value||'').trim();
-  let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
-  if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
-  const body={ mp_id:mp?mp.id:null, kg:Number(document.getElementById('vf-kg').value)||0, silo_id:document.getElementById('vf-silo').value||null, notas:(document.getElementById('vf-notas').value||'').trim()||null };
+function vfClose(){ document.getElementById('viaje-form-ov')?.remove(); }
+function vfRender(){
+  const p=document.getElementById('vf-panel'); if(!p||!_vf) return;
+  if(_vf.step===1){
+    p.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><b style="font-size:18px">¿Qué sube el camión?</b><button onclick="vfClose()" style="background:none;border:none;font-size:26px;color:var(--text2);cursor:pointer;line-height:1">×</button></div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Toca el material</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${MATERIALES_CAMION.map(m=>`<button onclick="vfPickMat(this.dataset.m)" data-m="${m.replace(/"/g,'&quot;')}" style="padding:20px 12px;border-radius:14px;border:2px solid var(--border2);background:var(--surface);color:var(--text);font-size:16px;font-weight:800;cursor:pointer;min-height:70px">${m}</button>`).join('')}
+      </div>`;
+    return;
+  }
+  const silos=(silosData||[]).slice().sort((a,b)=>Number(a.numero)-Number(b.numero));
+  const inp='width:100%;font-size:26px;font-weight:800;text-align:center;padding:14px;border:2px solid var(--border2);border-radius:12px;background:var(--surface);color:var(--text);box-sizing:border-box';
+  const d=_vf.destino;
+  const dBtn=(sel,label,sub,onclick)=>`<button onclick="${onclick}" style="padding:14px 6px;border-radius:12px;border:2px solid ${sel?'#0F6E56':'var(--border2)'};background:${sel?'#EAF3EE':'var(--surface)'};color:${sel?'#0F6E56':'var(--text)'};font-weight:800;font-size:15px;cursor:pointer;min-height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">${label}${sub?`<span style="font-size:10px;font-weight:500;color:${sel?'#0F6E56':'var(--text2)'}">${sub}</span>`:''}</button>`;
+  p.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b style="font-size:18px"><i class="ti ti-cube" style="font-size:16px;color:#7A4E00"></i> ${_vf.material}</b><button onclick="vfClose()" style="background:none;border:none;font-size:26px;color:var(--text2);cursor:pointer;line-height:1">×</button></div>
+    <button onclick="_vf.step=1;vfRender()" class="btn-sec" style="font-size:12px;padding:6px 12px;margin-bottom:16px"><i class="ti ti-arrow-left"></i> Cambiar material</button>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:6px">Kg que sube</div>
+    <input id="vf-kg" type="number" inputmode="numeric" min="0" value="${_vf.kg}" placeholder="0" style="${inp}" oninput="_vf.kg=this.value">
+    <div style="font-size:13px;color:var(--text2);margin:18px 0 8px">¿Dónde lo descarga?</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      ${silos.map(s=>dBtn(d&&d.tipo==='silo'&&String(d.silo_id)===String(s.id),'Tolva '+s.numero, s.producto?(''+s.producto).replace(/</g,'&lt;'):'vacía', "vfDest('silo','"+s.id+"')")).join('')}
+      ${dBtn(d&&d.tipo==='acopio','Acopio','no va a tolva',"vfDest('acopio','')")}
+    </div>
+    <button class="btn-primary" onclick="vfConfirm()" style="width:100%;margin-top:20px;font-size:17px;padding:16px;background:#0F6E56;border-radius:12px"><i class="ti ti-check"></i> Registrar viaje</button>`;
+}
+function vfPickMat(m){ _vf.material=m; _vf.step=2; vfRender(); }
+function vfDest(tipo,silo_id){ _vf.destino = tipo==='silo'?{tipo:'silo',silo_id}:{tipo:'acopio'}; vfRender(); }
+async function vfConfirm(){
+  const kg=Number(document.getElementById('vf-kg')?.value)||0; _vf.kg=kg;
+  if(!_vf.material){ _vf.step=1; vfRender(); return; }
+  if(!kg){ log('Pon los kg que sube','warn'); return; }
+  if(!_vf.destino){ log('Elige dónde lo descarga','warn'); return; }
+  let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===_vf.material.toLowerCase());
+  if(!mp){ try{ mp=await api('POST','/materias-primas',{nombre:_vf.material}); await cargarMatPrimas(false); }catch(e){} }
+  const dest=_vf.destino;
   try{
-    if(id) await api('PUT','/viajes/'+id,body);
-    else { body.n_viajes=Number(document.getElementById('vf-n').value)||1; await api('POST','/viajes',body); }
-    document.getElementById('viaje-form-ov')?.remove(); await cargarViajes();
-  }catch(e){ log('Error guardando viaje','warn'); }
+    if(_vf.id){
+      await api('PUT','/viajes/'+_vf.id,{ mp_id:mp?mp.id:null, kg, silo_id:dest.tipo==='silo'?dest.silo_id:null });
+    } else {
+      const r=await api('POST','/viajes',{ mp_id:mp?mp.id:null, kg, silo_id:dest.tipo==='silo'?dest.silo_id:null, origen:'camion' });
+      const vid=r.ids&&r.ids[0];
+      if(vid){
+        if(dest.tipo==='silo') await api('PATCH','/viajes/'+vid+'/completar',{ destino_tipo:'silo', destino_silo_id:dest.silo_id, kg_final:kg });
+        else await api('PATCH','/viajes/'+vid+'/completar',{ destino_tipo:'acopio', acopio:'Acopio', kg_final:kg });
+      }
+    }
+    try{ if(navigator.vibrate) navigator.vibrate(18); }catch(_){}
+    vfClose(); await cargarViajes(); try{ silosData=await api('GET','/silos'); }catch(_){}
+    const dl = dest.tipo==='silo' ? ('a '+((silosData.find(s=>String(s.id)===String(dest.silo_id))||{}).nombre||'tolva')) : 'a acopio';
+    log('Viaje registrado · '+fmtN(kg)+' kg '+dl,'ok');
+  }catch(e){ log('Error al registrar el viaje','warn'); }
 }
 let _vcDestino='silo';
 function abrirCompletarViaje(id){
