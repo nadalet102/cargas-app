@@ -3927,50 +3927,70 @@ function renderProd(tipo){
 function kbCard(p){
   const esc=s=>(''+(s||'')).replace(/</g,'&lt;');
   const sinMat=!p.mp_id;
-  return `<div class="kb-card" data-id="${p.id}" data-tipo="${p.tipo}" style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:9px 10px;display:flex;gap:8px;align-items:flex-start;box-shadow:0 1px 2px rgba(0,0,0,.04)">
-     <div data-handle style="touch-action:none;cursor:grab;color:var(--text3);font-size:20px;line-height:1;padding:2px;user-select:none">⠿</div>
-     <div style="flex:1;min-width:0" onclick="abrirFormProd('${p.tipo}','${p.id}')">
+  return `<div class="kb-card" data-id="${p.id}" data-tipo="${p.tipo}" style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;box-shadow:0 1px 2px rgba(0,0,0,.04);cursor:grab">
        ${p.cliente?`<div style="font-size:11px;font-weight:800;color:#0C447C;margin-bottom:2px"><i class="ti ti-user" style="font-size:10px"></i> ${esc(p.cliente)}</div>`:''}
        <div style="font-size:14px;font-weight:800;line-height:1.15">${esc(p.material||p.notas||'(sin material)')}${sinMat?' <span style="font-size:10px;color:#9A2A1B">·sin mat.</span>':''}</div>
        <div style="font-size:12px;color:var(--text2);margin-top:1px">${fmtN(p.unidades)} ${p.tipo==='bb'?'BB':'sacos'}${Number(p.kg_total)?(' · '+fmtN(p.kg_total)+' kg'):''}</div>
-       ${sinMat?`<button onclick="event.stopPropagation();asignarMaterialProd('${p.id}')" style="margin-top:5px;font-size:10px;padding:4px 8px;border:1px solid #0C447C;background:#E9F0F8;color:#0C447C;border-radius:7px;cursor:pointer">Asignar material</button>`:''}
-     </div>
+       ${sinMat?`<button onclick="event.stopPropagation();asignarMaterialProd('${p.id}')" style="margin-top:6px;font-size:10px;padding:4px 8px;border:1px solid #0C447C;background:#E9F0F8;color:#0C447C;border-radius:7px;cursor:pointer">Asignar material</button>`:''}
    </div>`;
 }
 let _kb=null;
 function initProdBoard(tipo){
   const root=document.getElementById(tipo==='bb'?'prodbb-content':'prodsacos-content'); if(!root) return;
-  root.querySelectorAll('[data-handle]').forEach(h=>{ h.addEventListener('pointerdown', kbDown); });
+  root.querySelectorAll('.kb-card').forEach(card=>{ card.addEventListener('pointerdown', kbDown); });
 }
 function kbDown(e){
   if(e.button && e.button!==0) return;
-  const card=e.target.closest('.kb-card'); if(!card) return;
-  e.preventDefault();
-  const rect=card.getBoundingClientRect();
-  const ghost=card.cloneNode(true);
-  ghost.style.cssText='position:fixed;margin:0;width:'+rect.width+'px;left:'+rect.left+'px;top:'+rect.top+'px;z-index:10095;pointer-events:none;opacity:.96;transform:rotate(2deg) scale(1.02);box-shadow:0 12px 28px rgba(0,0,0,.28);border-radius:10px';
-  document.body.appendChild(ghost);
-  card.style.opacity='.3';
-  _kb={ id:card.dataset.id, tipo:card.dataset.tipo, card, ghost, offx:e.clientX-rect.left, offy:e.clientY-rect.top, col:null };
-  window.addEventListener('pointermove',kbMove,{passive:false});
-  window.addEventListener('pointerup',kbUp);
-  window.addEventListener('pointercancel',kbUp);
-}
-function kbMove(e){
-  if(!_kb) return; e.preventDefault();
-  _kb.ghost.style.left=(e.clientX-_kb.offx)+'px';
-  _kb.ghost.style.top=(e.clientY-_kb.offy)+'px';
-  const el=document.elementFromPoint(e.clientX,e.clientY);
-  const col=el&&el.closest?el.closest('.kb-col'):null;
-  if(col!==_kb.col){
-    document.querySelectorAll('.kb-col').forEach(c=>{ c.style.outline=(c===col)?'2px dashed var(--blue)':''; c.style.outlineOffset='-2px'; });
-    _kb.col=col;
+  if(e.target.closest('button')) return;            // no arrancar desde botones internos
+  const card=e.currentTarget;
+  const startX=e.clientX, startY=e.clientY;
+  const pid=card.dataset.id, tipo=card.dataset.tipo;
+  let started=false, moved=false;
+  const tmPrevent=ev=>{ if(started) ev.preventDefault(); };   // frena el scroll mientras se arrastra
+  const begin=()=>{
+    started=true;
+    const rect=card.getBoundingClientRect();
+    const ghost=card.cloneNode(true);
+    ghost.style.cssText='position:fixed;margin:0;width:'+rect.width+'px;left:'+rect.left+'px;top:'+rect.top+'px;z-index:10095;pointer-events:none;opacity:.96;transform:rotate(2deg) scale(1.02);box-shadow:0 12px 28px rgba(0,0,0,.28);border-radius:10px';
+    document.body.appendChild(ghost);
+    card.style.opacity='.3'; document.body.style.userSelect='none';
+    _kb={ id:pid, tipo, card, ghost, offx:startX-rect.left, offy:startY-rect.top, col:null };
+    try{ if(navigator.vibrate) navigator.vibrate(18); }catch(_){}
+  };
+  const timer=setTimeout(()=>{ if(!moved) begin(); }, 180);
+  const move=ev=>{
+    if(!started){
+      if(Math.hypot(ev.clientX-startX, ev.clientY-startY)>9){ moved=true; clearTimeout(timer); cleanup(); }  // es scroll
+      return;
+    }
+    ev.preventDefault();
+    _kb.ghost.style.left=(ev.clientX-_kb.offx)+'px';
+    _kb.ghost.style.top=(ev.clientY-_kb.offy)+'px';
+    const el=document.elementFromPoint(ev.clientX,ev.clientY);
+    const col=el&&el.closest?el.closest('.kb-col'):null;
+    if(col!==_kb.col){ document.querySelectorAll('.kb-col').forEach(c=>{ c.style.outline=(c===col)?'2px dashed var(--blue)':''; c.style.outlineOffset='-2px'; }); _kb.col=col; }
+  };
+  const up=async ev=>{
+    clearTimeout(timer); cleanup();
+    if(!started){
+      if(!moved && Math.hypot(ev.clientX-startX, ev.clientY-startY)<9){ abrirFormProd(tipo,pid); }   // toque = editar
+      return;
+    }
+    await kbFinish(ev);
+  };
+  function cleanup(){
+    document.removeEventListener('pointermove',move);
+    document.removeEventListener('pointerup',up);
+    document.removeEventListener('pointercancel',up);
+    document.removeEventListener('touchmove',tmPrevent);
+    document.body.style.userSelect='';
   }
+  document.addEventListener('pointermove',move,{passive:false});
+  document.addEventListener('pointerup',up);
+  document.addEventListener('pointercancel',up);
+  document.addEventListener('touchmove',tmPrevent,{passive:false});
 }
-async function kbUp(e){
-  window.removeEventListener('pointermove',kbMove);
-  window.removeEventListener('pointerup',kbUp);
-  window.removeEventListener('pointercancel',kbUp);
+async function kbFinish(e){
   const k=_kb; _kb=null;
   if(!k) return;
   k.ghost.remove();
@@ -3978,8 +3998,7 @@ async function kbUp(e){
   const col=k.col;
   if(!col){ k.card.style.opacity=''; return; }
   try{ if(navigator.vibrate) navigator.vibrate(18); }catch(_){}
-  const destino=col.dataset.estado;
-  const origen=k.card.closest('.kb-col')?.dataset.estado;
+  const destino=col.dataset.estado, origen=k.card.closest('.kb-col')?.dataset.estado;
   if(destino!==origen){
     if(destino==='hecho'){ k.card.style.opacity=''; marcarHechoProd(k.id); return; }
     await cambiarEstadoProd(k.id, destino);
