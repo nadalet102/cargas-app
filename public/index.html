@@ -284,16 +284,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
   <div class="st"><span class="st-v" id="st-cargas">—</span><span class="st-l">cargas abiertas</span></div>
   <div class="st-sep"></div>
   <div class="st"><span class="st-v" id="st-asig">—</span><span class="st-l">asignados</span></div>
-  <div class="st-sep"></div>
-  <div class="st"><span class="st-v" id="st-portes">— €</span><span class="st-l">portes cliente</span></div>
-  <div class="st-sep"></div>
-  <div class="st"><span class="st-v" id="st-margen" style="color:#9FE1CB">— €</span><span class="st-l">margen</span></div>
 </div>
 
 <div class="tabs-bar">
   <div class="tab active" id="grp-reparto" onclick="switchGroup('reparto')"><i class="ti ti-layout-columns"></i> Reparto</div>
   <div class="tab" id="grp-preparacion" onclick="switchGroup('preparacion')"><i class="ti ti-clipboard-check"></i> Preparación</div>
   <div class="tab" id="grp-compras" onclick="switchGroup('compras')"><i class="ti ti-shopping-cart"></i> Compras <span id="compras-badge" style="background:#FBE3E0;color:#9A2A1B;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;margin-left:3px;display:none">0</span></div>
+  <div class="tab" id="grp-produccion" onclick="switchGroup('produccion')"><i class="ti ti-building-factory-2"></i> Producción</div>
   <div class="tab" id="grp-resumen" onclick="switchGroup('resumen')"><i class="ti ti-chart-bar"></i> Resumen</div>
   <div class="tab" id="grp-ajustes" onclick="switchGroup('ajustes')"><i class="ti ti-settings"></i> Ajustes</div>
 </div>
@@ -506,6 +503,46 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 </div>
 </div>
 
+<!-- SILOS / TOLVAS -->
+<div class="view" id="view-silos">
+<div class="container">
+  <div style="background:#1B2430;border-radius:14px;padding:14px 16px;margin-bottom:16px;color:#E8EDF2;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <div><div style="font-size:15px;font-weight:700">Control de silos</div><div style="font-size:11px;color:#9FB0C2" id="silos-vaciando">—</div></div>
+    <div style="text-align:right"><div style="font-size:11px;color:#9FB0C2">Stock total</div><div class="mono" style="font-size:18px;font-weight:800" id="silos-total">— / — kg</div></div>
+  </div>
+  <div id="silos-grid"></div>
+</div>
+</div>
+
+<!-- MATERIA PRIMA -->
+<div class="view" id="view-matprima">
+<div class="container">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div><div style="font-size:16px;font-weight:500">Materias primas</div><div style="font-size:12px;color:var(--text2)">Catálogo central que se usa en silos, producción, compras y camión</div></div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <input id="mp-nuevo" type="text" placeholder="Nueva materia prima (p. ej. Gravilla 6/12)" style="flex:1;font-size:13px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text)" onkeydown="if(event.key==='Enter')addMatPrima()">
+    <button class="btn-primary" onclick="addMatPrima()" style="font-size:13px;padding:9px 16px"><i class="ti ti-plus"></i> Añadir</button>
+  </div>
+  <div id="matprima-list"></div>
+</div>
+</div>
+
+<!-- PRODUCCIÓN BB -->
+<div class="view" id="view-prodbb"><div class="container"><div id="prodbb-content"></div></div></div>
+<!-- PRODUCCIÓN SACOS -->
+<div class="view" id="view-prodsacos"><div class="container"><div id="prodsacos-content"></div></div></div>
+<!-- PRODUCCIÓN FINAL -->
+<div class="view" id="view-prodfinal"><div class="container"><div id="prodfinal-content"></div></div></div>
+<!-- CAMIÓN -->
+<div class="view" id="view-camion"><div class="container"><div id="camion-content"></div></div></div>
+<!-- COMPRAS MATERIA PRIMA -->
+<div class="view" id="view-comprasmp"><div class="container"><div id="comprasmp-content"></div></div></div>
+<!-- CALENDARIO PRODUCCIÓN -->
+<div class="view" id="view-prodcal"><div class="container"><div id="prodcal-content"></div></div></div>
+<!-- PEDIDOS DE CLIENTE -->
+<div class="view" id="view-pedidoscli"><div class="container"><div id="pedidoscli-content"></div></div></div>
+
 <!-- BANDEJA BC -->
 <div class="view" id="view-bc">
 <div class="container">
@@ -683,10 +720,11 @@ const NAV_GROUPS = {
   reparto:     { subs:[['plan','Planificación'],['cal','Calendario'],['hist','Historial']] },
   preparacion: { subs:[['prep','Por preparar'],['preparados','Preparados']] },
   compras:     { subs:[['compras','']] },
+  produccion:  { subs:[['silos','Silos'],['matprima','Materia prima'],['pedidoscli','Pedidos'],['prodbb','Prod. BB'],['prodsacos','Prod. Sacos'],['camion','Camión'],['comprasmp','Compras'],['prodcal','Calendario'],['prodfinal','Prod. Final']] },
   resumen:     { subs:[['dash','']] },
   ajustes:     { subs:[['trans','Transportistas'],['cats','Categorías']] }
 };
-const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes'};
+const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',comprasmp:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
 let _activeView='plan';
 function _runRenderer(t){
   if(t==='cal')renderCal();
@@ -697,6 +735,15 @@ function _runRenderer(t){
   else if(t==='prep'){fillPreparadorFilters();renderPrepList();}
   else if(t==='preparados'){fillPreparadorFilters();renderPreparadosList();}
   else if(t==='compras')renderCompras();
+  else if(t==='silos')cargarSilos();
+  else if(t==='matprima')cargarMatPrimas(true);
+  else if(t==='prodbb')cargarProd('bb');
+  else if(t==='prodsacos')cargarProd('saco');
+  else if(t==='prodfinal')cargarProdFinal();
+  else if(t==='camion')cargarViajes();
+  else if(t==='comprasmp')cargarComprasMp();
+  else if(t==='prodcal')cargarProdCal();
+  else if(t==='pedidoscli')cargarPedidosCli();
 }
 function renderSubtabBar(g, activeView){
   const bar=document.getElementById('subtab-bar'); if(!bar) return;
@@ -707,7 +754,7 @@ function renderSubtabBar(g, activeView){
 }
 function switchView(t){
   _activeView=t;
-  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','compras'].forEach(id=>{
+  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','compras','silos','matprima','prodbb','prodsacos','prodfinal','camion','comprasmp','prodcal','pedidoscli'].forEach(id=>{
     const v=document.getElementById('view-'+id); if(v) v.classList.toggle('active',id===t);
   });
   const g=VIEW_GROUP[t]||'reparto';
@@ -1840,10 +1887,6 @@ function updateStats(){
   document.getElementById('st-prep').textContent=prepTotal;
   document.getElementById('st-cargas').textContent=openC.length;
   document.getElementById('st-asig').textContent=asig.length;
-  document.getElementById('st-portes').textContent=fmtN(portesAsig)+' €';
-  const ms=document.getElementById('st-margen');
-  ms.textContent=costesConoc>0?(m>=0?'+':'')+fmtN(m)+' €':'— €';
-  ms.style.color=m>=0?'#9FE1CB':'#F5C4B3';
   // Update historial badge
   const entCount=cargas.filter(c=>c.status==='entregada').length;
   const hb=document.getElementById('hist-badge');if(hb)hb.textContent=entCount;
@@ -3433,7 +3476,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 12;
+const NEEDS_API = 17;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -3461,6 +3504,704 @@ function comprobarRecordatorioCopia(){
   d.style.cssText='position:fixed;bottom:16px;right:16px;z-index:10040;background:#FFF7E6;border:1px solid #F0C77E;border-radius:10px;padding:12px 14px;max-width:300px;box-shadow:0 4px 16px rgba(0,0,0,.12);font-family:DM Sans,sans-serif';
   d.innerHTML='<div style="font-size:12px;color:#7A4E00;margin-bottom:8px">💾 '+txt+' Descárgala y guárdala en tu carpeta de SharePoint.</div><div style="display:flex;gap:6px;justify-content:flex-end"><button onclick="document.getElementById(\'copia-recordatorio\').remove()" style="font-size:11px;padding:5px 10px;border:1px solid #C8860B;background:#fff;color:#7A4E00;border-radius:6px;cursor:pointer">Ahora no</button><button onclick="descargarBackup()" style="font-size:11px;padding:5px 10px;border:none;background:#0F6E56;color:#fff;border-radius:6px;cursor:pointer">Descargar copia</button></div>';
   document.body.appendChild(d);
+}
+
+// ── PRODUCCIÓN · Materias primas y Silos (Fase 1) ─────────────────────────────
+let silosData=[], matPrimas=[];
+async function cargarMatPrimas(render){
+  try{ matPrimas=await api('GET','/materias-primas'); }catch(e){ matPrimas=[]; }
+  if(render) renderMatPrimas();
+}
+function renderMatPrimas(){
+  const el=document.getElementById('matprima-list'); if(!el) return;
+  if(!matPrimas.length){ el.innerHTML='<div class="empty-state"><i class="ti ti-database"></i>Aún no hay materias primas. Añade la primera arriba.</div>'; return; }
+  el.innerHTML=matPrimas.map(m=>`<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
+     <i class="ti ti-package" style="color:var(--text2)"></i>
+     <span style="flex:1;font-size:14px">${(m.nombre||'').replace(/</g,'&lt;')}</span>
+     <button onclick="delMatPrima(${m.id})" style="background:none;border:none;color:#9A2A1B;cursor:pointer;font-size:16px" title="Borrar"><i class="ti ti-trash"></i></button>
+   </div>`).join('');
+}
+async function addMatPrima(){
+  const inp=document.getElementById('mp-nuevo'); const v=(inp.value||'').trim(); if(!v) return;
+  try{ await api('POST','/materias-primas',{nombre:v}); inp.value=''; await cargarMatPrimas(true); }catch(e){ log('Error','warn'); }
+}
+async function delMatPrima(id){
+  if(!confirm('¿Borrar esta materia prima?')) return;
+  try{ await api('DELETE','/materias-primas/'+id); await cargarMatPrimas(true); }catch(e){ log('Error','warn'); }
+}
+async function cargarSilos(){
+  if(!matPrimas.length) await cargarMatPrimas(false);
+  try{ silosData=await api('GET','/silos'); }catch(e){ silosData=[]; }
+  try{ comprasMpData=await api('GET','/compras-mp'); }catch(e){}
+  renderSilos();
+}
+function siloSVGProd(pct,col,uid){
+  const fillTop=18+(1-pct/100)*92;
+  const id='sp'+uid;
+  return `<svg viewBox="0 0 100 138" width="92" height="124" style="display:block;margin:0 auto">
+    <defs><clipPath id="${id}"><path d="M16 16 Q16 8 24 8 L76 8 Q84 8 84 16 L84 104 L58 130 L42 130 L16 104 Z"/></clipPath></defs>
+    <g clip-path="url(#${id})"><rect x="0" y="0" width="100" height="138" fill="#EFEBE3"/><rect x="0" y="${fillTop}" width="100" height="${138-fillTop}" fill="${col}"/></g>
+    <path d="M16 16 Q16 8 24 8 L76 8 Q84 8 84 16 L84 104 L58 130 L42 130 L16 104 Z" fill="none" stroke="#C9C2B5" stroke-width="2.5"/>
+    <text x="50" y="60" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="23" font-weight="800" fill="${pct>=55?'#fff':'#23211C'}">${pct}%</text>
+  </svg>`;
+}
+function renderSilos(){
+  const grid=document.getElementById('silos-grid'); if(!grid) return;
+  const totA=silosData.reduce((s,x)=>s+Number(x.kg_actual||0),0);
+  const totC=silosData.reduce((s,x)=>s+Number(x.capacidad_kg||0),0);
+  const tt=document.getElementById('silos-total'); if(tt) tt.textContent=fmtN(totA)+' / '+fmtN(totC)+' kg';
+  const vac=silosData.filter(s=>s.vaciando).map(s=>s.nombre);
+  const vv=document.getElementById('silos-vaciando'); if(vv) vv.textContent=vac.length?('Vaciando ahora: '+vac.join(', ')):'Ningún silo en vaciado';
+  grid.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:14px">'+silosData.map(s=>{
+    const cap=Number(s.capacidad_kg)||1, kg=Number(s.kg_actual)||0;
+    const pct=Math.max(0,Math.min(100,Math.round(kg/cap*100)));
+    const col=pct<15?'#A32D2D':pct<35?'#B5710E':'#1E8C6E';
+    const vaciando=s.vaciando;
+    return `<div style="background:var(--surface);border:1px solid ${vaciando?'#E8A599':'var(--border)'};border-radius:14px;padding:12px;text-align:center;${vaciando?'box-shadow:0 0 0 3px #FBE3E0 inset':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:12px;font-weight:700;background:#FFF3E6;color:#7A4E00;border-radius:7px;padding:2px 9px">${s.nombre}</span>
+        ${vaciando?'<span style="font-size:9px;font-weight:700;color:#fff;background:#A32D2D;border-radius:6px;padding:2px 6px">VACIANDO</span>':''}
+      </div>
+      ${siloSVGProd(pct,col,s.id)}
+      <div style="font-size:13px;font-weight:700;margin-top:6px;min-height:17px">${s.producto?(''+s.producto).replace(/</g,'&lt;'):'<span style="color:var(--text3);font-weight:500">vacío</span>'}</div>
+      <div style="font-size:12px;color:var(--text2)">${fmtN(kg)} / ${fmtN(cap)} kg</div>
+      <div style="display:flex;gap:5px;margin-top:10px">
+        <button onclick="abrirLlenarSilo(${s.id})" style="flex:1;border:none;border-radius:8px;padding:8px 4px;font-size:11px;font-weight:700;cursor:pointer;background:#E9F0F8;color:var(--blue-d)"><i class="ti ti-arrow-down"></i> Llenar</button>
+        <button onclick="vaciarSilo(${s.id})" style="flex:1;border:none;border-radius:8px;padding:8px 4px;font-size:11px;font-weight:700;cursor:pointer;background:#FBE7D2;color:#7A4E00">Vaciar</button>
+      </div>
+      <button onclick="toggleVaciando(${s.id},${!vaciando})" style="width:100%;margin-top:5px;border:1px solid ${vaciando?'#E8A599':'var(--border)'};border-radius:8px;padding:7px;font-size:11px;cursor:pointer;background:${vaciando?'#FBE3E0':'var(--surface)'};color:${vaciando?'#9A2A1B':'var(--text2)'}">${vaciando?'Quitar "vaciando"':'Marcar "estoy vaciando"'}</button>
+      ${progSiloHTML(s)}
+    </div>`;
+  }).join('')+'</div>';
+}
+function progSiloHTML(s){
+  const hoy=_hoyISO();
+  const items=(comprasMpData||[]).filter(c=>c.estado==='programado' && _fechaISO(c.fecha)===hoy && String(c.silo_id)===String(s.id));
+  const rows=items.map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:10px;padding:2px 0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.hora?('<b>'+c.hora+'</b> '):''}${(c.material||'').replace(/</g,'&lt;')} ${fmtN(c.kg)}kg</span><button onclick="borrarCompraMp('${c.id}')" style="background:none;border:none;color:#9A2A1B;cursor:pointer;font-size:13px;padding:0;line-height:1">×</button></div>`).join('');
+  return `<div style="margin-top:8px;border-top:1px dashed var(--border);padding-top:6px;text-align:left">
+     <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:10px;color:var(--text2);font-weight:600">Programado hoy</span><button onclick="abrirFormCompraMp(null,{silo_id:${s.id},fecha:'${hoy}'})" style="background:none;border:none;color:var(--blue);font-size:11px;cursor:pointer">+ Programar</button></div>
+     ${rows||'<div style="font-size:10px;color:var(--text3)">—</div>'}</div>`;
+}
+function abrirLlenarSilo(id){
+  const s=silosData.find(x=>String(x.id)===String(id)); if(!s) return;
+  const ov=document.createElement('div'); ov.id='silo-llenar-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10060;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const opts=matPrimas.filter(m=>m.activo!==false).map(m=>`<option value="${(m.nombre||'').replace(/"/g,'&quot;')}">`).join('');
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:460px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:15px">Llenar ${s.nombre}</b>
+    <div style="font-size:12px;color:var(--text2);margin:2px 0 14px">Actual: ${fmtN(s.kg_actual)} / ${fmtN(s.capacidad_kg)} kg</div>
+    <label style="font-size:12px;color:var(--text2)">Material${s.producto?(' (ahora: '+s.producto+')'):''}
+      <input id="sl-mp" list="sl-mp-list" placeholder="Buscar materia prima…" value="${s.producto?(''+s.producto).replace(/"/g,'&quot;'):''}" style="${inp}">
+      <datalist id="sl-mp-list">${opts}</datalist></label>
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Kg que llegan
+      <input id="sl-kg" type="number" min="0" placeholder="0" style="${inp}"></label>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('silo-llenar-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarLlenar(${id})" style="font-size:13px;padding:10px 18px">Llenar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  setTimeout(()=>document.getElementById('sl-kg')?.focus(),60);
+}
+async function confirmarLlenar(id){
+  const nombre=(document.getElementById('sl-mp').value||'').trim();
+  const kg=Number(document.getElementById('sl-kg').value)||0;
+  let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
+  if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
+  try{ await api('POST','/silos/'+id+'/llenar',{mp_id:mp?mp.id:null, kg}); document.getElementById('silo-llenar-ov')?.remove(); await cargarSilos(); }
+  catch(e){ log('Error al llenar','warn'); }
+}
+async function vaciarSilo(id){
+  if(!confirm('¿Vaciar este silo? (De momento lo deja a 0. La producción al vaciar la añadimos en la siguiente fase.)')) return;
+  try{ await api('POST','/silos/'+id+'/vaciar'); await cargarSilos(); }catch(e){ log('Error','warn'); }
+}
+async function toggleVaciando(id,val){
+  try{ await api('PATCH','/silos/'+id+'/vaciando',{vaciando:val}); await cargarSilos(); }catch(e){ log('Error','warn'); }
+}
+
+// ── PRODUCCIÓN BB / Sacos / Final (Fase 2) ────────────────────────────────────
+let prodData=[], prodFiltro={bb:'todos',saco:'todos'};
+function siloDeMaterial(mp_id){ return silosData.find(s=>String(s.mp_id)===String(mp_id) && Number(s.kg_actual)>0); }
+function silosDisponibles(){ return silosData.filter(s=>!s.mp_id || Number(s.kg_actual)<=0); }
+async function cargarProd(tipo){
+  if(!matPrimas.length) await cargarMatPrimas(false);
+  try{ silosData=await api('GET','/silos'); }catch(e){}
+  try{ prodData=await api('GET','/producciones'); }catch(e){ prodData=[]; }
+  renderProd(tipo);
+}
+function setProdFiltro(tipo,v){ prodFiltro[tipo]=v; renderProd(tipo); }
+function renderProd(tipo){
+  const el=document.getElementById(tipo==='bb'?'prodbb-content':'prodsacos-content'); if(!el) return;
+  const titulo=tipo==='bb'?'Producción Big Bag':'Producción Sacos';
+  const filtro=prodFiltro[tipo]||'todos';
+  const all=prodData.filter(p=>p.tipo===tipo);
+  const cont=e=> e==='todos'?all.length:all.filter(p=>p.estado===e).length;
+  const lista=all.filter(p=>filtro==='todos'||p.estado===filtro);
+  const fbtn=(v,lbl)=>`<button onclick="setProdFiltro('${tipo}','${v}')" style="font-size:11px;padding:6px 11px;border-radius:8px;border:1px solid var(--border);cursor:pointer;${filtro===v?'background:var(--blue);color:#fff;border-color:var(--blue)':'background:var(--surface);color:var(--text2)'}">${lbl} (${cont(v)})</button>`;
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:16px;font-weight:500">${titulo}</div>
+      <button class="btn-primary" onclick="abrirFormProd('${tipo}')" style="font-size:12px;padding:8px 13px"><i class="ti ti-plus"></i> Nueva tarea</button></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${fbtn('todos','Todos')}${fbtn('pendiente','Pendiente')}${fbtn('en_proceso','En proceso')}${fbtn('hecho','Hecho')}</div>`;
+  html += lista.length ? lista.map(prodCard).join('') : '<div class="empty-state"><i class="ti ti-clipboard"></i>Sin tareas aquí</div>';
+  el.innerHTML=html;
+}
+function prodCard(p){
+  const envase=p.tipo==='bb'?'big bag':'saco';
+  const silo=siloDeMaterial(p.mp_id);
+  const eb={pendiente:['#FBE3E0','#9A2A1B','Pendiente'],en_proceso:['#E9F0F8','#0C447C','En proceso'],hecho:['#EAF3EE','#0F6E56','Hecho']}[p.estado]||['#eee','#555',p.estado];
+  let siloInfo;
+  if(silo) siloInfo=`<span style="font-size:11px;background:#EAF3EE;color:#0F6E56;border-radius:7px;padding:2px 8px"><i class="ti ti-package"></i> En ${silo.nombre} (${fmtN(silo.kg_actual)} kg)</span>`;
+  else { const d=silosDisponibles().map(s=>s.nombre).join(', '); siloInfo=`<span style="font-size:11px;background:#FFF3E6;color:#7A4E00;border-radius:7px;padding:2px 8px">No está en silo${d?' · libres: '+d:''}</span>`; }
+  const acc = p.estado==='hecho'
+    ? `<button onclick="cambiarEstadoProd('${p.id}','en_proceso')" class="btn-sec" style="font-size:11px;padding:6px 10px">↺ Reabrir</button>`
+    : `${p.estado==='pendiente'?`<button onclick="cambiarEstadoProd('${p.id}','en_proceso')" class="btn-sec" style="font-size:11px;padding:6px 10px">Empezar</button>`:''}
+       <button onclick="marcarHechoProd('${p.id}')" class="btn-primary" style="font-size:11px;padding:6px 10px;background:#0F6E56"><i class="ti ti-check"></i> Hecho</button>`;
+  return `<div class="list-card" style="margin-bottom:10px">
+     <div class="lc-hdr"><span><b>${(p.material||'(sin material)').replace(/</g,'&lt;')}</b></span><span style="font-size:10px;font-weight:700;background:${eb[0]};color:${eb[1]};border-radius:8px;padding:3px 9px">${eb[2]}</span></div>
+     <div style="padding:8px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+       <span style="font-size:20px;font-weight:800">${fmtN(p.unidades)}<span style="font-size:12px;font-weight:600;color:var(--text2)"> ${envase}${Number(p.unidades)===1?'':'s'} × ${fmtN(p.kg_unidad)} kg</span></span>
+       <span style="font-size:13px;color:var(--text2)">= ${fmtN(p.kg_total)} kg</span>${siloInfo}
+     </div>
+     ${p.notas?`<div style="padding:0 16px 6px;font-size:12px;color:var(--text2)">${p.notas.replace(/</g,'&lt;')}</div>`:''}
+     <div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px;border-top:1px solid var(--border)">${acc}
+       ${p.estado!=='hecho'?`<button onclick="solicitarMaterialProd('${p.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px"><i class="ti ti-truck-delivery"></i> Solicitar material</button>`:''}
+       <button onclick="abrirFormProd('${p.tipo}','${p.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px"><i class="ti ti-edit"></i></button>
+       <button onclick="borrarProd('${p.id}','${p.tipo}')" class="btn-sec" style="font-size:11px;padding:6px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button></div></div>`;
+}
+function abrirFormProd(tipo,id){
+  const p = id? prodData.find(x=>String(x.id)===String(id)) : {};
+  const ov=document.createElement('div'); ov.id='prod-form-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10060;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const opts=matPrimas.filter(m=>m.activo!==false).map(m=>`<option value="${(m.nombre||'').replace(/"/g,'&quot;')}">`).join('');
+  const envase=tipo==='bb'?'big bag':'saco';
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:15px">${id?'Editar':'Nueva'} tarea · ${tipo==='bb'?'Big Bag':'Sacos'}</b>
+    <input type="hidden" id="pf-id" value="${id||''}"><input type="hidden" id="pf-tipo" value="${tipo}">
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:12px">Material (de materias primas)
+      <input id="pf-mat" list="pf-mat-list" placeholder="Buscar…" value="${p.material?(''+p.material).replace(/"/g,'&quot;'):''}" style="${inp}" onchange="prodSiloHint()" oninput="prodSiloHint()"><datalist id="pf-mat-list">${opts}</datalist></label>
+    <div id="pf-silohint" style="font-size:11px;margin-top:5px;min-height:15px"></div>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Nº de ${envase}s<input id="pf-uni" type="number" min="0" value="${p.unidades!=null?p.unidades:''}" style="${inp}" oninput="prodKgHint()"></label>
+      <label style="font-size:12px;color:var(--text2);flex:1">Kg por ${envase}<input id="pf-kgu" type="number" min="0" value="${p.kg_unidad!=null?p.kg_unidad:''}" style="${inp}" oninput="prodKgHint()"></label></div>
+    <div id="pf-kghint" style="font-size:12px;color:var(--text2);margin-top:6px"></div>
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Notas<input id="pf-notas" value="${p.notas?(''+p.notas).replace(/"/g,'&quot;'):''}" style="${inp}"></label>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('prod-form-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="guardarProd()" style="font-size:13px;padding:10px 18px">Guardar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  prodSiloHint(); prodKgHint();
+}
+function prodKgHint(){ const u=Number(document.getElementById('pf-uni')?.value)||0, k=Number(document.getElementById('pf-kgu')?.value)||0; const el=document.getElementById('pf-kghint'); if(el) el.textContent='Total: '+fmtN(u*k)+' kg'; }
+function prodSiloHint(){
+  const nombre=(document.getElementById('pf-mat')?.value||'').trim().toLowerCase();
+  const mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre);
+  const el=document.getElementById('pf-silohint'); if(!el) return;
+  if(!mp){ el.innerHTML=''; return; }
+  const silo=siloDeMaterial(mp.id);
+  if(silo) el.innerHTML=`<span style="color:#0F6E56">✓ Está en ${silo.nombre} (${fmtN(silo.kg_actual)} kg)</span>`;
+  else { const d=silosDisponibles().map(s=>s.nombre).join(', '); el.innerHTML=`<span style="color:#7A4E00">No está en ningún silo${d?' · silos libres: '+d:''}</span>`; }
+}
+async function guardarProd(){
+  const id=document.getElementById('pf-id').value, tipo=document.getElementById('pf-tipo').value;
+  const nombre=(document.getElementById('pf-mat').value||'').trim();
+  let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
+  if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
+  const body={ tipo, mp_id:mp?mp.id:null, unidades:Number(document.getElementById('pf-uni').value)||0, kg_unidad:Number(document.getElementById('pf-kgu').value)||0, notas:(document.getElementById('pf-notas').value||'').trim()||null };
+  try{ if(id) await api('PUT','/producciones/'+id,body); else await api('POST','/producciones',body); document.getElementById('prod-form-ov')?.remove(); await cargarProd(tipo); }
+  catch(e){ log('Error guardando','warn'); }
+}
+async function cambiarEstadoProd(id,estado){
+  const p=prodData.find(x=>String(x.id)===String(id));
+  try{ await api('PATCH','/producciones/'+id+'/estado',{estado}); await cargarProd(p?p.tipo:'bb'); }catch(e){ log('Error','warn'); }
+}
+async function marcarHechoProd(id){
+  const p=prodData.find(x=>String(x.id)===String(id)); if(!p) return;
+  const silo=siloDeMaterial(p.mp_id);
+  let silo_id=null, descontar=false;
+  if(silo){ if(!confirm('Marcar como HECHO y descontar '+fmtN(p.kg_total)+' kg de '+silo.nombre+'?')) return; silo_id=silo.id; descontar=true; }
+  else { if(!confirm('Marcar como HECHO?\nEl material no está en ningún silo, no se descuenta nada.')) return; }
+  try{ await api('PATCH','/producciones/'+id+'/estado',{estado:'hecho',descontar,silo_id}); await cargarProd(p.tipo); }catch(e){ log('Error','warn'); }
+}
+async function borrarProd(id,tipo){ if(!confirm('¿Borrar esta tarea?')) return; try{ await api('DELETE','/producciones/'+id); await cargarProd(tipo); }catch(e){ log('Error','warn'); } }
+async function cargarProdFinal(){
+  if(!matPrimas.length) await cargarMatPrimas(false);
+  try{ prodData=await api('GET','/producciones'); }catch(e){ prodData=[]; }
+  renderProdFinal();
+}
+function renderProdFinal(){
+  const el=document.getElementById('prodfinal-content'); if(!el) return;
+  const hechas=prodData.filter(p=>p.estado==='hecho').sort((a,b)=>(''+(b.hecho_at||'')).localeCompare(''+(a.hecho_at||'')));
+  const head=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><div style="font-size:16px;font-weight:500">Producción final</div><button class="btn-sec" onclick="exportarProdFinal()" style="font-size:11px;padding:6px 11px"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button></div>`;
+  if(!hechas.length){ el.innerHTML=head+'<div class="empty-state"><i class="ti ti-checklist"></i>Aún no hay producción terminada</div>'; return; }
+  const tBB=hechas.filter(p=>p.tipo==='bb').reduce((s,p)=>s+Number(p.unidades||0),0);
+  const tSC=hechas.filter(p=>p.tipo==='saco').reduce((s,p)=>s+Number(p.unidades||0),0);
+  const tKg=hechas.reduce((s,p)=>s+Number(p.kg_total||0),0);
+  const chip=(l,v)=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:8px 12px;font-size:12px;color:var(--text2)">${l}<br><b style="font-size:16px;color:var(--text)">${v}</b></div>`;
+  el.innerHTML=head+`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${chip('Big bags',fmtN(tBB))}${chip('Sacos',fmtN(tSC))}${chip('Total',fmtN(tKg)+' kg')}</div>`+
+    hechas.map(p=>`<div class="list-card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;padding:10px 14px;gap:8px">
+      <div><div style="font-size:14px;font-weight:600">${(p.material||'').replace(/</g,'&lt;')}</div><div style="font-size:11px;color:var(--text2)">${p.tipo==='bb'?'Big bag':'Saco'}${p.silo_nombre?(' · de '+p.silo_nombre):''}${p.hecho_at?(' · '+fmtDate(p.hecho_at)):''}</div></div>
+      <div style="text-align:right"><div style="font-size:15px;font-weight:800">${fmtN(p.unidades)} <span style="font-size:11px;color:var(--text2)">× ${fmtN(p.kg_unidad)}kg</span></div><div style="font-size:11px;color:var(--text2)">${fmtN(p.kg_total)} kg</div></div>
+    </div></div>`).join('');
+}
+async function exportarProdFinal(){
+  const hechas=prodData.filter(p=>p.estado==='hecho');
+  const rows=[['Fecha','Material','Envase','Unidades','Kg/ud','Kg total','Silo']];
+  hechas.forEach(p=>rows.push([p.hecho_at?fmtDate(p.hecho_at):'',p.material||'',p.tipo==='bb'?'Big bag':'Saco',p.unidades,p.kg_unidad,p.kg_total,p.silo_nombre||'']));
+  try{ await _cargarScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js');
+    const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('Producción'); rows.forEach(r=>ws.addRow(r)); ws.getRow(1).font={bold:true};
+    const buf=await wb.xlsx.writeBuffer(); _descargarBlob(new Blob([buf]),'produccion_'+_hoyISO()+'.xlsx');
+  }catch(e){ _descargarBlob(new Blob([rows.map(r=>r.join(';')).join('\n')],{type:'text/csv'}),'produccion_'+_hoyISO()+'.csv'); }
+}
+
+// ── CAMIÓN (Fase 3) ───────────────────────────────────────────────────────────
+let viajesData=[], camionFiltro='pendiente';
+async function cargarViajes(){
+  if(!matPrimas.length) await cargarMatPrimas(false);
+  try{ silosData=await api('GET','/silos'); }catch(e){}
+  try{ viajesData=await api('GET','/viajes'); }catch(e){ viajesData=[]; }
+  renderCamion();
+}
+function setCamionFiltro(v){ camionFiltro=v; renderCamion(); }
+function renderCamion(){
+  const el=document.getElementById('camion-content'); if(!el) return;
+  const pend=viajesData.filter(v=>v.estado==='pendiente'), hechos=viajesData.filter(v=>v.estado==='hecho');
+  const hoy=_hoyISO();
+  const hoyHechos=hechos.filter(v=>v.hecho_at && _fechaISO(v.hecho_at)===hoy);
+  const strip=silosData.map(s=>{ const pct=Math.round((Number(s.kg_actual)||0)/(Number(s.capacidad_kg)||1)*100); return `<div style="flex:0 0 auto;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:6px 10px;font-size:11px;white-space:nowrap"><b>${s.nombre}</b> · ${s.producto?(''+s.producto).replace(/</g,'&lt;'):'vacío'} · ${pct}%</div>`; }).join('');
+  const fbtn=(v,lbl,n)=>`<button onclick="setCamionFiltro('${v}')" style="font-size:11px;padding:6px 11px;border-radius:8px;border:1px solid var(--border);cursor:pointer;${camionFiltro===v?'background:var(--blue);color:#fff;border-color:var(--blue)':'background:var(--surface);color:var(--text2)'}">${lbl}${n!=null?(' ('+n+')'):''}</button>`;
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:16px;font-weight:500">Camión</div>
+      <button class="btn-primary" onclick="abrirFormViaje()" style="font-size:12px;padding:8px 13px"><i class="ti ti-plus"></i> Nuevo viaje</button></div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Estado de las tolvas (dónde echar)</div>
+    <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;padding-bottom:2px">${strip||'<span style="font-size:12px;color:var(--text3)">sin silos</span>'}</div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">${fbtn('pendiente','Pendientes',pend.length)}${fbtn('hecho','Hechos',hechos.length)}${fbtn('hoy','Parte de hoy',null)}</div>`;
+  if(camionFiltro==='hoy'){
+    const kgHoy=hoyHechos.reduce((s,v)=>s+Number(v.kg_final||v.kg||0),0);
+    const porDest={};
+    hoyHechos.forEach(v=>{ const k=v.destino_tipo==='silo'?('Silo '+(v.destino_silo_nombre||'')):('Acopio'+(v.acopio?(' '+v.acopio):'')); porDest[k]=(porDest[k]||0)+Number(v.kg_final||v.kg||0); });
+    const destRows=Object.keys(porDest).map(k=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:#E8EDF2"><span>${k.replace(/</g,'&lt;')}</span><span>${fmtN(porDest[k])} kg</span></div>`).join('')||'<div style="font-size:12px;color:#9FB0C2">Sin descargas hoy todavía</div>';
+    html+=`<div style="background:#1B2430;border-radius:12px;padding:14px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:8px">
+          <div><div style="font-size:11px;color:#9FB0C2">Parte de hoy · ${fmtDate(hoy)}</div><div style="font-size:18px;font-weight:800;color:#fff">${hoyHechos.length} viaje(s) · ${fmtN(kgHoy)} kg</div></div>
+          <button class="btn-primary" onclick="exportarParteCamion()" style="font-size:11px;padding:8px 12px"><i class="ti ti-file-spreadsheet"></i> Exportar</button></div>
+        <div style="border-top:1px solid #2A3645;padding-top:8px">${destRows}</div>
+        ${pend.length?`<div style="font-size:11px;color:#9FB0C2;margin-top:8px">Quedan ${pend.length} viaje(s) pendiente(s) en cola</div>`:''}</div>`;
+    html += hoyHechos.length ? hoyHechos.map(viajeCard).join('') : '<div class="empty-state"><i class="ti ti-truck"></i>Aún no hay viajes completados hoy</div>';
+    el.innerHTML=html; return;
+  }
+  const lista = camionFiltro==='pendiente'?pend:hechos;
+  html += lista.length ? lista.map(viajeCard).join('') : '<div class="empty-state"><i class="ti ti-truck"></i>Sin viajes</div>';
+  el.innerHTML=html;
+}
+function viajeCard(v){
+  if(v.estado==='hecho'){
+    const dest=v.destino_tipo==='silo'?('Silo: '+(v.destino_silo_nombre||'')):('Acopio'+(v.acopio?': '+v.acopio:''));
+    return `<div class="list-card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;padding:10px 14px;gap:8px">
+      <div><div style="font-size:14px;font-weight:600">${(v.material||'').replace(/</g,'&lt;')}</div><div style="font-size:11px;color:var(--text2)"><i class="ti ti-check" style="color:#0F6E56"></i> ${dest}${v.hecho_at?(' · '+fmtDate(v.hecho_at)):''}</div></div>
+      <div style="text-align:right;font-size:15px;font-weight:800">${fmtN(v.kg_final||v.kg)} kg</div></div></div>`;
+  }
+  const silo=silosData.find(s=>String(s.id)===String(v.silo_id));
+  return `<div class="list-card" style="margin-bottom:10px">
+     <div class="lc-hdr"><span><b>${(v.material||'(sin material)').replace(/</g,'&lt;')}</b></span><span style="font-size:11px;color:var(--text2)">${fmtN(v.kg)} kg</span></div>
+     <div style="padding:8px 16px"><span style="font-size:13px;background:#E9F0F8;color:#0C447C;border-radius:8px;padding:4px 11px"><i class="ti ti-arrow-down"></i> Echar a: <b>${silo?silo.nombre:'(sin asignar)'}</b></span>${v.origen==='produccion'?' <span style="font-size:10px;color:var(--text3)">· lo pidió producción</span>':''}</div>
+     ${v.notas?`<div style="padding:0 16px 6px;font-size:12px;color:var(--text2)">${v.notas.replace(/</g,'&lt;')}</div>`:''}
+     <div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px;border-top:1px solid var(--border)">
+       <button onclick="abrirCompletarViaje('${v.id}')" class="btn-primary" style="font-size:11px;padding:7px 12px;background:#0F6E56"><i class="ti ti-package-import"></i> Descargar</button>
+       <button onclick="abrirFormViaje('${v.id}')" class="btn-sec" style="font-size:11px;padding:7px 10px"><i class="ti ti-edit"></i></button>
+       <button onclick="borrarViaje('${v.id}')" class="btn-sec" style="font-size:11px;padding:7px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button></div></div>`;
+}
+function abrirFormViaje(id){
+  const v = id? viajesData.find(x=>String(x.id)===String(id)) : {};
+  const ov=document.createElement('div'); ov.id='viaje-form-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10060;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const opts=matPrimas.filter(m=>m.activo!==false).map(m=>`<option value="${(m.nombre||'').replace(/"/g,'&quot;')}">`).join('');
+  const siloOpts=silosData.map(s=>`<option value="${s.id}" ${String(v.silo_id)===String(s.id)?'selected':''}>${s.nombre}${s.producto?(' · '+s.producto):''}</option>`).join('');
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:15px">${id?'Editar viaje':'Nuevo viaje'}</b>
+    <input type="hidden" id="vf-id" value="${id||''}">
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:12px">Material<input id="vf-mat" list="vf-mat-list" placeholder="Buscar…" value="${v.material?(''+v.material).replace(/"/g,'&quot;'):''}" style="${inp}"><datalist id="vf-mat-list">${opts}</datalist></label>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Kg por viaje<input id="vf-kg" type="number" min="0" value="${v.kg!=null?v.kg:''}" style="${inp}"></label>
+      <label style="font-size:12px;color:var(--text2);flex:1">A qué tolva<select id="vf-silo" style="${inp}"><option value="">(sin asignar)</option>${siloOpts}</select></label></div>
+    ${id?'':`<label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Nº de viajes (se crean en cola)<input id="vf-n" type="number" min="1" value="1" style="${inp}"></label>`}
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Notas<input id="vf-notas" value="${v.notas?(''+v.notas).replace(/"/g,'&quot;'):''}" style="${inp}"></label>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('viaje-form-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="guardarViaje()" style="font-size:13px;padding:10px 18px">Guardar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+async function guardarViaje(){
+  const id=document.getElementById('vf-id').value;
+  const nombre=(document.getElementById('vf-mat').value||'').trim();
+  let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
+  if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
+  const body={ mp_id:mp?mp.id:null, kg:Number(document.getElementById('vf-kg').value)||0, silo_id:document.getElementById('vf-silo').value||null, notas:(document.getElementById('vf-notas').value||'').trim()||null };
+  try{
+    if(id) await api('PUT','/viajes/'+id,body);
+    else { body.n_viajes=Number(document.getElementById('vf-n').value)||1; await api('POST','/viajes',body); }
+    document.getElementById('viaje-form-ov')?.remove(); await cargarViajes();
+  }catch(e){ log('Error guardando viaje','warn'); }
+}
+let _vcDestino='silo';
+function abrirCompletarViaje(id){
+  const v=viajesData.find(x=>String(x.id)===String(id)); if(!v) return;
+  _vcDestino='silo';
+  const ov=document.createElement('div'); ov.id='viaje-comp-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10061;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const siloOpts=silosData.map(s=>{ const pct=Math.round((Number(s.kg_actual)||0)/(Number(s.capacidad_kg)||1)*100); return `<option value="${s.id}" ${String(v.silo_id)===String(s.id)?'selected':''}>${s.nombre} · ${s.producto?(''+s.producto):'vacío'} ${pct}%</option>`; }).join('');
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:460px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:15px">Descargar · ${(v.material||'').replace(/</g,'&lt;')}</b>
+    <div style="display:flex;gap:6px;margin:12px 0">
+      <button id="vc-tab-silo" onclick="vcDest('silo')" class="btn-primary" style="flex:1;font-size:13px;padding:9px">A silo</button>
+      <button id="vc-tab-acopio" onclick="vcDest('acopio')" class="btn-sec" style="flex:1;font-size:13px;padding:9px">A acopio</button></div>
+    <div id="vc-silo-box"><label style="font-size:12px;color:var(--text2)">Silo<select id="vc-silo" style="${inp}">${siloOpts}</select></label></div>
+    <div id="vc-acopio-box" style="display:none"><label style="font-size:12px;color:var(--text2)">Acopio (nombre)<input id="vc-acopio" style="${inp}" placeholder="p. ej. Acopio norte"></label></div>
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Kg descargados<input id="vc-kg" type="number" min="0" value="${v.kg||''}" style="${inp}"></label>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('viaje-comp-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarCompletar('${id}')" style="font-size:13px;padding:10px 18px;background:#0F6E56">Descargar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+function vcDest(d){
+  _vcDestino=d;
+  document.getElementById('vc-silo-box').style.display=d==='silo'?'block':'none';
+  document.getElementById('vc-acopio-box').style.display=d==='acopio'?'block':'none';
+  document.getElementById('vc-tab-silo').className=d==='silo'?'btn-primary':'btn-sec';
+  document.getElementById('vc-tab-acopio').className=d==='acopio'?'btn-primary':'btn-sec';
+}
+async function confirmarCompletar(id){
+  const v=viajesData.find(x=>String(x.id)===String(id));
+  const destino=_vcDestino||'silo';
+  const kg=Number(document.getElementById('vc-kg').value)||0;
+  const body={ destino_tipo:destino, kg_final:kg };
+  if(destino==='silo'){
+    const sid=document.getElementById('vc-silo').value; body.destino_silo_id=sid;
+    const s=silosData.find(x=>String(x.id)===String(sid));
+    if(s && s.mp_id && Number(s.kg_actual)>0 && String(s.mp_id)!==String(v.mp_id)){ if(!confirm('Ojo: '+s.nombre+' ya tiene '+(s.producto||'otro material')+'. ¿Descargar igualmente?')) return; }
+    if(s && Number(s.kg_actual)+kg>Number(s.capacidad_kg)){ if(!confirm(s.nombre+' se pasaría de su capacidad; se llenará hasta el tope. ¿Continuar?')) return; }
+  } else { body.acopio=(document.getElementById('vc-acopio').value||'').trim()||null; }
+  try{ await api('PATCH','/viajes/'+id+'/completar',body); document.getElementById('viaje-comp-ov')?.remove(); await cargarViajes(); }
+  catch(e){ log('Error al descargar','warn'); }
+}
+async function borrarViaje(id){ if(!confirm('¿Borrar este viaje?')) return; try{ await api('DELETE','/viajes/'+id); await cargarViajes(); }catch(e){ log('Error','warn'); } }
+async function exportarParteCamion(){
+  const hoy=_hoyISO();
+  const delDia=viajesData.filter(v=>(v.hecho_at && _fechaISO(v.hecho_at)===hoy) || (v.estado==='pendiente' && v.fecha && _fechaISO(v.fecha)===hoy));
+  const fuente = delDia.length ? delDia : viajesData;
+  const rows=[['Estado','Material','Kg previsto','Tolva prevista','Destino','Kg final','Fecha']];
+  fuente.forEach(v=>rows.push([v.estado,v.material||'',v.kg,v.silo_nombre||'',v.estado==='hecho'?(v.destino_tipo==='silo'?('Silo '+(v.destino_silo_nombre||'')):('Acopio '+(v.acopio||''))):'',v.kg_final||'',v.hecho_at?fmtDate(v.hecho_at):'']));
+  try{ await _cargarScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js');
+    const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('Camión'); rows.forEach(r=>ws.addRow(r)); ws.getRow(1).font={bold:true};
+    const buf=await wb.xlsx.writeBuffer(); _descargarBlob(new Blob([buf]),'parte_camion_'+hoy+'.xlsx');
+  }catch(e){ _descargarBlob(new Blob([rows.map(r=>r.join(';')).join('\n')],{type:'text/csv'}),'parte_camion_'+hoy+'.csv'); }
+}
+// Solicitar material al camión desde una tarea de producción
+function solicitarMaterialProd(id){
+  const p=prodData.find(x=>String(x.id)===String(id)); if(!p) return;
+  const ov=document.createElement('div'); ov.id='solic-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10062;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const siloOpts=silosData.map(s=>`<option value="${s.id}">${s.nombre}${s.producto?(' · '+s.producto):' · vacío'}</option>`).join('');
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:440px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:15px">Solicitar material al camión</b>
+    <div style="font-size:12px;color:var(--text2);margin:2px 0 12px">${(p.material||'').replace(/</g,'&lt;')}</div>
+    <label style="font-size:12px;color:var(--text2)">A qué tolva<select id="sm-silo" style="${inp}">${siloOpts}</select></label>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Nº de viajes<input id="sm-n" type="number" min="1" value="1" style="${inp}"></label>
+      <label style="font-size:12px;color:var(--text2);flex:1">Kg por viaje<input id="sm-kg" type="number" min="0" placeholder="0" style="${inp}"></label></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('solic-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarSolicitar('${id}')" style="font-size:13px;padding:10px 18px">Solicitar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+async function confirmarSolicitar(id){
+  const p=prodData.find(x=>String(x.id)===String(id)); if(!p) return;
+  const body={ mp_id:p.mp_id, kg:Number(document.getElementById('sm-kg').value)||0, silo_id:document.getElementById('sm-silo').value||null, n_viajes:Number(document.getElementById('sm-n').value)||1, origen:'produccion' };
+  try{ await api('POST','/viajes',body); document.getElementById('solic-ov')?.remove(); log('Solicitado al camión: '+(body.n_viajes)+' viaje(s)','ok'); }
+  catch(e){ log('Error al solicitar','warn'); }
+}
+
+// ── COMPRAS MATERIA PRIMA + CALENDARIO (Fase 4) ───────────────────────────────
+let comprasMpData=[], comprasMpFiltro='programado', pcalMode='mes', pcalRef=new Date();
+async function cargarComprasMp(){
+  if(!matPrimas.length) await cargarMatPrimas(false);
+  try{ silosData=await api('GET','/silos'); }catch(e){}
+  try{ comprasMpData=await api('GET','/compras-mp'); }catch(e){ comprasMpData=[]; }
+  renderComprasMp();
+}
+function setComprasMpFiltro(v){ comprasMpFiltro=v; renderComprasMp(); }
+function renderComprasMp(){
+  const el=document.getElementById('comprasmp-content'); if(!el) return;
+  const cont=e=> e==='todos'?comprasMpData.length:comprasMpData.filter(c=>c.estado===e).length;
+  const fbtn=(v,lbl)=>`<button onclick="setComprasMpFiltro('${v}')" style="font-size:11px;padding:6px 11px;border-radius:8px;border:1px solid var(--border);cursor:pointer;${comprasMpFiltro===v?'background:var(--blue);color:#fff;border-color:var(--blue)':'background:var(--surface);color:var(--text2)'}">${lbl} (${cont(v)})</button>`;
+  const lista=comprasMpData.filter(c=>comprasMpFiltro==='todos'||c.estado===comprasMpFiltro);
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:16px;font-weight:500">Compras de materia prima</div>
+      <button class="btn-primary" onclick="abrirFormCompraMp()" style="font-size:12px;padding:8px 13px"><i class="ti ti-plus"></i> Nueva compra</button></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${fbtn('todos','Todas')}${fbtn('pendiente','Pendiente')}${fbtn('programado','Programado')}${fbtn('recibido','Recibido')}</div>`;
+  html += lista.length ? lista.map(compraMpCard).join('') : '<div class="empty-state"><i class="ti ti-shopping-cart"></i>Nada aquí</div>';
+  el.innerHTML=html;
+}
+function compraMpCard(c){
+  const eb={pendiente:['#FBE3E0','#9A2A1B','Pendiente'],programado:['#E9F0F8','#0C447C','Programado'],recibido:['#EAF3EE','#0F6E56','Recibido']}[c.estado]||['#eee','#555',c.estado];
+  const cita = c.fecha?(fmtDate(c.fecha)+(c.hora?(' · '+c.hora):'')):'sin fecha';
+  const acc = c.estado==='recibido'
+    ? `<button onclick="borrarCompraMp('${c.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button>`
+    : `<button onclick="abrirRecibirCompraMp('${c.id}')" class="btn-primary" style="font-size:11px;padding:6px 10px;background:#0F6E56"><i class="ti ti-package-import"></i> Recibir</button>
+       <button onclick="abrirFormCompraMp('${c.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px"><i class="ti ti-edit"></i></button>
+       <button onclick="borrarCompraMp('${c.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button>`;
+  return `<div class="list-card" style="margin-bottom:10px">
+     <div class="lc-hdr"><span><b>${(c.material||'(sin material)').replace(/</g,'&lt;')}</b>${c.proveedor?(' · '+(''+c.proveedor).replace(/</g,'&lt;')):''}</span><span style="font-size:10px;font-weight:700;background:${eb[0]};color:${eb[1]};border-radius:8px;padding:3px 9px">${eb[2]}</span></div>
+     <div style="padding:8px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+       <span style="font-size:18px;font-weight:800">${fmtN(c.estado==='recibido'?(c.kg_recibido||c.kg):c.kg)} kg</span>
+       <span style="font-size:12px;color:var(--text2)"><i class="ti ti-calendar"></i> ${cita}</span>
+       ${c.silo_nombre?`<span style="font-size:11px;background:#FFF3E6;color:#7A4E00;border-radius:7px;padding:2px 8px"><i class="ti ti-arrow-down"></i> ${c.silo_nombre}</span>`:''}
+     </div>
+     ${c.notas?`<div style="padding:0 16px 6px;font-size:12px;color:var(--text2)">${c.notas.replace(/</g,'&lt;')}</div>`:''}
+     <div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px;border-top:1px solid var(--border)">${acc}</div></div>`;
+}
+function abrirFormCompraMp(id, prefill){
+  const c = id? comprasMpData.find(x=>String(x.id)===String(id)) : (prefill||{});
+  const ov=document.createElement('div'); ov.id='cmp-form-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10060;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const opts=matPrimas.filter(m=>m.activo!==false).map(m=>`<option value="${(m.nombre||'').replace(/"/g,'&quot;')}">`).join('');
+  const siloOpts=silosData.map(s=>`<option value="${s.id}" ${String(c.silo_id)===String(s.id)?'selected':''}>${s.nombre}${s.producto?(' · '+s.producto):''}</option>`).join('');
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px;max-height:92vh;overflow-y:auto">
+    <b style="font-size:15px">${id?'Editar compra':'Nueva compra de materia prima'}</b>
+    <input type="hidden" id="cmp-id" value="${id||''}">
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:12px">Material<input id="cmp-mat" list="cmp-mat-list" placeholder="Buscar…" value="${c.material?(''+c.material).replace(/"/g,'&quot;'):''}" style="${inp}"><datalist id="cmp-mat-list">${opts}</datalist></label>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Proveedor<input id="cmp-prov" value="${c.proveedor?(''+c.proveedor).replace(/"/g,'&quot;'):''}" style="${inp}"></label>
+      <label style="font-size:12px;color:var(--text2);flex:1">Kg<input id="cmp-kg" type="number" min="0" value="${c.kg!=null?c.kg:''}" style="${inp}"></label></div>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Fecha de llegada<input id="cmp-fecha" type="date" value="${c.fecha?_fechaISO(c.fecha):''}" style="${inp}"></label>
+      <label style="font-size:12px;color:var(--text2);flex:1">Hora<input id="cmp-hora" type="time" value="${c.hora||''}" style="${inp}"></label></div>
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">A qué tolva<select id="cmp-silo" style="${inp}"><option value="">(sin asignar)</option>${siloOpts}</select></label>
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Notas<input id="cmp-notas" value="${c.notas?(''+c.notas).replace(/"/g,'&quot;'):''}" style="${inp}"></label>
+    <div style="font-size:11px;color:var(--text3);margin-top:8px">Si pones fecha, queda "programado"; si no, "pendiente".</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button class="btn-sec" onclick="document.getElementById('cmp-form-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="guardarCompraMp()" style="font-size:13px;padding:10px 18px">Guardar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+async function guardarCompraMp(){
+  const id=document.getElementById('cmp-id').value;
+  const nombre=(document.getElementById('cmp-mat').value||'').trim();
+  let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
+  if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
+  const body={ mp_id:mp?mp.id:null, proveedor:(document.getElementById('cmp-prov').value||'').trim()||null,
+    kg:Number(document.getElementById('cmp-kg').value)||0, fecha:document.getElementById('cmp-fecha').value||null,
+    hora:document.getElementById('cmp-hora').value||null, silo_id:document.getElementById('cmp-silo').value||null,
+    notas:(document.getElementById('cmp-notas').value||'').trim()||null };
+  try{ if(id) await api('PUT','/compras-mp/'+id,body); else await api('POST','/compras-mp',body); document.getElementById('cmp-form-ov')?.remove(); if(_activeView==='silos') await cargarSilos(); else await cargarComprasMp(); }
+  catch(e){ log('Error guardando compra','warn'); }
+}
+function abrirRecibirCompraMp(id){
+  const c=comprasMpData.find(x=>String(x.id)===String(id)); if(!c) return;
+  const ov=document.createElement('div'); ov.id='cmp-rec-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10061;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:440px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:15px">Recibir · ${(c.material||'').replace(/</g,'&lt;')}</b>
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:12px">Kg que han llegado<input id="cmpr-kg" type="number" min="0" value="${c.kg||''}" style="${inp}"></label>
+    ${c.silo_id?`<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer"><input type="checkbox" id="cmpr-fill" checked style="width:16px;height:16px"> Añadir estos kg a ${c.silo_nombre||'la tolva'}</label>`:'<div style="font-size:11px;color:var(--text3);margin-top:10px">Sin tolva asignada: solo se cuenta, no se añade a ningún silo.</div>'}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('cmp-rec-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarRecibirCompraMp('${id}')" style="font-size:13px;padding:10px 18px;background:#0F6E56">Recibir</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+async function confirmarRecibirCompraMp(id){
+  const kg=Number(document.getElementById('cmpr-kg').value)||0;
+  const fill=document.getElementById('cmpr-fill')?document.getElementById('cmpr-fill').checked:false;
+  try{ await api('PATCH','/compras-mp/'+id+'/recibir',{kg_recibido:kg, fill_silo:fill}); document.getElementById('cmp-rec-ov')?.remove(); await cargarComprasMp(); }
+  catch(e){ log('Error al recibir','warn'); }
+}
+async function borrarCompraMp(id){ if(!confirm('¿Borrar esta compra?')) return; try{ await api('DELETE','/compras-mp/'+id); if(_activeView==='silos') await cargarSilos(); else await cargarComprasMp(); }catch(e){ log('Error','warn'); } }
+
+// Calendario de producción (por fecha de las compras programadas)
+async function cargarProdCal(){
+  if(!matPrimas.length) await cargarMatPrimas(false);
+  try{ comprasMpData=await api('GET','/compras-mp'); }catch(e){ comprasMpData=[]; }
+  renderProdCal();
+}
+function renderProdCal(){
+  const el=document.getElementById('prodcal-content'); if(!el) return;
+  const items=comprasMpData.filter(c=>c.fecha);
+  const porDia={}; items.forEach(c=>{ const k=_fechaISO(c.fecha); (porDia[k]=porDia[k]||[]).push(c); });
+  const tab=(m,t)=>`<button onclick="setPcalMode('${m}')" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:7px;cursor:pointer;${pcalMode===m?'background:var(--blue);color:#fff;border-color:var(--blue)':'background:var(--surface);color:var(--text)'}">${t}</button>`;
+  const nav=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap">
+     <div style="font-size:16px;font-weight:500">Calendario de llegadas</div>
+     <div style="display:flex;gap:4px">${tab('mes','Mes')}${tab('semana','Semana')}${tab('dia','Día')}</div></div>
+   <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px">
+     <button class="btn-sec" onclick="pcalNav(-1)" style="font-size:14px;padding:4px 11px">‹</button>
+     <span style="font-size:13px;font-weight:600;min-width:140px;text-align:center">${_pcalTitulo()}</span>
+     <button class="btn-sec" onclick="pcalNav(1)" style="font-size:14px;padding:4px 11px">›</button>
+     <button class="btn-sec" onclick="pcalHoy()" style="font-size:11px;padding:5px 10px">Hoy</button></div>`;
+  let body = pcalMode==='mes'?_pcalMes(porDia):pcalMode==='semana'?_pcalSemana(porDia):_pcalDia(porDia);
+  el.innerHTML=nav+body;
+}
+function setPcalMode(m){ pcalMode=m; renderProdCal(); }
+function pcalNav(d){ if(pcalMode==='mes') pcalRef.setMonth(pcalRef.getMonth()+d); else if(pcalMode==='semana') pcalRef.setDate(pcalRef.getDate()+7*d); else pcalRef.setDate(pcalRef.getDate()+d); pcalRef=new Date(pcalRef); renderProdCal(); }
+function pcalHoy(){ pcalRef=new Date(); renderProdCal(); }
+function _pcalTitulo(){
+  if(pcalMode==='mes') return MESES[pcalRef.getMonth()]+' '+pcalRef.getFullYear();
+  if(pcalMode==='dia') return pcalRef.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+  const ini=_inicioSemana(pcalRef); const fin=new Date(ini); fin.setDate(ini.getDate()+6);
+  return ini.getDate()+' '+MESES[ini.getMonth()].slice(0,3)+' – '+fin.getDate()+' '+MESES[fin.getMonth()].slice(0,3);
+}
+function _pcalChip(items){ return items.map(c=>`<div style="background:#E6F1FB;color:#0C447C;border-radius:5px;padding:2px 5px;font-size:10px;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.hora?c.hora+' ':''}${((c.material||'')+' '+fmtN(c.kg)+'kg').replace(/</g,'&lt;')}</div>`).join(''); }
+function _pcalRow(c){ return `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:13px"><b>${c.hora||'—'}</b> · ${(c.material||'').replace(/</g,'&lt;')}${c.silo_nombre?(' → '+c.silo_nombre):''}</span><span style="font-size:12px;color:var(--text2)">${fmtN(c.kg)} kg</span></div>`; }
+function _pcalMes(porDia){
+  const y=pcalRef.getFullYear(),m=pcalRef.getMonth(); const ini=_inicioSemana(new Date(y,m,1)); const hoy=_hoyISO();
+  let d='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
+  ['L','M','X','J','V','S','D'].forEach(x=>d+=`<div style="text-align:center;font-size:10px;color:var(--text2);font-weight:600">${x}</div>`);
+  const cur=new Date(ini);
+  for(let i=0;i<42;i++){ const iso=_isoOf(cur); const it=porDia[iso]||[]; const om=cur.getMonth()!==m; const eh=iso===hoy;
+    d+=`<div style="min-height:62px;border:1px solid ${eh?'#185FA5':'var(--border)'};border-radius:6px;padding:3px;background:${eh?'#EAF2FB':om?'var(--surface2)':'var(--surface)'};opacity:${om?'.45':'1'}"><div style="font-size:10px;color:${eh?'#0C447C':'var(--text2)'};font-weight:${eh?'700':'400'};margin-bottom:2px">${cur.getDate()}</div>${_pcalChip(it)}</div>`;
+    cur.setDate(cur.getDate()+1); }
+  return d+'</div>';
+}
+function _pcalSemana(porDia){ const ini=_inicioSemana(pcalRef); const hoy=_hoyISO(); let h='';
+  for(let i=0;i<7;i++){ const dd=new Date(ini); dd.setDate(ini.getDate()+i); const iso=_isoOf(dd); const it=porDia[iso]||[]; const eh=iso===hoy;
+    h+=`<div class="list-card" style="margin-bottom:6px;${eh?'border-color:#185FA5':''}"><div style="padding:8px 14px;font-size:12px;font-weight:600;${eh?'color:#0C447C':''}">${dd.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'short'})}${eh?' · HOY':''}</div><div style="padding:0 14px 10px">${it.length?it.map(_pcalRow).join(''):'<span style="font-size:12px;color:var(--text3)">—</span>'}</div></div>`; }
+  return h; }
+function _pcalDia(porDia){ const it=porDia[_isoOf(pcalRef)]||[];
+  return `<div class="list-card"><div style="padding:0 14px">${it.length?it.map(_pcalRow).join(''):'<div class="empty-state" style="padding:24px"><i class="ti ti-calendar-off"></i>Nada programado este día</div>'}</div></div>`; }
+
+// ── PEDIDOS DE CLIENTE (Fase 5) ───────────────────────────────────────────────
+let pedidosCliData=[], _pedLineas=[], _apTipo='saco';
+async function cargarPedidosCli(){
+  if(!matPrimas.length) await cargarMatPrimas(false);
+  try{ pedidosCliData=await api('GET','/pedidos-cli'); }catch(e){ pedidosCliData=[]; }
+  renderPedidosCli();
+}
+function renderPedidosCli(){
+  const el=document.getElementById('pedidoscli-content'); if(!el) return;
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div><div style="font-size:16px;font-weight:500">Pedidos de cliente</div><div style="font-size:12px;color:var(--text2)">Manda cada línea a producción (BB o sacos)</div></div>
+      <button class="btn-primary" onclick="abrirFormPedidoCli()" style="font-size:12px;padding:8px 13px"><i class="ti ti-plus"></i> Nuevo pedido</button></div>`;
+  html += pedidosCliData.length ? pedidosCliData.map(pedidoCliCard).join('') : '<div class="empty-state"><i class="ti ti-clipboard-list"></i>Sin pedidos de cliente</div>';
+  el.innerHTML=html;
+}
+function pedidoCliCard(p){
+  const lins=p.lineas||[];
+  const done=lins.filter(l=>l.estado==='hecho').length;
+  const lineHtml=lins.map(l=>{
+    const eb={pendiente:['#FBE3E0','#9A2A1B','Pendiente'],en_produccion:['#E9F0F8','#0C447C','En producción'],hecho:['#EAF3EE','#0F6E56','Hecho']}[l.estado]||['#eee','#555',l.estado];
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+       <div style="flex:1;font-size:13px">${fmtN(l.cantidad)}${l.unidad?(' '+(''+l.unidad).replace(/</g,'&lt;')):''} · ${(l.descripcion||'').replace(/</g,'&lt;')}</div>
+       <span style="font-size:9px;font-weight:700;background:${eb[0]};color:${eb[1]};border-radius:7px;padding:2px 7px">${eb[2]}</span>
+       ${l.estado==='pendiente'?`<button onclick="abrirAProduccion('${l.id}')" class="btn-sec" style="font-size:10px;padding:4px 8px;white-space:nowrap">A producción</button>`:''}</div>`;
+  }).join('');
+  return `<div class="list-card" style="margin-bottom:12px">
+     <div class="lc-hdr"><span><b>${(p.cliente||'(sin cliente)').replace(/</g,'&lt;')}</b></span><span style="font-size:11px;color:var(--text2)">${done}/${lins.length} hechas</span></div>
+     <div style="padding:4px 16px">${lineHtml||'<div style="font-size:12px;color:var(--text3);padding:8px 0">Sin líneas</div>'}</div>
+     ${p.notas?`<div style="padding:0 16px 6px;font-size:12px;color:var(--text2)">${p.notas.replace(/</g,'&lt;')}</div>`:''}
+     <div style="display:flex;gap:6px;padding:8px 16px;border-top:1px solid var(--border)">
+       <button onclick="abrirFormPedidoCli('${p.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px"><i class="ti ti-edit"></i> Editar</button>
+       <button onclick="borrarPedidoCli('${p.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button></div></div>`;
+}
+function abrirFormPedidoCli(id){
+  const p = id? pedidosCliData.find(x=>String(x.id)===String(id)) : null;
+  _pedLineas = (p && p.lineas && p.lineas.length) ? p.lineas.map(l=>({id:l.id,descripcion:l.descripcion||'',cantidad:l.cantidad!=null?l.cantidad:'',unidad:l.unidad||''})) : [{descripcion:'',cantidad:'',unidad:''}];
+  const ov=document.createElement('div'); ov.id='pcl-form-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10060;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:18px;max-height:92vh;overflow-y:auto">
+    <b style="font-size:15px">${id?'Editar pedido':'Nuevo pedido de cliente'}</b>
+    <input type="hidden" id="pcl-id" value="${id||''}">
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:12px">Cliente<input id="pcl-cliente" value="${p&&p.cliente?(''+p.cliente).replace(/"/g,'&quot;'):''}" style="${inp}"></label>
+    <div style="font-size:12px;color:var(--text2);margin-top:14px;margin-bottom:2px">Líneas (cantidad · ud · material)</div>
+    <div id="pcl-lineas"></div>
+    <button onclick="agregarPedLinea()" class="btn-sec" style="font-size:12px;padding:6px 12px;margin-top:4px"><i class="ti ti-plus"></i> Añadir línea</button>
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:12px">Notas<input id="pcl-notas" value="${p&&p.notas?(''+p.notas).replace(/"/g,'&quot;'):''}" style="${inp}"></label>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('pcl-form-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="guardarPedidoCli()" style="font-size:13px;padding:10px 18px">Guardar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  renderPedLineas();
+}
+function renderPedLineas(){
+  const cont=document.getElementById('pcl-lineas'); if(!cont) return;
+  const opts=matPrimas.filter(m=>m.activo!==false).map(m=>`<option value="${(m.nombre||'').replace(/"/g,'&quot;')}">`).join('');
+  const fld='font-size:13px;padding:7px;border:1px solid var(--border2);border-radius:7px;background:var(--surface);color:var(--text)';
+  cont.innerHTML=`<datalist id="pcl-mat-list">${opts}</datalist>`+_pedLineas.map((l,i)=>`<div data-row style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+     <input class="pl-cant" type="number" min="0" placeholder="Cant." value="${l.cantidad!=null?l.cantidad:''}" style="${fld};width:62px">
+     <input class="pl-uni" placeholder="ud" value="${l.unidad?(''+l.unidad).replace(/"/g,'&quot;'):''}" style="${fld};width:52px">
+     <input class="pl-desc" list="pcl-mat-list" placeholder="Material / descripción" value="${(l.descripcion||'').replace(/"/g,'&quot;')}" style="${fld};flex:1">
+     <button onclick="quitarPedLinea(${i})" style="background:none;border:none;color:#9A2A1B;font-size:17px;cursor:pointer;line-height:1">×</button></div>`).join('');
+}
+function _leerPedLineas(){
+  const cont=document.getElementById('pcl-lineas'); if(!cont) return;
+  [...cont.querySelectorAll('[data-row]')].forEach((row,i)=>{
+    _pedLineas[i]=_pedLineas[i]||{};
+    _pedLineas[i].descripcion=row.querySelector('.pl-desc').value;
+    _pedLineas[i].cantidad=row.querySelector('.pl-cant').value;
+    _pedLineas[i].unidad=row.querySelector('.pl-uni').value;
+  });
+}
+function agregarPedLinea(){ _leerPedLineas(); _pedLineas.push({descripcion:'',cantidad:'',unidad:''}); renderPedLineas(); }
+function quitarPedLinea(i){ _leerPedLineas(); _pedLineas.splice(i,1); if(!_pedLineas.length)_pedLineas.push({descripcion:'',cantidad:'',unidad:''}); renderPedLineas(); }
+async function guardarPedidoCli(){
+  _leerPedLineas();
+  const id=document.getElementById('pcl-id').value;
+  const cliente=(document.getElementById('pcl-cliente').value||'').trim()||null;
+  const notas=(document.getElementById('pcl-notas').value||'').trim()||null;
+  const lineas=_pedLineas.filter(l=>(''+(l.descripcion||'')).trim()||Number(l.cantidad)).map(l=>({id:l.id,descripcion:(''+(l.descripcion||'')).trim(),cantidad:Number(l.cantidad)||0,unidad:(''+(l.unidad||'')).trim()||null}));
+  try{ if(id) await api('PUT','/pedidos-cli/'+id,{cliente,notas,lineas}); else await api('POST','/pedidos-cli',{cliente,notas,lineas}); document.getElementById('pcl-form-ov')?.remove(); await cargarPedidosCli(); }
+  catch(e){ log('Error guardando pedido','warn'); }
+}
+async function borrarPedidoCli(id){ if(!confirm('¿Borrar este pedido?')) return; try{ await api('DELETE','/pedidos-cli/'+id); await cargarPedidosCli(); }catch(e){ log('Error','warn'); } }
+function abrirAProduccion(lineId){
+  let desc=''; pedidosCliData.forEach(p=>(p.lineas||[]).forEach(l=>{ if(String(l.id)===String(lineId)) desc=l.descripcion||''; }));
+  _apTipo='saco';
+  const ov=document.createElement('div'); ov.id='ap-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10062;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const opts=matPrimas.filter(m=>m.activo!==false).map(m=>`<option value="${(m.nombre||'').replace(/"/g,'&quot;')}">`).join('');
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:460px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:15px">Enviar a producción</b>
+    <div style="display:flex;gap:6px;margin:12px 0">
+      <button id="ap-tab-saco" onclick="apTipo('saco')" class="btn-primary" style="flex:1;font-size:13px;padding:9px">Sacos</button>
+      <button id="ap-tab-bb" onclick="apTipo('bb')" class="btn-sec" style="flex:1;font-size:13px;padding:9px">Big Bag</button></div>
+    <label style="font-size:12px;color:var(--text2);display:block">Material<input id="ap-mat" list="ap-mat-list" placeholder="Buscar…" value="${(desc||'').replace(/"/g,'&quot;')}" style="${inp}"><datalist id="ap-mat-list">${opts}</datalist></label>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Nº de unidades<input id="ap-uni" type="number" min="0" style="${inp}"></label>
+      <label style="font-size:12px;color:var(--text2);flex:1">Kg por unidad<input id="ap-kgu" type="number" min="0" style="${inp}"></label></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('ap-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarAProduccion('${lineId}')" style="font-size:13px;padding:10px 18px">Enviar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+function apTipo(t){ _apTipo=t; document.getElementById('ap-tab-saco').className=t==='saco'?'btn-primary':'btn-sec'; document.getElementById('ap-tab-bb').className=t==='bb'?'btn-primary':'btn-sec'; }
+async function confirmarAProduccion(lineId){
+  const nombre=(document.getElementById('ap-mat').value||'').trim();
+  let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
+  if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
+  const body={ tipo:_apTipo, mp_id:mp?mp.id:null, unidades:Number(document.getElementById('ap-uni').value)||0, kg_unidad:Number(document.getElementById('ap-kgu').value)||0, origen_linea_id:lineId };
+  try{ await api('POST','/producciones',body); document.getElementById('ap-ov')?.remove(); await cargarPedidosCli(); log('Línea enviada a producción','ok'); }
+  catch(e){ log('Error al enviar','warn'); }
 }
 
 setInterval(loadAll,30000);
