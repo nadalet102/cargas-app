@@ -3490,7 +3490,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 23;
+const NEEDS_API = 24;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -3835,6 +3835,7 @@ function prodCard(p){
     : `${p.estado==='pendiente'?`<button onclick="cambiarEstadoProd('${p.id}','en_proceso')" class="btn-sec" style="font-size:11px;padding:6px 10px">Empezar</button>`:''}
        <button onclick="marcarHechoProd('${p.id}')" class="btn-primary" style="font-size:11px;padding:6px 10px;background:#0F6E56"><i class="ti ti-check"></i> Hecho</button>`;
   return `<div class="list-card" style="margin-bottom:10px">
+     ${p.cliente?`<div style="background:#0C447C;color:#fff;padding:7px 16px;border-radius:12px 12px 0 0;font-size:16px;font-weight:800"><i class="ti ti-user" style="font-size:14px"></i> ${(''+p.cliente).replace(/</g,'&lt;')}</div>`:''}
      <div class="lc-hdr"><span><b>${(p.material||'(sin material)').replace(/</g,'&lt;')}</b></span><span style="font-size:10px;font-weight:700;background:${eb[0]};color:${eb[1]};border-radius:8px;padding:3px 9px">${eb[2]}</span></div>
      <div style="padding:8px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
        <span style="font-size:20px;font-weight:800">${fmtN(p.unidades)}<span style="font-size:12px;font-weight:600;color:var(--text2)"> ${envase}${Number(p.unidades)===1?'':'s'} × ${fmtN(p.kg_unidad)} kg</span></span>
@@ -4308,10 +4309,29 @@ function pedidoCliCard(p){
      ${p.notas?`<div style="padding:0 14px 8px;font-size:12px;color:var(--text2)">${p.notas.replace(/</g,'&lt;')}</div>`:''}
      <div style="display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--border)">
        <button onclick="marcarPedidoPreparado('${p.id}',${todoPrep?'false':'true'})" class="btn-primary" style="font-size:12px;padding:9px 13px;background:${todoPrep?'#9A2A1B':'#0F6E56'}"><i class="ti ti-${todoPrep?'x':'checks'}"></i> ${todoPrep?'Quitar preparado':'Marcar todo preparado'}</button>
+       <button onclick="document.getElementById('pcli-reimport-${p.id}').click()" class="btn-sec" style="font-size:12px;padding:9px 12px"><i class="ti ti-file-import"></i> Actualizar PDF</button>
+       <input type="file" id="pcli-reimport-${p.id}" accept=".pdf" style="display:none" onchange="reimportarPedidoCli('${p.id}',this)">
        <button onclick="abrirFormPedidoCli('${p.id}')" class="btn-sec" style="font-size:12px;padding:9px 12px"><i class="ti ti-edit"></i> Editar</button>
        <button onclick="borrarPedidoCli('${p.id}')" class="btn-sec" style="font-size:12px;padding:9px 12px;color:#9A2A1B"><i class="ti ti-trash"></i></button></div></div>`;
 }
 async function toggleLineaPreparada(id,val){ try{ await api('PATCH','/pedidos-cli/lineas/'+id+'/preparado',{preparado:val}); await cargarPedidosCli(); }catch(e){ log('Error','warn'); } }
+async function reimportarPedidoCli(id, input){
+  const file=input.files[0]; if(!file) return;
+  if(!confirm('Actualizar este pedido con el PDF? Se reemplazan sus líneas por las del nuevo documento.')){ input.value=''; return; }
+  log('Leyendo PDF…');
+  const base64=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.onerror=()=>rej(new Error('Error leyendo archivo')); r.readAsDataURL(file); });
+  try{
+    const datos=await api('POST','/importar-pdf',{base64});
+    const lineas=(datos.lineas||[]).filter(l=>l && (l.descripcion||l.referencia) && l.es_articulo!==false)
+      .map(l=>({ descripcion:(l.descripcion||l.referencia||'').trim(), cantidad:Number(l.cantidad)||0, unidad:(l.embalaje||'')||null }));
+    if(!lineas.length){ log('No se han encontrado líneas en el PDF','warn'); input.value=''; return; }
+    const ped=pedidosCliData.find(x=>String(x.id)===String(id));
+    await api('PUT','/pedidos-cli/'+id,{ cliente: datos.cliente_nombre || (ped?ped.cliente:null), notas: ped?ped.notas:null, lineas });
+    await cargarPedidosCli();
+    log('Pedido actualizado con el PDF ('+lineas.length+' líneas)','ok');
+  }catch(e){ log('Error actualizando: '+e.message,'warn'); }
+  input.value='';
+}
 async function marcarPedidoPreparado(id,val){ if(val && !confirm('¿Marcar TODO el pedido como preparado?')) return; try{ await api('PATCH','/pedidos-cli/'+id+'/preparado',{preparado:val}); await cargarPedidosCli(); }catch(e){ log('Error','warn'); } }
 function abrirFormPedidoCli(id){
   const p = id? pedidosCliData.find(x=>String(x.id)===String(id)) : null;
