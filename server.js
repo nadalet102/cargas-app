@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 12;
+const API_VERSION = 17;
 
 const app = express();
 app.use(cors());
@@ -107,6 +107,21 @@ async function initDB() {
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS embalaje TEXT`,
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS kgs NUMERIC`,
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS falta NUMERIC DEFAULT 0`,
+    `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS origen_linea_id INTEGER`,
+    `CREATE TABLE IF NOT EXISTS pedidos_cli (
+      id SERIAL PRIMARY KEY,
+      cliente TEXT,
+      notas TEXT,
+      creado TIMESTAMPTZ DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS pedidos_cli_lineas (
+      id SERIAL PRIMARY KEY,
+      pedido_id INTEGER REFERENCES pedidos_cli(id) ON DELETE CASCADE,
+      descripcion TEXT,
+      cantidad NUMERIC DEFAULT 0,
+      unidad TEXT,
+      estado TEXT DEFAULT 'pendiente'
+    )`,
     `CREATE TABLE IF NOT EXISTS preparadores (
       id SERIAL PRIMARY KEY,
       nombre TEXT NOT NULL,
@@ -124,11 +139,80 @@ async function initDB() {
       estado TEXT DEFAULT 'pendiente',
       synced_at TIMESTAMPTZ DEFAULT NOW()
     )`,
+    `CREATE TABLE IF NOT EXISTS materias_primas (
+      id SERIAL PRIMARY KEY,
+      nombre TEXT NOT NULL,
+      activo BOOLEAN DEFAULT true,
+      creado TIMESTAMPTZ DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS silos (
+      id SERIAL PRIMARY KEY,
+      numero INTEGER,
+      nombre TEXT,
+      capacidad_kg NUMERIC DEFAULT 50000,
+      mp_id INTEGER,
+      kg_actual NUMERIC DEFAULT 0,
+      vaciando BOOLEAN DEFAULT false
+    )`,
+    `CREATE TABLE IF NOT EXISTS producciones (
+      id SERIAL PRIMARY KEY,
+      tipo TEXT,
+      mp_id INTEGER,
+      unidades NUMERIC DEFAULT 0,
+      kg_unidad NUMERIC DEFAULT 0,
+      kg_total NUMERIC DEFAULT 0,
+      silo_id INTEGER,
+      estado TEXT DEFAULT 'pendiente',
+      notas TEXT,
+      fecha DATE DEFAULT CURRENT_DATE,
+      hecho_at TIMESTAMPTZ,
+      origen_linea_id INTEGER,
+      creado TIMESTAMPTZ DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS viajes (
+      id SERIAL PRIMARY KEY,
+      mp_id INTEGER,
+      kg NUMERIC DEFAULT 0,
+      silo_id INTEGER,
+      fecha DATE DEFAULT CURRENT_DATE,
+      estado TEXT DEFAULT 'pendiente',
+      destino_tipo TEXT,
+      destino_silo_id INTEGER,
+      kg_final NUMERIC,
+      acopio TEXT,
+      origen TEXT DEFAULT 'manual',
+      notas TEXT,
+      hecho_at TIMESTAMPTZ,
+      creado TIMESTAMPTZ DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS compras_mp (
+      id SERIAL PRIMARY KEY,
+      mp_id INTEGER,
+      proveedor TEXT,
+      kg NUMERIC DEFAULT 0,
+      estado TEXT DEFAULT 'pendiente',
+      fecha DATE,
+      hora TEXT,
+      silo_id INTEGER,
+      kg_recibido NUMERIC,
+      recibido_at TIMESTAMPTZ,
+      notas TEXT,
+      creado TIMESTAMPTZ DEFAULT now()
+    )`,
   ];
   for (const sql of stmts) {
     try { await pool.query(sql); }
     catch(e) { console.warn('initDB warning:', e.message); }
   }
+  // sembrar 5 silos la primera vez (1-4: 50.000 kg · 5: 25.000 kg)
+  try {
+    const c = await pool.query('SELECT COUNT(*)::int AS n FROM silos');
+    if (c.rows[0].n === 0) {
+      for (let i = 1; i <= 5; i++) {
+        await pool.query('INSERT INTO silos(numero,nombre,capacidad_kg) VALUES($1,$2,$3)', [i, 'Silo ' + i, i === 5 ? 25000 : 50000]);
+      }
+    }
+  } catch(e) { console.warn('seed silos:', e.message); }
   console.log('DB ready');
 }
 
@@ -544,7 +628,7 @@ app.patch('/api/pedidos/:id/comercial', async (req, res) => {
 app.get('/api/health', (req, res) => res.json({ ok: true, version: API_VERSION }));
 
 // ── COPIA DE SEGURIDAD ────────────────────────────────────────────────────────
-const BACKUP_TABLES = ['bc_config','transportistas','categorias','preparadores','comerciales','compras','cargas','pedidos','pedido_lineas','compra_lineas','bc_inbox'];
+const BACKUP_TABLES = ['bc_config','transportistas','categorias','preparadores','comerciales','materias_primas','silos','producciones','viajes','compras_mp','compras','cargas','pedidos','pedido_lineas','compra_lineas','pedidos_cli','pedidos_cli_lineas','bc_inbox'];
 
 // Construye el volcado completo de la base de datos
 async function _dumpDatos() {
@@ -801,6 +885,309 @@ app.delete('/api/compras/:id', async (req, res) => {
     await pool.query('DELETE FROM compras WHERE id=$1', [req.params.id]);
     res.json({ ok:true });
   } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── MATERIAS PRIMAS (catálogo) ────────────────────────────────────────────────
+app.get('/api/materias-primas', async (req, res) => {
+  try { res.json((await pool.query('SELECT * FROM materias_primas ORDER BY activo DESC, nombre')).rows); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+app.post('/api/materias-primas', async (req, res) => {
+  try {
+    const r = await pool.query('INSERT INTO materias_primas(nombre) VALUES($1) RETURNING *', [(req.body.nombre||'').trim()]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+app.put('/api/materias-primas/:id', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE materias_primas SET nombre=$1, activo=$2 WHERE id=$3 RETURNING *',
+      [(req.body.nombre||'').trim(), req.body.activo!==false, req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+app.delete('/api/materias-primas/:id', async (req, res) => {
+  try { await pool.query('DELETE FROM materias_primas WHERE id=$1', [req.params.id]); res.json({ok:true}); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── SILOS / TOLVAS ────────────────────────────────────────────────────────────
+app.get('/api/silos', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT s.*, mp.nombre AS producto
+       FROM silos s LEFT JOIN materias_primas mp ON mp.id = s.mp_id
+       ORDER BY s.numero, s.id`);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+// editar ajustes del silo (nombre / capacidad)
+app.put('/api/silos/:id', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE silos SET nombre=$1, capacidad_kg=$2 WHERE id=$3 RETURNING *',
+      [req.body.nombre||null, Number(req.body.capacidad_kg)||0, req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+// llenar manualmente: fija el material (si se indica) y suma kg, tope la capacidad
+app.post('/api/silos/:id/llenar', async (req, res) => {
+  try {
+    const s = (await pool.query('SELECT * FROM silos WHERE id=$1', [req.params.id])).rows[0];
+    if (!s) return res.status(404).json({error:'No existe'});
+    const mp_id = req.body.mp_id || s.mp_id || null;
+    const add = Number(req.body.kg) || 0;
+    const nuevo = Math.min(Number(s.capacidad_kg), Number(s.kg_actual) + add);
+    const r = await pool.query('UPDATE silos SET mp_id=$1, kg_actual=$2 WHERE id=$3 RETURNING *', [mp_id, nuevo, req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+// vaciar (Fase 1: deja el silo a 0 y sin material)
+app.post('/api/silos/:id/vaciar', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE silos SET kg_actual=0, mp_id=NULL, vaciando=false WHERE id=$1 RETURNING *', [req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+// marcar / desmarcar "estoy vaciando"
+app.patch('/api/silos/:id/vaciando', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE silos SET vaciando=$1 WHERE id=$2 RETURNING *', [!!req.body.vaciando, req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── PRODUCCIÓN (BB / Sacos) ───────────────────────────────────────────────────
+app.get('/api/producciones', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT p.*, mp.nombre AS material, s.nombre AS silo_nombre
+       FROM producciones p
+       LEFT JOIN materias_primas mp ON mp.id = p.mp_id
+       LEFT JOIN silos s ON s.id = p.silo_id
+       ORDER BY (p.estado='hecho'), p.creado DESC`);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+app.post('/api/producciones', async (req, res) => {
+  const b = req.body || {};
+  const kgt = (Number(b.unidades)||0) * (Number(b.kg_unidad)||0);
+  try {
+    const r = await pool.query(
+      `INSERT INTO producciones(tipo,mp_id,unidades,kg_unidad,kg_total,notas,estado,origen_linea_id)
+       VALUES($1,$2,$3,$4,$5,$6,'pendiente',$7) RETURNING *`,
+      [b.tipo||'saco', b.mp_id||null, Number(b.unidades)||0, Number(b.kg_unidad)||0, kgt, b.notas||null, b.origen_linea_id||null]);
+    if (b.origen_linea_id) {
+      await pool.query("UPDATE pedidos_cli_lineas SET estado='en_produccion' WHERE id=$1", [b.origen_linea_id]);
+    }
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+app.put('/api/producciones/:id', async (req, res) => {
+  const b = req.body || {};
+  const kgt = (Number(b.unidades)||0) * (Number(b.kg_unidad)||0);
+  try {
+    const r = await pool.query(
+      `UPDATE producciones SET mp_id=$1, unidades=$2, kg_unidad=$3, kg_total=$4, notas=$5 WHERE id=$6 RETURNING *`,
+      [b.mp_id||null, Number(b.unidades)||0, Number(b.kg_unidad)||0, kgt, b.notas||null, req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+// cambiar estado; al pasar a 'hecho' con descontar+silo_id, resta los kg del silo
+app.patch('/api/producciones/:id/estado', async (req, res) => {
+  const { estado, descontar, silo_id } = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const hecho = estado === 'hecho';
+    const p = (await client.query('SELECT * FROM producciones WHERE id=$1', [req.params.id])).rows[0];
+    await client.query('UPDATE producciones SET estado=$1, hecho_at=$2, silo_id=$3 WHERE id=$4',
+      [estado, hecho ? new Date() : null, hecho ? (silo_id || p.silo_id || null) : p.silo_id, req.params.id]);
+    if (hecho && descontar && silo_id) {
+      await client.query('UPDATE silos SET kg_actual = GREATEST(0, kg_actual - $1) WHERE id=$2', [Number(p.kg_total)||0, silo_id]);
+    }
+    if (hecho && p.origen_linea_id) {
+      await client.query("UPDATE pedidos_cli_lineas SET estado='hecho' WHERE id=$1", [p.origen_linea_id]);
+    }
+    await client.query('COMMIT');
+    res.json({ ok:true });
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
+});
+app.delete('/api/producciones/:id', async (req, res) => {
+  try { await pool.query('DELETE FROM producciones WHERE id=$1', [req.params.id]); res.json({ok:true}); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── CAMIÓN (viajes de suministro) ─────────────────────────────────────────────
+app.get('/api/viajes', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT v.*, mp.nombre AS material, s.nombre AS silo_nombre, ds.nombre AS destino_silo_nombre
+       FROM viajes v
+       LEFT JOIN materias_primas mp ON mp.id = v.mp_id
+       LEFT JOIN silos s ON s.id = v.silo_id
+       LEFT JOIN silos ds ON ds.id = v.destino_silo_id
+       ORDER BY (v.estado='hecho'), v.creado DESC`);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+// crear N viajes (cola)
+app.post('/api/viajes', async (req, res) => {
+  const b = req.body || {};
+  const n = Math.max(1, parseInt(b.n_viajes) || 1);
+  try {
+    const ids = [];
+    for (let i = 0; i < n; i++) {
+      const r = await pool.query(
+        `INSERT INTO viajes(mp_id,kg,silo_id,origen,notas) VALUES($1,$2,$3,$4,$5) RETURNING id`,
+        [b.mp_id||null, Number(b.kg)||0, b.silo_id||null, b.origen||'manual', b.notas||null]);
+      ids.push(r.rows[0].id);
+    }
+    res.json({ ok:true, ids });
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+app.put('/api/viajes/:id', async (req, res) => {
+  const b = req.body || {};
+  try {
+    const r = await pool.query('UPDATE viajes SET mp_id=$1, kg=$2, silo_id=$3, notas=$4 WHERE id=$5 RETURNING *',
+      [b.mp_id||null, Number(b.kg)||0, b.silo_id||null, b.notas||null, req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+// completar viaje: descarga a silo (suma kg + fija material) o a acopio
+app.patch('/api/viajes/:id/completar', async (req, res) => {
+  const { destino_tipo, destino_silo_id, kg_final, acopio } = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const v = (await client.query('SELECT * FROM viajes WHERE id=$1', [req.params.id])).rows[0];
+    await client.query(
+      `UPDATE viajes SET estado='hecho', hecho_at=now(), destino_tipo=$1, destino_silo_id=$2, kg_final=$3, acopio=$4 WHERE id=$5`,
+      [destino_tipo||null, destino_tipo==='silo'?(destino_silo_id||null):null, Number(kg_final)||0, destino_tipo==='acopio'?(acopio||null):null, req.params.id]);
+    if (destino_tipo === 'silo' && destino_silo_id) {
+      const s = (await client.query('SELECT * FROM silos WHERE id=$1', [destino_silo_id])).rows[0];
+      if (s) {
+        const nuevoMp = (s.mp_id && Number(s.kg_actual) > 0) ? s.mp_id : (v.mp_id || s.mp_id);
+        const nuevoKg = Math.min(Number(s.capacidad_kg), Number(s.kg_actual) + (Number(kg_final)||0));
+        await client.query('UPDATE silos SET mp_id=$1, kg_actual=$2 WHERE id=$3', [nuevoMp, nuevoKg, destino_silo_id]);
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ ok:true });
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
+});
+app.delete('/api/viajes/:id', async (req, res) => {
+  try { await pool.query('DELETE FROM viajes WHERE id=$1', [req.params.id]); res.json({ok:true}); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── COMPRAS DE MATERIA PRIMA ──────────────────────────────────────────────────
+app.get('/api/compras-mp', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT c.*, mp.nombre AS material, s.nombre AS silo_nombre
+       FROM compras_mp c
+       LEFT JOIN materias_primas mp ON mp.id = c.mp_id
+       LEFT JOIN silos s ON s.id = c.silo_id
+       ORDER BY (c.estado='recibido'), c.fecha NULLS LAST, c.hora NULLS LAST, c.creado DESC`);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+function estadoCompraMp(b){ if (b.estado === 'recibido') return 'recibido'; return b.fecha ? 'programado' : 'pendiente'; }
+app.post('/api/compras-mp', async (req, res) => {
+  const b = req.body || {};
+  try {
+    const r = await pool.query(
+      `INSERT INTO compras_mp(mp_id,proveedor,kg,fecha,hora,silo_id,notas,estado)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [b.mp_id||null, b.proveedor||null, Number(b.kg)||0, b.fecha||null, b.hora||null, b.silo_id||null, b.notas||null, estadoCompraMp(b)]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+app.put('/api/compras-mp/:id', async (req, res) => {
+  const b = req.body || {};
+  try {
+    const cur = (await pool.query('SELECT estado FROM compras_mp WHERE id=$1', [req.params.id])).rows[0] || {};
+    const est = cur.estado === 'recibido' ? 'recibido' : estadoCompraMp(b);
+    const r = await pool.query(
+      `UPDATE compras_mp SET mp_id=$1,proveedor=$2,kg=$3,fecha=$4,hora=$5,silo_id=$6,notas=$7,estado=$8 WHERE id=$9 RETURNING *`,
+      [b.mp_id||null, b.proveedor||null, Number(b.kg)||0, b.fecha||null, b.hora||null, b.silo_id||null, b.notas||null, est, req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+// recibir: marca recibido + cuenta kg; opcionalmente añade los kg al silo asignado
+app.patch('/api/compras-mp/:id/recibir', async (req, res) => {
+  const { kg_recibido, fill_silo } = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const c = (await client.query('SELECT * FROM compras_mp WHERE id=$1', [req.params.id])).rows[0];
+    await client.query('UPDATE compras_mp SET estado=$1, kg_recibido=$2, recibido_at=now() WHERE id=$3',
+      ['recibido', Number(kg_recibido)||0, req.params.id]);
+    if (fill_silo && c && c.silo_id) {
+      const s = (await client.query('SELECT * FROM silos WHERE id=$1', [c.silo_id])).rows[0];
+      if (s) {
+        const nuevoMp = (s.mp_id && Number(s.kg_actual) > 0) ? s.mp_id : (c.mp_id || s.mp_id);
+        const nuevoKg = Math.min(Number(s.capacidad_kg), Number(s.kg_actual) + (Number(kg_recibido)||0));
+        await client.query('UPDATE silos SET mp_id=$1, kg_actual=$2 WHERE id=$3', [nuevoMp, nuevoKg, c.silo_id]);
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ ok:true });
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
+});
+app.delete('/api/compras-mp/:id', async (req, res) => {
+  try { await pool.query('DELETE FROM compras_mp WHERE id=$1', [req.params.id]); res.json({ok:true}); }
+  catch(e) { res.status(500).json({error:e.message}); }
+});
+
+// ── PEDIDOS DE CLIENTE (construcción) ─────────────────────────────────────────
+app.get('/api/pedidos-cli', async (req, res) => {
+  try {
+    const ped = (await pool.query('SELECT * FROM pedidos_cli ORDER BY creado DESC')).rows;
+    const lins = (await pool.query('SELECT * FROM pedidos_cli_lineas ORDER BY id')).rows;
+    ped.forEach(p => p.lineas = lins.filter(l => l.pedido_id === p.id));
+    res.json(ped);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+app.post('/api/pedidos-cli', async (req, res) => {
+  const b = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const p = (await client.query('INSERT INTO pedidos_cli(cliente,notas) VALUES($1,$2) RETURNING *', [b.cliente||null, b.notas||null])).rows[0];
+    for (const l of (b.lineas||[])) {
+      await client.query('INSERT INTO pedidos_cli_lineas(pedido_id,descripcion,cantidad,unidad) VALUES($1,$2,$3,$4)',
+        [p.id, l.descripcion||null, Number(l.cantidad)||0, l.unidad||null]);
+    }
+    await client.query('COMMIT');
+    res.json(p);
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
+});
+app.put('/api/pedidos-cli/:id', async (req, res) => {
+  const b = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE pedidos_cli SET cliente=$1, notas=$2 WHERE id=$3', [b.cliente||null, b.notas||null, req.params.id]);
+    // conservar estados existentes por id; reemplazar el conjunto de líneas
+    const prev = (await client.query('SELECT * FROM pedidos_cli_lineas WHERE pedido_id=$1', [req.params.id])).rows;
+    await client.query('DELETE FROM pedidos_cli_lineas WHERE pedido_id=$1', [req.params.id]);
+    for (const l of (b.lineas||[])) {
+      const est = (l.id && prev.find(x => x.id === l.id)) ? prev.find(x => x.id === l.id).estado : 'pendiente';
+      await client.query('INSERT INTO pedidos_cli_lineas(pedido_id,descripcion,cantidad,unidad,estado) VALUES($1,$2,$3,$4,$5)',
+        [req.params.id, l.descripcion||null, Number(l.cantidad)||0, l.unidad||null, est]);
+    }
+    await client.query('COMMIT');
+    res.json({ ok:true });
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
+});
+app.delete('/api/pedidos-cli/:id', async (req, res) => {
+  try { await pool.query('DELETE FROM pedidos_cli WHERE id=$1', [req.params.id]); res.json({ok:true}); }
+  catch(e) { res.status(500).json({error:e.message}); }
 });
 
 
