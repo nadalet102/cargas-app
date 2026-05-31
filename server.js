@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 24;
+const API_VERSION = 25;
 
 const app = express();
 app.use(cors());
@@ -110,6 +110,7 @@ async function initDB() {
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS origen_linea_id INTEGER`,
     `ALTER TABLE viajes ADD COLUMN IF NOT EXISTS hora TEXT`,
     `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS preparado BOOLEAN DEFAULT false`,
+    `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS cliente TEXT`,
     `CREATE TABLE IF NOT EXISTS pedidos_cli (
       id SERIAL PRIMARY KEY,
       cliente TEXT,
@@ -1009,7 +1010,7 @@ app.post('/api/silos/:id/traspasar', async (req, res) => {
 app.get('/api/producciones', async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT p.*, mp.nombre AS material, s.nombre AS silo_nombre, pc.cliente AS cliente
+      `SELECT p.*, mp.nombre AS material, s.nombre AS silo_nombre, COALESCE(p.cliente, pc.cliente) AS cliente
        FROM producciones p
        LEFT JOIN materias_primas mp ON mp.id = p.mp_id
        LEFT JOIN silos s ON s.id = p.silo_id
@@ -1024,9 +1025,9 @@ app.post('/api/producciones', async (req, res) => {
   const kgt = (Number(b.unidades)||0) * (Number(b.kg_unidad)||0);
   try {
     const r = await pool.query(
-      `INSERT INTO producciones(tipo,mp_id,unidades,kg_unidad,kg_total,notas,estado,origen_linea_id)
-       VALUES($1,$2,$3,$4,$5,$6,'pendiente',$7) RETURNING *`,
-      [b.tipo||'saco', b.mp_id||null, Number(b.unidades)||0, Number(b.kg_unidad)||0, kgt, b.notas||null, b.origen_linea_id||null]);
+      `INSERT INTO producciones(tipo,mp_id,unidades,kg_unidad,kg_total,notas,estado,origen_linea_id,cliente)
+       VALUES($1,$2,$3,$4,$5,$6,'pendiente',$7,$8) RETURNING *`,
+      [b.tipo||'saco', b.mp_id||null, Number(b.unidades)||0, Number(b.kg_unidad)||0, kgt, b.notas||null, b.origen_linea_id||null, b.cliente||null]);
     if (b.origen_linea_id) {
       await pool.query("UPDATE pedidos_cli_lineas SET estado='en_produccion' WHERE id=$1", [b.origen_linea_id]);
     }
