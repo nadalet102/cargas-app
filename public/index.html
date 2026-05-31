@@ -2982,12 +2982,12 @@ function comprarFalta(lid){
 let _faltaSacosInfo=null;
 function _faltaInfo(lid){
   const f=comprasFaltas.find(x=>String(x.linea_id)===String(lid));
-  if(f) return {lid, descripcion:f.descripcion||'', falta:f.falta||0, pedido_num:f.pedido_num||'', cliente:f.cliente||''};
+  if(f) return {lid, referencia:f.referencia||'', descripcion:f.descripcion||'', falta:f.falta||0, pedido_num:f.pedido_num||'', cliente:f.cliente||''};
   for(const pid in (prepLineasCache||{})){
     const l=(prepLineasCache[pid]||[]).find(x=>String(x.id)===String(lid));
-    if(l){ const ped=(typeof pedidos!=='undefined'?pedidos:[]).find(x=>String(x.id)===String(pid))||{}; return {lid, descripcion:l.descripcion||'', falta:l.falta||0, pedido_num:ped.num||'', cliente:ped.cliente||''}; }
+    if(l){ const ped=(typeof pedidos!=='undefined'?pedidos:[]).find(x=>String(x.id)===String(pid))||{}; return {lid, referencia:l.referencia||'', descripcion:l.descripcion||'', falta:l.falta||0, pedido_num:ped.num||'', cliente:ped.cliente||''}; }
   }
-  return {lid, descripcion:'', falta:0, pedido_num:'', cliente:''};
+  return {lid, referencia:'', descripcion:'', falta:0, pedido_num:'', cliente:''};
 }
 function enviarFaltaASacos(lid){
   const info=_faltaInfo(lid); _faltaSacosInfo=info;
@@ -3004,6 +3004,7 @@ function enviarFaltaASacos(lid){
     <div style="display:flex;gap:10px;margin-top:10px">
       <label style="font-size:12px;color:var(--text2);flex:1">Nº de sacos<input id="fs-uni" type="number" min="0" value="${info.falta||''}" style="${inp}"></label>
       <label style="font-size:12px;color:var(--text2);flex:1">Kg por saco<input id="fs-kgu" type="number" min="0" value="${_lastKgU.saco!=null?_lastKgU.saco:''}" style="${inp}"></label></div>
+    <div style="font-size:11px;color:var(--text2);margin-top:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px"><i class="ti ti-info-circle"></i> Se crea la tarea en Producción Sacos y también un aviso en Compras (Por pedir).</div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
       <button class="btn-sec" onclick="document.getElementById('fs-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
       <button class="btn-primary" onclick="confirmarFaltaASacos()" style="font-size:13px;padding:10px 18px;background:#7A4E00"><i class="ti ti-package"></i> Crear tarea</button></div>
@@ -3021,14 +3022,14 @@ async function confirmarFaltaASacos(){
   if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
   try{
     await api('POST','/producciones',{ tipo:'saco', mp_id:mp?mp.id:null, unidades:uni, kg_unidad:kgu, cliente:info.cliente||null, notas:(info.descripcion||'')+(info.pedido_num?(' · pedido '+info.pedido_num):'') });
-    await api('PATCH','/lineas/'+lid+'/falta',{falta:0});   // sale de la lista de faltas (se gestiona en producción)
-    for(const pid in prepLineasCache){ const l=prepLineasCache[pid].find(x=>String(x.id)===String(lid)); if(l) l.falta=0; }
-    if(comprasFaltas&&comprasFaltas.length) comprasFaltas=comprasFaltas.filter(x=>String(x.linea_id)!==String(lid));
+    // avisar también a Compras: queda en "Por pedir" enlazado a la falta (la falta sigue marcada en el pedido)
+    await api('POST','/compras',{ estado:'por_pedir', pedidos_rel:info.pedido_num||null, notas:'También en Producción Sacos'+(info.cliente?(' · '+info.cliente):''),
+      lineas:[{ referencia:info.referencia||'', descripcion:info.descripcion||'', cantidad:info.falta||uni, unidad:'', falta_linea_id:lid }] });
     document.getElementById('fs-ov')?.remove();
+    try{ await cargarCompras(); }catch(e){}
     if(document.getElementById('modo-prep-ov')) renderModoPrep();
-    try{ renderCompras(); }catch(e){}
     actualizarFaltasBadge();
-    log('Enviado a Producción Sacos · '+uni+' saco(s)','ok');
+    log('Enviado a Producción Sacos y avisado a Compras · '+uni+' saco(s)','ok');
   }catch(e){ log('Error: '+e.message,'warn'); }
 }
 let _compraFormId=null, _compraAutoTimer=null, _compraSaving=false;
