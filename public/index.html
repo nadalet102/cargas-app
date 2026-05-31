@@ -3490,7 +3490,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 22;
+const NEEDS_API = 23;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -4267,8 +4267,9 @@ async function importarPedidoCliPDF(input){
     const cliente=datos.cliente_nombre||null;
     const r=await api('POST','/pedidos-cli',{ cliente, notas: datos.num?('Pedido '+datos.num):null, lineas });
     await cargarPedidosCli();
-    if(r && r.auto) log('Pedido de '+(cliente||'cliente')+' importado · cliente automático → '+r.autoTareas+' tarea(s) Big Bag creada(s)','ok');
-    else log('Pedido de '+(cliente||'cliente')+' importado ('+lineas.length+' líneas)','ok');
+    if(r && r.auto) log('Cliente automático "'+(cliente||'')+'" → '+r.autoTareas+' tarea(s) Big Bag creada(s)','ok');
+    else if(!cliente) log('Pedido importado, pero no se detectó el cliente en el PDF (escríbelo a mano para automatizar)','warn');
+    else log('Importado · cliente detectado: "'+cliente+'". No coincide con ningún cliente automático de Ajustes','ok');
   }catch(e){ log('Error importando PDF: '+e.message,'warn'); }
   input.value='';
 }
