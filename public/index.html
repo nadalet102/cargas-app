@@ -3550,7 +3550,7 @@ async function cargarSilos(){
   try{ comprasData=await api('GET','/compras'); }catch(e){}
   renderSilos();
 }
-function siloSVGProd(pct,col,uid){
+function siloSVGProd(pct,col,uid,nivel){
   const id='sp'+uid;
   const p=Math.max(0,Math.min(100,pct));
   const fillTop = 142 - (p/100)*(142-12);
@@ -3564,27 +3564,36 @@ function siloSVGProd(pct,col,uid){
     <path d="${outline}" fill="none" stroke="#A7AFBA" stroke-width="2.5"/>
     <line x1="18" y1="90" x2="102" y2="90" stroke="#A7AFBA" stroke-width="1.4" stroke-dasharray="3 3"/>
     <rect x="51" y="142" width="18" height="8" rx="1.5" fill="#A7AFBA"/>
-    <text x="60" y="56" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="25" font-weight="800" fill="${p>=63?'#fff':col}">${p}%</text>
+    <text x="60" y="${nivel?52:58}" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="25" font-weight="800" fill="${p>=63?'#fff':col}">${p}%</text>
+    ${nivel?`<text x="60" y="69" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="11" font-weight="800" letter-spacing="1" fill="${p>=63?'#fff':col}">${nivel}</text>`:''}
   </svg>`;
 }
 function renderSilos(){
   const grid=document.getElementById('silos-grid'); if(!grid) return;
   const totA=silosData.reduce((s,x)=>s+Number(x.kg_actual||0),0);
   const totC=silosData.reduce((s,x)=>s+Number(x.capacidad_kg||0),0);
-  const tt=document.getElementById('silos-total'); if(tt) tt.textContent=fmtN(totA)+' / '+fmtN(totC)+' kg';
+  const pctTot=totC?Math.round(totA/totC*100):0;
+  const tt=document.getElementById('silos-total'); if(tt) tt.textContent=fmtN(totA)+' / '+fmtN(totC)+' kg ('+pctTot+'% ocupado)';
   const vac=silosData.filter(s=>s.vaciando).map(s=>s.nombre);
   const vv=document.getElementById('silos-vaciando'); if(vv) vv.textContent=vac.length?('Vaciando ahora: '+vac.join(', ')):'Ningún silo en vaciado';
-  grid.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:14px">'+silosData.map(s=>{
+  // banner de materiales disponibles en silos
+  const mats=[...new Set(silosData.filter(s=>Number(s.kg_actual)>0 && s.producto).map(s=>''+s.producto))].sort();
+  const banner=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 14px;margin-bottom:14px">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:7px"><i class="ti ti-packages"></i> Materiales disponibles en silos</div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap">${mats.length?mats.map(m=>`<span style="font-size:12px;font-weight:700;background:#EAF3EE;color:#0F6E56;border-radius:8px;padding:4px 11px"><i class="ti ti-check" style="font-size:11px"></i> ${m.replace(/</g,'&lt;')}</span>`).join(''):'<span style="font-size:12px;color:var(--text3)">Ningún silo con material</span>'}</div></div>`;
+  grid.innerHTML=banner+'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:14px">'+silosData.map(s=>{
     const cap=Number(s.capacidad_kg)||1, kg=Number(s.kg_actual)||0;
     const pct=Math.max(0,Math.min(100,Math.round(kg/cap*100)));
-    const col=pct<15?'#A32D2D':pct<35?'#B5710E':'#1E8C6E';
+    const hayMat=kg>0;
+    const nivel=hayMat?(pct<35?'BAJA':pct<=70?'NORMAL':'ALTA'):'';
+    const col=hayMat?(pct<35?'#2D6CB5':pct<=70?'#1E8C6E':'#B5710E'):'#C2C8D0';
     const vaciando=s.vaciando;
     return `<div style="background:var(--surface);border:1px solid ${vaciando?'#E8A599':'var(--border)'};border-radius:14px;padding:12px;text-align:center;${vaciando?'box-shadow:0 0 0 3px #FBE3E0 inset':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span style="font-size:12px;font-weight:700;background:#FFF3E6;color:#7A4E00;border-radius:7px;padding:2px 9px">${s.nombre}</span>
-        ${vaciando?'<span style="font-size:9px;font-weight:700;color:#fff;background:#A32D2D;border-radius:6px;padding:2px 6px">VACIANDO</span>':''}
+        ${vaciando?'<span style="font-size:9px;font-weight:700;color:#fff;background:#A32D2D;border-radius:6px;padding:2px 6px">VACIANDO</span>':(nivel?`<span style="font-size:9px;font-weight:800;color:#fff;background:${col};border-radius:6px;padding:2px 7px">${nivel}</span>`:'')}
       </div>
-      ${siloSVGProd(pct,col,s.id)}
+      ${siloSVGProd(pct,col,s.id,nivel)}
       <div style="font-size:13px;font-weight:700;margin-top:6px;min-height:17px">${s.producto?(''+s.producto).replace(/</g,'&lt;'):'<span style="color:var(--text3);font-weight:500">vacío</span>'}</div>
       <div style="font-size:12px;color:var(--text2)">${fmtN(kg)} / ${fmtN(cap)} kg</div>
       <div style="display:flex;gap:5px;margin-top:10px">
@@ -3814,11 +3823,22 @@ function renderProd(tipo){
   const filtro=prodFiltro[tipo]||'todos';
   const all=prodData.filter(p=>p.tipo===tipo);
   const cont=e=> e==='todos'?all.length:all.filter(p=>p.estado===e).length;
-  const lista=all.filter(p=>filtro==='todos'||p.estado===filtro);
+  const ord={pendiente:0,en_proceso:1,hecho:2};
+  const lista=all.filter(p=>filtro==='todos'||p.estado===filtro)
+    .sort((a,b)=>(ord[a.estado]-ord[b.estado]) || (''+(a.cliente||'zzz')).localeCompare(''+(b.cliente||'zzz')));
+  // resumen del día
+  const noHechas=all.filter(p=>p.estado!=='hecho');
+  const uPend=noHechas.reduce((s,p)=>s+Number(p.unidades||0),0);
+  const kPend=noHechas.reduce((s,p)=>s+Number(p.kg_total||0),0);
+  const uHech=all.filter(p=>p.estado==='hecho').reduce((s,p)=>s+Number(p.unidades||0),0);
+  const envasePl=tipo==='bb'?'big bags':'sacos';
   const fbtn=(v,lbl)=>`<button onclick="setProdFiltro('${tipo}','${v}')" style="font-size:11px;padding:6px 11px;border-radius:8px;border:1px solid var(--border);cursor:pointer;${filtro===v?'background:var(--blue);color:#fff;border-color:var(--blue)':'background:var(--surface);color:var(--text2)'}">${lbl} (${cont(v)})</button>`;
-  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <div style="font-size:16px;font-weight:500">${titulo}</div>
       <button class="btn-primary" onclick="abrirFormProd('${tipo}')" style="font-size:12px;padding:8px 13px"><i class="ti ti-plus"></i> Nueva tarea</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <div style="flex:1;min-width:120px;background:#FFF3E6;border-radius:10px;padding:9px 12px"><div style="font-size:11px;color:#7A4E00">Pendiente de hacer</div><div style="font-size:16px;font-weight:800;color:#7A4E00">${fmtN(uPend)} ${envasePl} · ${fmtN(kPend)} kg</div></div>
+      <div style="flex:1;min-width:100px;background:#EAF3EE;border-radius:10px;padding:9px 12px"><div style="font-size:11px;color:#0F6E56">Hecho hoy</div><div style="font-size:16px;font-weight:800;color:#0F6E56">${fmtN(uHech)} ${envasePl}</div></div></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${fbtn('todos','Todos')}${fbtn('pendiente','Pendiente')}${fbtn('en_proceso','En proceso')}${fbtn('hecho','Hecho')}</div>`;
   html += lista.length ? lista.map(prodCard).join('') : '<div class="empty-state"><i class="ti ti-clipboard"></i>Sin tareas aquí</div>';
   el.innerHTML=html;
@@ -3834,19 +3854,23 @@ function prodCard(p){
     ? `<button onclick="cambiarEstadoProd('${p.id}','en_proceso')" class="btn-sec" style="font-size:11px;padding:6px 10px">↺ Reabrir</button>`
     : `${p.estado==='pendiente'?`<button onclick="cambiarEstadoProd('${p.id}','en_proceso')" class="btn-sec" style="font-size:11px;padding:6px 10px">Empezar</button>`:''}
        <button onclick="marcarHechoProd('${p.id}')" class="btn-primary" style="font-size:11px;padding:6px 10px;background:#0F6E56"><i class="ti ti-check"></i> Hecho</button>`;
+  const sinMat=!p.mp_id;
+  const titulo = p.material || (sinMat && p.notas ? p.notas : '(sin material)');
   return `<div class="list-card" style="margin-bottom:10px">
      ${p.cliente?`<div style="background:#0C447C;color:#fff;padding:7px 16px;border-radius:12px 12px 0 0;font-size:16px;font-weight:800"><i class="ti ti-user" style="font-size:14px"></i> ${(''+p.cliente).replace(/</g,'&lt;')}</div>`:''}
-     <div class="lc-hdr"><span><b>${(p.material||'(sin material)').replace(/</g,'&lt;')}</b></span><span style="font-size:10px;font-weight:700;background:${eb[0]};color:${eb[1]};border-radius:8px;padding:3px 9px">${eb[2]}</span></div>
+     <div class="lc-hdr"><span><b>${(titulo||'').replace(/</g,'&lt;')}</b>${sinMat?' <span style="font-size:10px;color:#9A2A1B;font-weight:700">· sin material</span>':''}</span><span style="font-size:10px;font-weight:700;background:${eb[0]};color:${eb[1]};border-radius:8px;padding:3px 9px">${eb[2]}</span></div>
      <div style="padding:8px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-       <span style="font-size:20px;font-weight:800">${fmtN(p.unidades)}<span style="font-size:12px;font-weight:600;color:var(--text2)"> ${envase}${Number(p.unidades)===1?'':'s'} × ${fmtN(p.kg_unidad)} kg</span></span>
-       <span style="font-size:13px;color:var(--text2)">= ${fmtN(p.kg_total)} kg</span>${siloInfo}
+       <span style="font-size:20px;font-weight:800">${fmtN(p.unidades)}<span style="font-size:12px;font-weight:600;color:var(--text2)"> ${envase}${Number(p.unidades)===1?'':'s'}${Number(p.kg_unidad)?(' × '+fmtN(p.kg_unidad)+' kg'):''}</span></span>
+       ${Number(p.kg_total)?`<span style="font-size:13px;color:var(--text2)">= ${fmtN(p.kg_total)} kg</span>`:''}${siloInfo}
      </div>
-     ${p.notas?`<div style="padding:0 16px 6px;font-size:12px;color:var(--text2)">${p.notas.replace(/</g,'&lt;')}</div>`:''}
+     ${(p.material && p.notas)?`<div style="padding:0 16px 6px;font-size:12px;color:var(--text2)">${p.notas.replace(/</g,'&lt;')}</div>`:''}
      <div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px;border-top:1px solid var(--border)">${acc}
+       ${sinMat?`<button onclick="asignarMaterialProd('${p.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px;color:#0C447C;border-color:#0C447C"><i class="ti ti-tag"></i> Asignar material</button>`:''}
        ${p.estado!=='hecho'?`<button onclick="solicitarMaterialProd('${p.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px"><i class="ti ti-truck-delivery"></i> Solicitar material</button>`:''}
        <button onclick="abrirFormProd('${p.tipo}','${p.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px"><i class="ti ti-edit"></i></button>
        <button onclick="borrarProd('${p.id}','${p.tipo}')" class="btn-sec" style="font-size:11px;padding:6px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button></div></div>`;
 }
+let _lastKgU={bb:null,saco:null};
 function abrirFormProd(tipo,id){
   const p = id? prodData.find(x=>String(x.id)===String(id)) : {};
   const ov=document.createElement('div'); ov.id='prod-form-ov';
@@ -3863,7 +3887,7 @@ function abrirFormProd(tipo,id){
     <div id="pf-silohint" style="font-size:11px;margin-top:5px;min-height:15px"></div>
     <div style="display:flex;gap:10px;margin-top:10px">
       <label style="font-size:12px;color:var(--text2);flex:1">Nº de ${envase}s<input id="pf-uni" type="number" min="0" value="${p.unidades!=null?p.unidades:''}" style="${inp}" oninput="prodKgHint()"></label>
-      <label style="font-size:12px;color:var(--text2);flex:1">Kg por ${envase}<input id="pf-kgu" type="number" min="0" value="${p.kg_unidad!=null?p.kg_unidad:''}" style="${inp}" oninput="prodKgHint()"></label></div>
+      <label style="font-size:12px;color:var(--text2);flex:1">Kg por ${envase}<input id="pf-kgu" type="number" min="0" value="${p.kg_unidad!=null?p.kg_unidad:(!id&&_lastKgU[tipo]!=null?_lastKgU[tipo]:'')}" style="${inp}" oninput="prodKgHint()"></label></div>
     <div id="pf-kghint" style="font-size:12px;color:var(--text2);margin-top:6px"></div>
     <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Notas<input id="pf-notas" value="${p.notas?(''+p.notas).replace(/"/g,'&quot;'):''}" style="${inp}"></label>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
@@ -3889,6 +3913,7 @@ async function guardarProd(){
   let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
   if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
   const body={ tipo, mp_id:mp?mp.id:null, unidades:Number(document.getElementById('pf-uni').value)||0, kg_unidad:Number(document.getElementById('pf-kgu').value)||0, notas:(document.getElementById('pf-notas').value||'').trim()||null };
+  if(body.kg_unidad) _lastKgU[tipo]=body.kg_unidad;
   try{ if(id) await api('PUT','/producciones/'+id,body); else await api('POST','/producciones',body); document.getElementById('prod-form-ov')?.remove(); await cargarProd(tipo); }
   catch(e){ log('Error guardando','warn'); }
 }
@@ -3896,13 +3921,58 @@ async function cambiarEstadoProd(id,estado){
   const p=prodData.find(x=>String(x.id)===String(id));
   try{ await api('PATCH','/producciones/'+id+'/estado',{estado}); await cargarProd(p?p.tipo:'bb'); }catch(e){ log('Error','warn'); }
 }
-async function marcarHechoProd(id){
+function marcarHechoProd(id){
   const p=prodData.find(x=>String(x.id)===String(id)); if(!p) return;
-  const silo=siloDeMaterial(p.mp_id);
-  let silo_id=null, descontar=false;
-  if(silo){ if(!confirm('Marcar como HECHO y descontar '+fmtN(p.kg_total)+' kg de '+silo.nombre+'?')) return; silo_id=silo.id; descontar=true; }
-  else { if(!confirm('Marcar como HECHO?\nEl material no está en ningún silo, no se descuenta nada.')) return; }
-  try{ await api('PATCH','/producciones/'+id+'/estado',{estado:'hecho',descontar,silo_id}); await cargarProd(p.tipo); }catch(e){ log('Error','warn'); }
+  const silos=silosData.filter(s=>String(s.mp_id)===String(p.mp_id) && Number(s.kg_actual)>0);
+  const ov=document.createElement('div'); ov.id='mh-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10063;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const opciones=silos.map((s,i)=>`<label style="display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer"><input type="radio" name="mh-silo" value="${s.id}" ${i===0?'checked':''}> Descontar de <b>${s.nombre}</b> <span style="color:var(--text2);font-size:12px">(${fmtN(s.kg_actual)} kg)</span></label>`).join('');
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:460px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:15px">Marcar hecho · ${(p.material||p.notas||'').replace(/</g,'&lt;')}</b>
+    <div style="font-size:13px;color:var(--text2);margin:4px 0 12px">${fmtN(p.unidades)} ${p.tipo==='bb'?'big bags':'sacos'}${Number(p.kg_total)?(' · '+fmtN(p.kg_total)+' kg'):''}</div>
+    ${Number(p.kg_total)?'':'<div style="font-size:12px;color:#9A2A1B;background:#FBE3E0;border-radius:8px;padding:8px;margin-bottom:10px">Esta tarea no tiene kg (kg por unidad a 0). Edítala si quieres descontar del silo.</div>'}
+    ${opciones||'<div style="font-size:12px;color:#7A4E00;background:#FFF3E6;border-radius:8px;padding:9px;margin-bottom:8px">El material no está en ningún silo: se marcará hecho sin descontar.</div>'}
+    ${opciones?'<label style="display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px dashed var(--border);border-radius:8px;cursor:pointer"><input type="radio" name="mh-silo" value="no"> No descontar de ningún silo</label>':''}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('mh-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarMarcarHecho('${id}')" style="font-size:13px;padding:10px 18px;background:#0F6E56"><i class="ti ti-check"></i> Marcar hecho</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+async function confirmarMarcarHecho(id){
+  const p=prodData.find(x=>String(x.id)===String(id)); if(!p) return;
+  const sel=document.querySelector('input[name=mh-silo]:checked');
+  const v=sel?sel.value:'no';
+  const descontar=v!=='no', silo_id=descontar?v:null;
+  try{ await api('PATCH','/producciones/'+id+'/estado',{estado:'hecho',descontar,silo_id}); document.getElementById('mh-ov')?.remove(); await cargarProd(p.tipo); }
+  catch(e){ log('Error','warn'); }
+}
+function asignarMaterialProd(id){
+  const p=prodData.find(x=>String(x.id)===String(id)); if(!p) return;
+  const ov=document.createElement('div'); ov.id='am-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10063;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const opts=matPrimas.filter(m=>m.activo!==false).map(m=>`<option value="${(m.nombre||'').replace(/"/g,'&quot;')}">`).join('');
+  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:440px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:15px">Asignar material</b>
+    ${p.notas?`<div style="font-size:12px;color:var(--text2);margin:2px 0 10px">${(''+p.notas).replace(/</g,'&lt;')}</div>`:''}
+    <input id="am-mat" list="am-mat-list" placeholder="Buscar materia prima…" value="${p.material?(''+p.material).replace(/"/g,'&quot;'):''}" style="${inp}"><datalist id="am-mat-list">${opts}</datalist>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('am-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarAsignarMaterial('${id}')" style="font-size:13px;padding:10px 18px">Guardar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  setTimeout(()=>document.getElementById('am-mat')?.focus(),60);
+}
+async function confirmarAsignarMaterial(id){
+  const p=prodData.find(x=>String(x.id)===String(id)); if(!p) return;
+  const nombre=(document.getElementById('am-mat').value||'').trim();
+  let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
+  if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
+  try{ await api('PUT','/producciones/'+id,{mp_id:mp?mp.id:null, unidades:p.unidades, kg_unidad:p.kg_unidad, notas:p.notas}); document.getElementById('am-ov')?.remove(); await cargarProd(p.tipo); }
+  catch(e){ log('Error','warn'); }
 }
 async function borrarProd(id,tipo){ if(!confirm('¿Borrar esta tarea?')) return; try{ await api('DELETE','/producciones/'+id); await cargarProd(tipo); }catch(e){ log('Error','warn'); } }
 async function cargarProdFinal(){
@@ -3910,29 +3980,45 @@ async function cargarProdFinal(){
   try{ prodData=await api('GET','/producciones'); }catch(e){ prodData=[]; }
   renderProdFinal();
 }
+let prodFinalHoy=true;
+function setProdFinalHoy(v){ prodFinalHoy=v; renderProdFinal(); }
 function renderProdFinal(){
   const el=document.getElementById('prodfinal-content'); if(!el) return;
-  const hechas=prodData.filter(p=>p.estado==='hecho').sort((a,b)=>(''+(b.hecho_at||'')).localeCompare(''+(a.hecho_at||'')));
-  const head=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><div style="font-size:16px;font-weight:500">Producción final</div><button class="btn-sec" onclick="exportarProdFinal()" style="font-size:11px;padding:6px 11px"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button></div>`;
-  if(!hechas.length){ el.innerHTML=head+'<div class="empty-state"><i class="ti ti-checklist"></i>Aún no hay producción terminada</div>'; return; }
+  const hoy=_hoyISO();
+  let hechas=prodData.filter(p=>p.estado==='hecho');
+  if(prodFinalHoy) hechas=hechas.filter(p=>p.hecho_at && _fechaISO(p.hecho_at)===hoy);
+  hechas=hechas.sort((a,b)=>(''+(b.hecho_at||'')).localeCompare(''+(a.hecho_at||'')));
+  const tg=(v,lbl)=>`<button onclick="setProdFinalHoy(${v})" style="font-size:12px;padding:7px 13px;border-radius:8px;border:1px solid var(--border);cursor:pointer;${prodFinalHoy===v?'background:var(--blue);color:#fff;border-color:var(--blue)':'background:var(--surface);color:var(--text2)'}">${lbl}</button>`;
+  const head=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px"><div style="font-size:16px;font-weight:500">Producción final</div><button class="btn-sec" onclick="exportarProdFinal()" style="font-size:11px;padding:6px 11px"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button></div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">${tg(true,'Hoy')}${tg(false,'Todo')}</div>`;
+  if(!hechas.length){ el.innerHTML=head+'<div class="empty-state"><i class="ti ti-checklist"></i>'+(prodFinalHoy?'Hoy todavía no hay producción terminada':'Aún no hay producción terminada')+'</div>'; return; }
   const tBB=hechas.filter(p=>p.tipo==='bb').reduce((s,p)=>s+Number(p.unidades||0),0);
   const tSC=hechas.filter(p=>p.tipo==='saco').reduce((s,p)=>s+Number(p.unidades||0),0);
   const tKg=hechas.reduce((s,p)=>s+Number(p.kg_total||0),0);
-  const chip=(l,v)=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:8px 12px;font-size:12px;color:var(--text2)">${l}<br><b style="font-size:16px;color:var(--text)">${v}</b></div>`;
-  el.innerHTML=head+`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${chip('Big bags',fmtN(tBB))}${chip('Sacos',fmtN(tSC))}${chip('Total',fmtN(tKg)+' kg')}</div>`+
-    hechas.map(p=>`<div class="list-card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;padding:10px 14px;gap:8px">
-      <div><div style="font-size:14px;font-weight:600">${(p.material||'').replace(/</g,'&lt;')}</div><div style="font-size:11px;color:var(--text2)">${p.tipo==='bb'?'Big bag':'Saco'}${p.silo_nombre?(' · de '+p.silo_nombre):''}${p.hecho_at?(' · '+fmtDate(p.hecho_at)):''}</div></div>
-      <div style="text-align:right"><div style="font-size:15px;font-weight:800">${fmtN(p.unidades)} <span style="font-size:11px;color:var(--text2)">× ${fmtN(p.kg_unidad)}kg</span></div><div style="font-size:11px;color:var(--text2)">${fmtN(p.kg_total)} kg</div></div>
+  const chip=(l,v)=>`<div style="flex:1;min-width:90px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:8px 12px;font-size:12px;color:var(--text2)">${l}<br><b style="font-size:16px;color:var(--text)">${v}</b></div>`;
+  // desglose por material
+  const porMat={}; hechas.forEach(p=>{ const k=p.material||'(sin material)'; if(!porMat[k])porMat[k]={u:0,kg:0}; porMat[k].u+=Number(p.unidades||0); porMat[k].kg+=Number(p.kg_total||0); });
+  const matRows=Object.keys(porMat).sort().map(k=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)"><span>${k.replace(/</g,'&lt;')}</span><span style="color:var(--text2)"><b>${fmtN(porMat[k].u)}</b> ud · ${fmtN(porMat[k].kg)} kg</span></div>`).join('');
+  el.innerHTML=head+
+    `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${chip('Big bags',fmtN(tBB))}${chip('Sacos',fmtN(tSC))}${chip('Total',fmtN(tKg)+' kg')}</div>`+
+    `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:12px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">Por material</div>${matRows}</div>`+
+    hechas.map(p=>`<div class="list-card" style="margin-bottom:8px">
+      ${p.cliente?`<div style="background:#0C447C;color:#fff;padding:5px 14px;border-radius:12px 12px 0 0;font-size:13px;font-weight:700"><i class="ti ti-user" style="font-size:12px"></i> ${(''+p.cliente).replace(/</g,'&lt;')}</div>`:''}
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;gap:8px">
+      <div><div style="font-size:14px;font-weight:600">${(p.material||p.notas||'(sin material)').replace(/</g,'&lt;')}</div><div style="font-size:11px;color:var(--text2)">${p.tipo==='bb'?'Big bag':'Saco'}${p.silo_nombre?(' · de '+p.silo_nombre):''}${p.hecho_at?(' · '+fmtDate(p.hecho_at)):''}</div></div>
+      <div style="text-align:right"><div style="font-size:15px;font-weight:800">${fmtN(p.unidades)}${Number(p.kg_unidad)?` <span style="font-size:11px;color:var(--text2)">× ${fmtN(p.kg_unidad)}kg</span>`:''}</div>${Number(p.kg_total)?`<div style="font-size:11px;color:var(--text2)">${fmtN(p.kg_total)} kg</div>`:''}</div>
     </div></div>`).join('');
 }
 async function exportarProdFinal(){
-  const hechas=prodData.filter(p=>p.estado==='hecho');
-  const rows=[['Fecha','Material','Envase','Unidades','Kg/ud','Kg total','Silo']];
-  hechas.forEach(p=>rows.push([p.hecho_at?fmtDate(p.hecho_at):'',p.material||'',p.tipo==='bb'?'Big bag':'Saco',p.unidades,p.kg_unidad,p.kg_total,p.silo_nombre||'']));
+  const hoy=_hoyISO();
+  let hechas=prodData.filter(p=>p.estado==='hecho');
+  if(prodFinalHoy) hechas=hechas.filter(p=>p.hecho_at && _fechaISO(p.hecho_at)===hoy);
+  const rows=[['Fecha','Cliente','Material','Envase','Unidades','Kg/ud','Kg total','Silo']];
+  hechas.forEach(p=>rows.push([p.hecho_at?fmtDate(p.hecho_at):'',p.cliente||'',p.material||p.notas||'',p.tipo==='bb'?'Big bag':'Saco',p.unidades,p.kg_unidad,p.kg_total,p.silo_nombre||'']));
   try{ await _cargarScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js');
     const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('Producción'); rows.forEach(r=>ws.addRow(r)); ws.getRow(1).font={bold:true};
-    const buf=await wb.xlsx.writeBuffer(); _descargarBlob(new Blob([buf]),'produccion_'+_hoyISO()+'.xlsx');
-  }catch(e){ _descargarBlob(new Blob([rows.map(r=>r.join(';')).join('\n')],{type:'text/csv'}),'produccion_'+_hoyISO()+'.csv'); }
+    const buf=await wb.xlsx.writeBuffer(); _descargarBlob(new Blob([buf]),'produccion_'+(prodFinalHoy?hoy:'todo')+'.xlsx');
+  }catch(e){ _descargarBlob(new Blob([rows.map(r=>r.join(';')).join('\n')],{type:'text/csv'}),'produccion_'+(prodFinalHoy?hoy:'todo')+'.csv'); }
 }
 
 // ── CAMIÓN (Fase 3) ───────────────────────────────────────────────────────────
