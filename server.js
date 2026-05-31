@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 26;
+const API_VERSION = 27;
 
 const app = express();
 app.use(cors());
@@ -112,6 +112,9 @@ async function initDB() {
     `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS preparado BOOLEAN DEFAULT false`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS cliente TEXT`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS orden INTEGER DEFAULT 0`,
+    `ALTER TABLE compras ADD COLUMN IF NOT EXISTS tipo_produccion TEXT`,
+    `ALTER TABLE compras ADD COLUMN IF NOT EXISTS kg_bb NUMERIC`,
+    `ALTER TABLE compras ADD COLUMN IF NOT EXISTS kg_saco NUMERIC`,
     `CREATE TABLE IF NOT EXISTS pedidos_cli (
       id SERIAL PRIMARY KEY,
       cliente TEXT,
@@ -215,14 +218,18 @@ async function initDB() {
     try { await pool.query(sql); }
     catch(e) { console.warn('initDB warning:', e.message); }
   }
-  // sembrar 5 silos la primera vez (1-4: 50.000 kg · 5: 25.000 kg)
+  // sembrar silos la primera vez (0-5: la 5 = 25.000 kg, resto 50.000)
   try {
     const c = await pool.query('SELECT COUNT(*)::int AS n FROM silos');
     if (c.rows[0].n === 0) {
-      for (let i = 1; i <= 5; i++) {
-        await pool.query('INSERT INTO silos(numero,nombre,capacidad_kg) VALUES($1,$2,$3)', [i, 'Silo ' + i, i === 5 ? 25000 : 50000]);
+      for (let i = 0; i <= 5; i++) {
+        await pool.query('INSERT INTO silos(numero,nombre,capacidad_kg) VALUES($1,$2,$3)', [i, 'Tolva ' + i, i === 5 ? 25000 : 50000]);
       }
     }
+    // asegurar que existe la Tolva 0 (para los que ya tenían silos 1-5)
+    await pool.query(
+      `INSERT INTO silos(numero,nombre,capacidad_kg)
+       SELECT 0,'Tolva 0',25000 WHERE NOT EXISTS (SELECT 1 FROM silos WHERE numero=0)`);
   } catch(e) { console.warn('seed silos:', e.message); }
   console.log('DB ready');
 }
@@ -821,10 +828,11 @@ app.post('/api/compras', async (req, res) => {
   try {
     await client.query('BEGIN');
     const r = await client.query(
-      `INSERT INTO compras(proveedor,estado,fecha_prevista,tolva,transportista,transportista_tel,pedidos_rel,prioridad,notas)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      `INSERT INTO compras(proveedor,estado,fecha_prevista,tolva,transportista,transportista_tel,pedidos_rel,prioridad,notas,tipo_produccion,kg_bb,kg_saco)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [c.proveedor||null, c.estado||'por_pedir', c.fecha_prevista||null, c.tolva||null,
-       c.transportista||null, c.transportista_tel||null, c.pedidos_rel||null, c.prioridad||'normal', c.notas||null]);
+       c.transportista||null, c.transportista_tel||null, c.pedidos_rel||null, c.prioridad||'normal', c.notas||null,
+       c.tipo_produccion||null, c.kg_bb!=null?Number(c.kg_bb):null, c.kg_saco!=null?Number(c.kg_saco):null]);
     const compra = r.rows[0];
     for (const l of (c.lineas||[])) {
       await client.query(
@@ -845,9 +853,10 @@ app.put('/api/compras/:id', async (req, res) => {
     await client.query('BEGIN');
     await client.query(
       `UPDATE compras SET proveedor=$1,estado=$2,fecha_prevista=$3,tolva=$4,transportista=$5,
-       transportista_tel=$6,pedidos_rel=$7,prioridad=$8,notas=$9 WHERE id=$10`,
+       transportista_tel=$6,pedidos_rel=$7,prioridad=$8,notas=$9,tipo_produccion=$11,kg_bb=$12,kg_saco=$13 WHERE id=$10`,
       [c.proveedor||null, c.estado||'por_pedir', c.fecha_prevista||null, c.tolva||null,
-       c.transportista||null, c.transportista_tel||null, c.pedidos_rel||null, c.prioridad||'normal', c.notas||null, req.params.id]);
+       c.transportista||null, c.transportista_tel||null, c.pedidos_rel||null, c.prioridad||'normal', c.notas||null, req.params.id,
+       c.tipo_produccion||null, c.kg_bb!=null?Number(c.kg_bb):null, c.kg_saco!=null?Number(c.kg_saco):null]);
     await client.query('DELETE FROM compra_lineas WHERE compra_id=$1', [req.params.id]);
     for (const l of (c.lineas||[])) {
       await client.query(
