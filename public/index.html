@@ -3909,7 +3909,7 @@ function comprasSiloHTML(s){
   }).join('');
 }
 function progSiloHTML(s){
-  const items=(viajesData||[]).filter(v=>v.estado==='pendiente' && String(v.silo_id)===String(s.id));
+  const items=(viajesData||[]).filter(v=>v.estado!=='hecho' && String(v.silo_id)===String(s.id));
   const rows=items.map(v=>`<div style="display:flex;align-items:center;gap:5px;font-size:10px;padding:3px 0;border-bottom:1px solid var(--border)">
        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.hora?('<b>'+v.hora+'</b> '):''}${(v.material||'—').replace(/</g,'&lt;')} · ${fmtN(v.kg)}kg${v.origen==='produccion'?' <span style="color:var(--text3)">(prod.)</span>':''}</span>
        <button onclick="subirProgramado('${v.id}',${s.id})" title="Subir a esta tolva" style="background:#E9F0F8;color:#0C447C;border:none;border-radius:5px;padding:2px 6px;font-size:9px;font-weight:700;cursor:pointer">SUBIR</button>
@@ -4461,7 +4461,7 @@ async function cargarViajes(){
 function setCamionFiltro(v){ camionFiltro=v; renderCamion(); }
 function renderCamion(){
   const el=document.getElementById('camion-content'); if(!el) return;
-  const pend=viajesData.filter(v=>v.estado==='pendiente'), hechos=viajesData.filter(v=>v.estado==='hecho');
+  const pend=viajesData.filter(v=>v.estado!=='hecho'), hechos=viajesData.filter(v=>v.estado==='hecho');
   const hoy=_hoyISO();
   const hoyHechos=hechos.filter(v=>v.hecho_at && _fechaISO(v.hecho_at)===hoy);
   const strip=silosData.map(s=>{ const pct=Math.round((Number(s.kg_actual)||0)/(Number(s.capacidad_kg)||1)*100); return `<div style="flex:0 0 auto;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:6px 10px;font-size:11px;white-space:nowrap"><b>${s.nombre}</b> · ${s.producto?(''+s.producto).replace(/</g,'&lt;'):'vacío'} · ${pct}%</div>`; }).join('');
@@ -4631,7 +4631,7 @@ async function confirmarCompletar(id){
 async function borrarViaje(id){ if(!confirm('¿Quitar este viaje?')) return; try{ await api('DELETE','/viajes/'+id); if(_activeView==='silos') await cargarSilos(); else await cargarViajes(); }catch(e){ log('Error','warn'); } }
 async function exportarParteCamion(){
   const hoy=_hoyISO();
-  const delDia=viajesData.filter(v=>(v.hecho_at && _fechaISO(v.hecho_at)===hoy) || (v.estado==='pendiente' && v.fecha && _fechaISO(v.fecha)===hoy));
+  const delDia=viajesData.filter(v=>(v.hecho_at && _fechaISO(v.hecho_at)===hoy) || (v.estado!=='hecho' && v.fecha && _fechaISO(v.fecha)===hoy));
   const fuente = delDia.length ? delDia : viajesData;
   const rows=[['Estado','Material','Kg previsto','Tolva prevista','Destino','Kg final','Fecha']];
   fuente.forEach(v=>rows.push([v.estado,v.material||'',v.kg,v.silo_nombre||'',v.estado==='hecho'?(v.destino_tipo==='silo'?('Silo '+(v.destino_silo_nombre||'')):('Acopio '+(v.acopio||''))):'',v.kg_final||'',v.hecho_at?fmtDate(v.hecho_at):'']));
