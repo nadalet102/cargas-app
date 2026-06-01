@@ -112,6 +112,7 @@ async function initDB() {
     `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS preparado BOOLEAN DEFAULT false`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS cliente TEXT`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS fabricante TEXT`,
+    `UPDATE viajes SET estado='pendiente' WHERE estado IS NULL`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS orden INTEGER DEFAULT 0`,
     `ALTER TABLE compras ADD COLUMN IF NOT EXISTS tipo_produccion TEXT`,
     `ALTER TABLE compras ADD COLUMN IF NOT EXISTS kg_bb NUMERIC`,
@@ -1224,7 +1225,7 @@ app.post('/api/viajes', async (req, res) => {
     const ids = [];
     for (let i = 0; i < n; i++) {
       const r = await pool.query(
-        `INSERT INTO viajes(mp_id,kg,silo_id,origen,notas,hora) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
+        `INSERT INTO viajes(mp_id,kg,silo_id,origen,notas,hora,estado) VALUES($1,$2,$3,$4,$5,$6,'pendiente') RETURNING id`,
         [b.mp_id||null, Number(b.kg)||0, b.silo_id||null, b.origen||'manual', b.notas||null, b.hora||null]);
       ids.push(r.rows[0].id);
     }
