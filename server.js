@@ -831,7 +831,7 @@ function _icsFold(line){
 function _icsWrap(name, events){
   const now=new Date().toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
   const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Cargas Arisac//ES//EN','CALSCALE:GREGORIAN',
-           'X-WR-CALNAME:'+_icsEsc(name),'X-WR-TIMEZONE:Europe/Madrid','REFRESH-INTERVAL;VALUE=DURATION:PT6H','X-PUBLISHED-TTL:PT6H'];
+           'X-WR-CALNAME:'+_icsEsc(name),'X-WR-TIMEZONE:Europe/Madrid','REFRESH-INTERVAL;VALUE=DURATION:PT1H','X-PUBLISHED-TTL:PT1H'];
   for(const e of events){
     L.push('BEGIN:VEVENT','UID:'+e.uid,'DTSTAMP:'+now,'DTSTART;VALUE=DATE:'+e.start,'DTEND;VALUE=DATE:'+e.end,'SUMMARY:'+_icsEsc(e.summary));
     if(e.desc) L.push('DESCRIPTION:'+_icsEsc(e.desc));
@@ -862,7 +862,7 @@ app.get('/api/cal/:token/compras.ics', async (req, res) => {
       const desc=[c.mats?('Material: '+c.mats):'', c.tolva?('Tolva: '+c.tolva):'', 'Estado: '+(c.estado||''), c.notas||''].filter(Boolean).join('\n');
       return { uid:'compra-'+c.id+'@cargas-arisac', start:c.dstart, end:c.dend, summary, desc };
     });
-    res.set('Content-Type','text/calendar; charset=utf-8');
+    res.set('Content-Type','text/calendar; charset=utf-8'); res.set('Cache-Control','no-cache, no-store, max-age=0');
     res.send(_icsWrap('Arisac · Compras', evs));
   } catch(e){ console.error('ICS error:',e.message); res.status(500).send('ICS error: '+e.message); }
 });
@@ -881,7 +881,7 @@ app.get('/api/cal/:token/cargas.ics', async (req, res) => {
       const desc=[c.clientes?('Clientes: '+c.clientes):((c.npedidos||0)+' pedido(s)'), c.mat_camion?('Camión: '+c.mat_camion):'', c.mat_remolque?('Remolque: '+c.mat_remolque):'', c.notas||''].filter(Boolean).join('\n');
       return { uid:'carga-'+c.id+'@cargas-arisac', start:c.dstart, end:c.dend, summary, desc };
     });
-    res.set('Content-Type','text/calendar; charset=utf-8');
+    res.set('Content-Type','text/calendar; charset=utf-8'); res.set('Cache-Control','no-cache, no-store, max-age=0');
     res.send(_icsWrap('Arisac · Cargas', evs));
   } catch(e){ console.error('ICS error:',e.message); res.status(500).send('ICS error: '+e.message); }
 });
