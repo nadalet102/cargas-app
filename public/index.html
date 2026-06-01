@@ -3584,7 +3584,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 27;
+const NEEDS_API = 28;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -3682,7 +3682,7 @@ function renderSilos(){
     const nivel=hayMat?(pct<35?'BAJA':pct<=70?'NORMAL':'ALTA'):'';
     const col=hayMat?(pct<35?'#2D6CB5':pct<=70?'#1E8C6E':'#B5710E'):'#C2C8D0';
     const vaciando=s.vaciando;
-    return `<div style="background:var(--surface);border:1px solid ${vaciando?'#E8A599':'var(--border)'};border-radius:14px;padding:12px;text-align:center;${vaciando?'box-shadow:0 0 0 3px #FBE3E0 inset':''}">
+    return `<div class="silo-card" data-silo-id="${s.id}" data-silo-num="${s.numero}" style="background:var(--surface);border:1px solid ${vaciando?'#E8A599':'var(--border)'};border-radius:14px;padding:12px;text-align:center;${vaciando?'box-shadow:0 0 0 3px #FBE3E0 inset':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span style="font-size:12px;font-weight:700;background:#FFF3E6;color:#7A4E00;border-radius:7px;padding:2px 9px">${s.nombre}</span>
         ${vaciando?'<span style="font-size:9px;font-weight:700;color:#fff;background:#A32D2D;border-radius:6px;padding:2px 6px">VACIANDO</span>':(nivel?`<span style="font-size:9px;font-weight:800;color:#fff;background:${col};border-radius:6px;padding:2px 7px">${nivel}</span>`:'')}
@@ -3702,27 +3702,127 @@ function renderSilos(){
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     document.querySelectorAll('#silos-grid .silofill').forEach(r=>{ r.setAttribute('y', r.dataset.y); r.setAttribute('height', r.dataset.h); });
   }));
+  initSilosDnD();
 }
 function comprasProximasHTML(){
-  const hoy=_hoyISO();
-  const dm=new Date(); dm.setDate(dm.getDate()+1); const man=_isoOf(dm);
-  const tieneSilo=c=>(silosData||[]).some(s=>s.nombre===c.tolva);
-  const cps=(comprasData||[]).filter(c=>c.fecha_prevista && c.estado!=='recibido' && (_fechaISO(c.fecha_prevista)===hoy||_fechaISO(c.fecha_prevista)===man) && !tieneSilo(c))
-    .sort((a,b)=>(''+a.fecha_prevista).localeCompare(''+b.fecha_prevista));
-  const row=c=>{
-    const t=(c.lineas||[]).map(l=>(l.descripcion||l.referencia||'')+' ('+fmtN(l.cantidad)+(l.unidad?(' '+l.unidad):'')+')').filter(Boolean).join(', ');
-    const dia=_fechaISO(c.fecha_prevista)===hoy?'Hoy':'Mañana';
-    const cl=c.estado==='pedido'?['#E6F1FB','#0C447C']:['#FFF3E6','#7A4E00'];
-    return `<div onclick="abrirFormCompra(${c.id})" style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:9px;margin-bottom:7px;cursor:pointer">
-       <span style="font-size:13px"><span style="font-size:10px;font-weight:700;background:${cl[0]};color:${cl[1]};border-radius:6px;padding:2px 7px;margin-right:6px">${dia}</span><b>${(c.proveedor||'—').replace(/</g,'&lt;')}</b> — ${t.replace(/</g,'&lt;')}</span>
-       <span style="font-size:11px;color:var(--text2);white-space:nowrap">${c.estado==='pedido'?'en camino':'por pedir'}</span></div>`;
-  };
+  const cps=(comprasData||[]).filter(c=>c.estado!=='recibido')
+    .sort((a,b)=>(''+(a.fecha_prevista||'9999')).localeCompare(''+(b.fecha_prevista||'9999')));
   if(!cps.length) return '';
+  const allowedOf=t=> t==='bb'?[1,2,3,4]:t==='saco'?[0,1]:t==='ambos'?[1]:[];
+  const chip=c=>{
+    const t=(c.lineas||[]).map(l=>(l.descripcion||l.referencia||'')).filter(Boolean).join(', ');
+    const allowed=allowedOf(c.tipo_produccion);
+    const tipoTxt=c.tipo_produccion==='bb'?'Big Bag':c.tipo_produccion==='saco'?'Sacos':c.tipo_produccion==='ambos'?'BB + Sacos':'sin tipo';
+    const tc=c.tipo_produccion==='bb'?['#FBE7D2','#7A4E00']:c.tipo_produccion==='saco'?['#E9F0F8','#0C447C']:c.tipo_produccion==='ambos'?['#EDE7F6','#5B3FA8']:['#eee','#666'];
+    const tolvasTxt=allowed.length?('Tolva '+allowed.join(' · ')):'cualquier tolva';
+    const dia=c.fecha_prevista?(_fechaISO(c.fecha_prevista)===_hoyISO()?'Hoy':fmtDate(c.fecha_prevista)):'';
+    return `<div class="cs-chip" data-compra-id="${c.id}" data-tolvas="${allowed.join(',')}" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:grab">
+       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+         <b style="font-size:13px">${(c.proveedor||'Compra').replace(/</g,'&lt;')}</b>
+         <span style="font-size:10px;font-weight:800;background:${tc[0]};color:${tc[1]};border-radius:6px;padding:2px 8px;white-space:nowrap">${tipoTxt}</span></div>
+       ${t?`<div style="font-size:12px;color:var(--text2);margin-top:2px">${t.replace(/</g,'&lt;')}</div>`:''}
+       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px">
+         <span style="font-size:11px;color:#0F6E56;font-weight:700"><i class="ti ti-arrow-ramp-right-3"></i> ${tolvasTxt}</span>
+         ${dia?`<span style="font-size:10px;color:var(--text3)">${dia}</span>`:''}</div>
+       <div style="font-size:10px;color:var(--text3);margin-top:5px"><i class="ti ti-hand-finger"></i> mantén pulsado y arrástrala a su tolva</div>
+     </div>`;
+  };
   return `<div style="margin-top:20px">
      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-       <span style="font-size:13px;font-weight:600"><i class="ti ti-calendar-due"></i> Compras sin tolva · hoy y mañana</span>
+       <span style="font-size:13px;font-weight:600"><i class="ti ti-truck-loading"></i> Compras por descargar</span>
        <span onclick="switchView('prodcal')" style="font-size:11px;color:var(--blue);cursor:pointer">Ver calendario ›</span></div>
-     ${cps.map(row).join('')}</div>`;
+     ${cps.map(chip).join('')}</div>`;
+}
+let _cs=null;
+function initSilosDnD(){
+  const grid=document.getElementById('silos-grid'); if(!grid) return;
+  grid.querySelectorAll('.cs-chip').forEach(ch=>ch.addEventListener('pointerdown',csDown));
+}
+function csDown(e){
+  if(e.button && e.button!==0) return;
+  if(e.target.closest('a,button')) return;
+  const chip=e.currentTarget;
+  const sx=e.clientX, sy=e.clientY, cid=chip.dataset.compraId;
+  const allowed=(chip.dataset.tolvas||'').split(',').filter(x=>x!=='').map(Number);
+  let started=false, moved=false;
+  const tm=ev=>{ if(started) ev.preventDefault(); };
+  const begin=()=>{
+    started=true;
+    const r=chip.getBoundingClientRect();
+    const g=chip.cloneNode(true);
+    g.style.cssText='position:fixed;margin:0;width:'+r.width+'px;left:'+r.left+'px;top:'+r.top+'px;z-index:10095;pointer-events:none;opacity:.97;transform:scale(1.03) rotate(1deg);box-shadow:0 12px 28px rgba(0,0,0,.3);border-radius:10px';
+    document.body.appendChild(g);
+    chip.style.opacity='.3'; document.body.style.userSelect='none';
+    _cs={cid, allowed, chip, ghost:g, offx:sx-r.left, offy:sy-r.top, silo:null};
+    document.querySelectorAll('.silo-card').forEach(c=>{ const n=Number(c.dataset.siloNum); if(allowed.length&&!allowed.includes(n)) c.style.opacity='.35'; });
+    try{ if(navigator.vibrate) navigator.vibrate(18); }catch(_){}
+  };
+  const timer=setTimeout(()=>{ if(!moved) begin(); },180);
+  const move=ev=>{
+    if(!started){ if(Math.hypot(ev.clientX-sx,ev.clientY-sy)>9){ moved=true; clearTimeout(timer); cleanup(); } return; }
+    ev.preventDefault();
+    _cs.ghost.style.left=(ev.clientX-_cs.offx)+'px'; _cs.ghost.style.top=(ev.clientY-_cs.offy)+'px';
+    const el=document.elementFromPoint(ev.clientX,ev.clientY);
+    const card=el&&el.closest?el.closest('.silo-card'):null;
+    const ok=(card && (!_cs.allowed.length || _cs.allowed.includes(Number(card.dataset.siloNum))))?card:null;
+    if(ok!==_cs.silo){ document.querySelectorAll('.silo-card').forEach(c=>{ c.style.outline=(c===ok)?'3px solid #0F6E56':''; c.style.outlineOffset='-3px'; }); _cs.silo=ok; }
+  };
+  const up=ev=>{ clearTimeout(timer); cleanup(); if(started) csDrop(); else if(!moved && Math.hypot(ev.clientX-sx,ev.clientY-sy)<9) abrirFormCompra(Number(cid)); };
+  function cleanup(){ document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); document.removeEventListener('touchmove',tm); document.body.style.userSelect=''; }
+  document.addEventListener('pointermove',move,{passive:false});
+  document.addEventListener('pointerup',up);
+  document.addEventListener('pointercancel',up);
+  document.addEventListener('touchmove',tm,{passive:false});
+}
+function csDrop(){
+  const k=_cs; _cs=null; if(!k) return;
+  k.ghost.remove();
+  document.querySelectorAll('.silo-card').forEach(c=>{ c.style.outline=''; c.style.opacity=''; });
+  if(!k.silo){ k.chip.style.opacity=''; return; }
+  try{ if(navigator.vibrate) navigator.vibrate(18); }catch(_){}
+  csAskKg(k.cid, k.silo.dataset.siloId);
+}
+function csAskKg(compraId,siloId){
+  const c=(comprasData||[]).find(x=>String(x.id)===String(compraId));
+  const s=(silosData||[]).find(x=>String(x.id)===String(siloId));
+  if(!c||!s) return;
+  const lin=(c.lineas||[])[0]||{};
+  const matTxt=(lin.descripcion||lin.referencia||c.proveedor||'material');
+  const guess=(c.lineas||[]).reduce((a,l)=>a+(Number(l.cantidad)||0),0)||'';
+  const ov=document.createElement('div'); ov.id='cs-kg-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10072;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const inp='width:100%;font-size:26px;font-weight:800;text-align:center;padding:14px;border:2px solid var(--border2);border-radius:12px;background:var(--surface);color:var(--text);box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:440px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:17px">Descargar en Tolva ${s.numero}</b>
+    <div style="font-size:12px;color:var(--text2);margin:2px 0 14px">${(''+matTxt).replace(/</g,'&lt;')} · ${(c.proveedor||'').replace(/</g,'&lt;')}</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:6px">¿Cuántos kg descarga?</div>
+    <input id="cs-kg" type="number" inputmode="numeric" min="0" value="${guess}" placeholder="0" style="${inp}">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+      <button class="btn-sec" onclick="document.getElementById('cs-kg-ov').remove()" style="font-size:13px;padding:11px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="csConfirm('${compraId}','${siloId}')" style="font-size:14px;padding:11px 18px;background:#0F6E56"><i class="ti ti-check"></i> Descargar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  setTimeout(()=>document.getElementById('cs-kg')?.focus(),60);
+}
+async function csConfirm(compraId,siloId){
+  const kg=Number(document.getElementById('cs-kg')?.value)||0;
+  if(!kg){ log('Pon los kg que descarga','warn'); return; }
+  const c=(comprasData||[]).find(x=>String(x.id)===String(compraId));
+  const s=(silosData||[]).find(x=>String(x.id)===String(siloId));
+  const lin=(c&&c.lineas||[])[0]||{};
+  const nombre=(lin.descripcion||lin.referencia||'').trim();
+  let mp=nombre?matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase()):null;
+  if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
+  try{
+    const r=await api('POST','/viajes',{mp_id:mp?mp.id:null,kg,silo_id:siloId,origen:'compra'});
+    const vid=r.ids&&r.ids[0];
+    if(vid) await api('PATCH','/viajes/'+vid+'/completar',{destino_tipo:'silo',destino_silo_id:siloId,kg_final:kg});
+    await api('PATCH','/compras/'+compraId+'/estado',{estado:'recibido',tolva:s?s.nombre:null});
+    document.getElementById('cs-kg-ov')?.remove();
+    await cargarSilos();
+    log('Descargado en '+(s?s.nombre:'tolva')+' · '+fmtN(kg)+' kg','ok');
+  }catch(e){ log('Error al descargar','warn'); }
 }
 function comprasSiloHTML(s){
   const hoy=_hoyISO();
