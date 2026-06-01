@@ -4499,7 +4499,7 @@ function viajeCard(v){
   }
   const silo=silosData.find(s=>String(s.id)===String(v.silo_id));
   return `<div class="list-card" style="margin-bottom:10px">
-     <div class="lc-hdr"><span><b>${(v.material||'(sin material)').replace(/</g,'&lt;')}</b></span><span style="font-size:11px;color:var(--text2)">${fmtN(v.kg)} kg</span></div>
+     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 16px 2px"><span style="font-size:17px;font-weight:800"><i class="ti ti-cube" style="font-size:15px;color:#7A4E00"></i> ${(v.material||'(sin material)').replace(/</g,'&lt;')}</span>${Number(v.kg)>0?`<span style="font-size:11px;color:var(--text2)">${fmtN(v.kg)} kg</span>`:''}</div>
      <div style="padding:8px 16px"><span style="font-size:13px;background:#E9F0F8;color:#0C447C;border-radius:8px;padding:4px 11px"><i class="ti ti-arrow-down"></i> Echar a: <b>${silo?silo.nombre:'(sin asignar)'}</b></span>${v.origen==='produccion'?' <span style="font-size:10px;color:var(--text3)">· lo pidió producción</span>':''}</div>
      ${v.notas?`<div style="padding:0 16px 6px;font-size:12px;color:var(--text2)">${v.notas.replace(/</g,'&lt;')}</div>`:''}
      <div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px;border-top:1px solid var(--border)">
@@ -4513,7 +4513,7 @@ function abrirFormViaje(id){
   const v = id? viajesData.find(x=>String(x.id)===String(id)) : null;
   _vf = { id:id||null, material:(v&&v.material)||'', kg:(v&&v.kg!=null?v.kg:''),
           destino: v ? (v.silo_id?{tipo:'silo',silo_id:v.silo_id}:null) : null,
-          step: (v&&v.material)?2:1 };
+          step: (v&&v.material)?2:1, n:1 };
   const ov=document.createElement('div'); ov.id='viaje-form-ov';
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10060;display:flex;align-items:flex-end;justify-content:center';
   ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
@@ -4536,7 +4536,10 @@ function vfRender(){
   const inp='width:100%;font-size:26px;font-weight:800;text-align:center;padding:14px;border:2px solid var(--border2);border-radius:12px;background:var(--surface);color:var(--text);box-sizing:border-box';
   const d=_vf.destino;
   const dBtn=(sel,label,sub,onclick)=>`<button onclick="${onclick}" style="padding:14px 6px;border-radius:12px;border:2px solid ${sel?'#0F6E56':'var(--border2)'};background:${sel?'#EAF3EE':'var(--surface)'};color:${sel?'#0F6E56':'var(--text)'};font-weight:800;font-size:15px;cursor:pointer;min-height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">${label}${sub?`<span style="font-size:10px;font-weight:500;color:${sel?'#0F6E56':'var(--text2)'}">${sub}</span>`:''}</button>`;
-  p.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b style="font-size:18px"><i class="ti ti-cube" style="font-size:16px;color:#7A4E00"></i> ${_vf.material}</b><button onclick="vfClose()" style="background:none;border:none;font-size:26px;color:var(--text2);cursor:pointer;line-height:1">×</button></div>
+  p.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+      <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Material</div>
+      <div style="font-size:25px;font-weight:800;line-height:1.1"><i class="ti ti-cube" style="font-size:20px;color:#7A4E00"></i> ${_vf.material}</div></div>
+      <button onclick="vfClose()" style="background:none;border:none;font-size:26px;color:var(--text2);cursor:pointer;line-height:1">×</button></div>
     <button onclick="_vf.step=1;vfRender()" class="btn-sec" style="font-size:12px;padding:6px 12px;margin-bottom:16px"><i class="ti ti-arrow-left"></i> Cambiar material</button>
     <div style="font-size:13px;color:var(--text2);margin-bottom:8px">¿A qué tolva va?</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
@@ -4547,13 +4550,21 @@ function vfRender(){
     <input id="vf-kg" type="number" inputmode="numeric" min="0" value="${_vf.kg}" placeholder="se ponen al descargar" style="${inp}" oninput="_vf.kg=this.value">
     ${_vf.id
       ? `<button class="btn-primary" onclick="vfConfirm('editar')" style="width:100%;margin-top:20px;font-size:17px;padding:16px;background:#0F6E56;border-radius:12px"><i class="ti ti-check"></i> Guardar cambios</button>`
-      : `<div style="display:flex;gap:8px;margin-top:20px">
-           <button class="btn-sec" onclick="vfConfirm('cola')" style="flex:1;font-size:14px;padding:15px;border-radius:12px"><i class="ti ti-clock-plus"></i> Añadir a la cola</button>
+      : `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:9px 14px">
+           <span style="font-size:13px;color:var(--text2)">Nº de viajes a la cola</span>
+           <div style="display:flex;align-items:center;gap:14px">
+             <button onclick="vfN(-1)" style="width:40px;height:40px;border-radius:10px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:24px;font-weight:800;cursor:pointer;line-height:1">−</button>
+             <span style="font-size:22px;font-weight:800;min-width:26px;text-align:center">${_vf.n||1}</span>
+             <button onclick="vfN(1)" style="width:40px;height:40px;border-radius:10px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:24px;font-weight:800;cursor:pointer;line-height:1">+</button>
+           </div></div>
+         <div style="display:flex;gap:8px;margin-top:14px">
+           <button class="btn-sec" onclick="vfConfirm('cola')" style="flex:1;font-size:14px;padding:15px;border-radius:12px"><i class="ti ti-clock-plus"></i> Añadir a la cola${(_vf.n||1)>1?(' ('+(_vf.n)+')'):''}</button>
            <button class="btn-primary" onclick="vfConfirm('ahora')" style="flex:1;font-size:15px;padding:15px;background:#0F6E56;border-radius:12px"><i class="ti ti-check"></i> Hacerlo ahora</button>
          </div>
-         <div style="font-size:11px;color:var(--text3);margin-top:8px;text-align:center">"A la cola": elige tolva, los kg los pones al descargar</div>`}`;
+         <div style="font-size:11px;color:var(--text3);margin-top:8px;text-align:center">"A la cola": elige tolva y cuántos viajes; los kg los pones al descargar cada uno</div>`}`;
 }
 function vfPickMat(m){ _vf.material=m; _vf.step=2; vfRender(); }
+function vfN(d){ _vf.n=Math.max(1,(_vf.n||1)+d); vfRender(); }
 function vfDest(tipo,silo_id){ _vf.destino = tipo==='silo'?{tipo:'silo',silo_id}:{tipo:'acopio'}; vfRender(); }
 async function vfConfirm(modo){
   const kg=Number(document.getElementById('vf-kg')?.value)||0; _vf.kg=kg;
@@ -4571,14 +4582,15 @@ async function vfConfirm(modo){
       await api('PUT','/viajes/'+_vf.id,{ mp_id:mp?mp.id:null, kg, silo_id:siloId });
       log('Viaje actualizado','ok');
     } else {
-      const r=await api('POST','/viajes',{ mp_id:mp?mp.id:null, kg, silo_id:siloId, origen:'camion', notas:esAcopio?'A acopio':null });
+      const n = modo==='cola' ? (_vf.n||1) : 1;
+      const r=await api('POST','/viajes',{ mp_id:mp?mp.id:null, kg, silo_id:siloId, origen:'camion', notas:esAcopio?'A acopio':null, n_viajes:n });
       const vid=r.ids&&r.ids[0];
       if(modo==='ahora' && vid && dest){
         if(dest.tipo==='silo') await api('PATCH','/viajes/'+vid+'/completar',{ destino_tipo:'silo', destino_silo_id:dest.silo_id, kg_final:kg });
         else await api('PATCH','/viajes/'+vid+'/completar',{ destino_tipo:'acopio', acopio:'Acopio', kg_final:kg });
         log('Viaje hecho · '+fmtN(kg)+' kg '+dl,'ok');
       } else {
-        log('Añadido a la cola · '+fmtN(kg)+' kg'+(dl?(' '+dl):''),'ok');
+        log('Añadido a la cola · '+n+' viaje'+(n>1?'s':'')+(dl?(' '+dl):''),'ok');
         camionFiltro='pendiente';
       }
     }
