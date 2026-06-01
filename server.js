@@ -822,15 +822,23 @@ app.get('/api/faltas', async (req, res) => {
 function _icsEsc(s){ return (''+(s||'')).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n'); }
 function _icsDate(d){ return (''+d).substring(0,10).replace(/-/g,''); }
 function _icsDatePlus1(d){ const dt=new Date((''+d).substring(0,10)+'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate()+1); return dt.toISOString().substring(0,10).replace(/-/g,''); }
+function _icsFold(line){
+  if(line.length<=73) return line;
+  let out=''; let i=0;
+  while(i<line.length){ out += (i?'\r\n ':'') + line.substring(i,i+73); i+=73; }
+  return out;
+}
 function _icsWrap(name, events){
   const now=new Date().toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
-  let out='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Cargas Arisac//ES\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nX-WR-CALNAME:'+_icsEsc(name)+'\r\n';
+  const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Cargas Arisac//ES//EN','CALSCALE:GREGORIAN',
+           'X-WR-CALNAME:'+_icsEsc(name),'X-WR-TIMEZONE:Europe/Madrid','REFRESH-INTERVAL;VALUE=DURATION:PT6H','X-PUBLISHED-TTL:PT6H'];
   for(const e of events){
-    out+='BEGIN:VEVENT\r\nUID:'+e.uid+'\r\nDTSTAMP:'+now+'\r\nDTSTART;VALUE=DATE:'+e.start+'\r\nDTEND;VALUE=DATE:'+e.end+'\r\nSUMMARY:'+_icsEsc(e.summary)+'\r\n';
-    if(e.desc) out+='DESCRIPTION:'+_icsEsc(e.desc)+'\r\n';
-    out+='END:VEVENT\r\n';
+    L.push('BEGIN:VEVENT','UID:'+e.uid,'DTSTAMP:'+now,'DTSTART;VALUE=DATE:'+e.start,'DTEND;VALUE=DATE:'+e.end,'SUMMARY:'+_icsEsc(e.summary));
+    if(e.desc) L.push('DESCRIPTION:'+_icsEsc(e.desc));
+    L.push('TRANSP:TRANSPARENT','END:VEVENT');
   }
-  return out+'END:VCALENDAR\r\n';
+  L.push('END:VCALENDAR');
+  return L.map(_icsFold).join('\r\n')+'\r\n';
 }
 async function _calTokenOk(token){
   try { const r=await pool.query("SELECT value#>>'{}' AS token FROM bc_config WHERE key='cal_token'"); return !!(r.rows[0] && r.rows[0].token && r.rows[0].token===token); }
