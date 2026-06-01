@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 27;
+const API_VERSION = 28;
 
 const app = express();
 app.use(cors());
@@ -876,8 +876,8 @@ app.patch('/api/compras/:id/estado', async (req, res) => {
   try {
     await client.query('BEGIN');
     const recibido = estado === 'recibido';
-    await client.query('UPDATE compras SET estado=$1, fecha_recibido=$2 WHERE id=$3',
-      [estado, recibido ? new Date() : null, req.params.id]);
+    await client.query('UPDATE compras SET estado=$1, fecha_recibido=$2, tolva=COALESCE($4,tolva) WHERE id=$3',
+      [estado, recibido ? new Date() : null, req.params.id, req.body.tolva||null]);
     if (recibido) {
       const lin = await client.query('SELECT * FROM compra_lineas WHERE compra_id=$1', [req.params.id]);
       for (const l of lin.rows) {
