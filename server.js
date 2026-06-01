@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 28;
+const API_VERSION = 29;
 
 const app = express();
 app.use(cors());
@@ -806,6 +806,18 @@ app.get('/api/faltas', async (req, res) => {
        FROM pedido_lineas l JOIN pedidos p ON p.id = l.pedido_id
        WHERE COALESCE(l.falta,0) > 0
        ORDER BY p.fecha NULLS LAST, p.num, l.referencia`);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+// líneas pendientes de preparar (no preparadas), para el resumen por artículo
+app.get('/api/preparacion-pendiente', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT l.id AS linea_id, l.referencia, l.descripcion, l.cantidad, l.embalaje, COALESCE(l.falta,0) AS falta,
+              p.id AS pedido_id, p.num AS pedido_num, p.cliente, p.fecha
+       FROM pedido_lineas l JOIN pedidos p ON p.id = l.pedido_id
+       WHERE COALESCE(l.preparada,false) = false
+       ORDER BY COALESCE(NULLIF(l.descripcion,''), l.referencia), p.fecha NULLS LAST, p.num`);
     res.json(r.rows);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
