@@ -872,14 +872,20 @@ app.get('/api/cal/:token/cargas.ics', async (req, res) => {
     const rows=(await pool.query(
       `SELECT c.*, t.nombre AS transp,
         to_char(c.fecha,'YYYYMMDD') AS dstart, to_char(c.fecha + INTERVAL '1 day','YYYYMMDD') AS dend,
-        (SELECT string_agg(p.cliente, ', ') FROM pedidos p WHERE p.carga_id=c.id) AS clientes,
+        (SELECT string_agg(DISTINCT p.cliente, ', ') FROM pedidos p WHERE p.carga_id=c.id) AS clientes,
+        (SELECT string_agg(COALESCE(p.num,'?') || ' · ' || COALESCE(p.cliente,''), E'\n' ORDER BY p.orden_carga NULLS LAST, p.num) FROM pedidos p WHERE p.carga_id=c.id) AS pedidos_txt,
         (SELECT COUNT(*) FROM pedidos p WHERE p.carga_id=c.id) AS npedidos
        FROM cargas c LEFT JOIN transportistas t ON t.id=c.truck_id
        WHERE c.fecha IS NOT NULL ORDER BY c.fecha`)).rows;
     const evs=rows.map(c=>{
-      const summary=(c.name||'Carga')+(c.transp?(' · '+c.transp):'');
-      const desc=[c.clientes?('Clientes: '+c.clientes):((c.npedidos||0)+' pedido(s)'), c.mat_camion?('Camión: '+c.mat_camion):'', c.mat_remolque?('Remolque: '+c.mat_remolque):'', c.notas||''].filter(Boolean).join('\n');
-      return { uid:'carga-'+c.id+'@cargas-arisac', start:c.dstart, end:c.dend, summary, desc };
+      const summary=(c.clientes||c.name||'Carga')+(c.transp?(' · '+c.transp):'');
+      const lineas=[];
+      if(c.transp) lineas.push('Transportista: '+c.transp);
+      if(c.mat_camion) lineas.push('Matrícula camión: '+c.mat_camion);
+      if(c.mat_remolque) lineas.push('Matrícula remolque: '+c.mat_remolque);
+      lineas.push(c.pedidos_txt ? ('Pedidos:\n'+c.pedidos_txt) : ((c.npedidos||0)+' pedido(s)'));
+      if(c.notas) lineas.push('Notas: '+c.notas);
+      return { uid:'carga-'+c.id+'@cargas-arisac', start:c.dstart, end:c.dend, summary, desc:lineas.join('\n') };
     });
     res.set('Content-Type','text/calendar; charset=utf-8'); res.set('Cache-Control','no-cache, no-store, max-age=0');
     res.send(_icsWrap('Arisac · Cargas', evs));
