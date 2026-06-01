@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 30;
+const API_VERSION = 31;
 
 const app = express();
 app.use(cors());
@@ -111,6 +111,7 @@ async function initDB() {
     `ALTER TABLE viajes ADD COLUMN IF NOT EXISTS hora TEXT`,
     `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS preparado BOOLEAN DEFAULT false`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS cliente TEXT`,
+    `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS fabricante TEXT`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS orden INTEGER DEFAULT 0`,
     `ALTER TABLE compras ADD COLUMN IF NOT EXISTS tipo_produccion TEXT`,
     `ALTER TABLE compras ADD COLUMN IF NOT EXISTS kg_bb NUMERIC`,
@@ -1062,6 +1063,13 @@ app.post('/api/silos/:id/vaciar', async (req, res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 // producir desde el silo: registra producción (a Producción Final) y descuenta los kg
+function _fabricantePorSilo(numero, tipo){
+  if(tipo!=='saco') return null;
+  const n=Number(numero);
+  if(n===0||n===1) return 'PKT';
+  if(n===3||n===4||n===5) return 'ESSEGI';
+  return null;
+}
 app.post('/api/silos/:id/producir', async (req, res) => {
   const b = req.body || {};
   const kgt = (Number(b.unidades)||0) * (Number(b.kg_unidad)||0);
@@ -1070,10 +1078,11 @@ app.post('/api/silos/:id/producir', async (req, res) => {
     await client.query('BEGIN');
     const s = (await client.query('SELECT * FROM silos WHERE id=$1', [req.params.id])).rows[0];
     if (!s) { await client.query('ROLLBACK'); return res.status(404).json({error:'No existe'}); }
+    const fab = _fabricantePorSilo(s.numero, b.tipo||'saco');
     await client.query(
-      `INSERT INTO producciones(tipo,mp_id,unidades,kg_unidad,kg_total,silo_id,estado,hecho_at,notas)
-       VALUES($1,$2,$3,$4,$5,$6,'hecho',now(),$7)`,
-      [b.tipo||'saco', s.mp_id||null, Number(b.unidades)||0, Number(b.kg_unidad)||0, kgt, s.id, b.notas||null]);
+      `INSERT INTO producciones(tipo,mp_id,unidades,kg_unidad,kg_total,silo_id,estado,hecho_at,notas,fabricante)
+       VALUES($1,$2,$3,$4,$5,$6,'hecho',now(),$7,$8)`,
+      [b.tipo||'saco', s.mp_id||null, Number(b.unidades)||0, Number(b.kg_unidad)||0, kgt, s.id, b.notas||null, fab]);
     await client.query('UPDATE silos SET kg_actual = GREATEST(0, kg_actual - $1) WHERE id=$2', [kgt, s.id]);
     await client.query('COMMIT');
     res.json({ ok:true });
@@ -1156,8 +1165,14 @@ app.patch('/api/producciones/:id/estado', async (req, res) => {
     await client.query('BEGIN');
     const hecho = estado === 'hecho';
     const p = (await client.query('SELECT * FROM producciones WHERE id=$1', [req.params.id])).rows[0];
-    await client.query('UPDATE producciones SET estado=$1, hecho_at=$2, silo_id=$3 WHERE id=$4',
-      [estado, hecho ? new Date() : null, hecho ? (silo_id || p.silo_id || null) : p.silo_id, req.params.id]);
+    let fab = p.fabricante || null;
+    const usaSilo = hecho ? (silo_id || p.silo_id || null) : p.silo_id;
+    if (hecho && p.tipo === 'saco' && usaSilo) {
+      const sx = (await client.query('SELECT numero FROM silos WHERE id=$1', [usaSilo])).rows[0];
+      if (sx) fab = _fabricantePorSilo(sx.numero, 'saco') || fab;
+    }
+    await client.query('UPDATE producciones SET estado=$1, hecho_at=$2, silo_id=$3, fabricante=$5 WHERE id=$4',
+      [estado, hecho ? new Date() : null, usaSilo, req.params.id, fab]);
     if (hecho && descontar && silo_id) {
       await client.query('UPDATE silos SET kg_actual = GREATEST(0, kg_actual - $1) WHERE id=$2', [Number(p.kg_total)||0, silo_id]);
     }
