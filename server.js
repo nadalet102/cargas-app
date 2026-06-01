@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 29;
+const API_VERSION = 30;
 
 const app = express();
 app.use(cors());
@@ -231,6 +231,14 @@ async function initDB() {
       `INSERT INTO silos(numero,nombre,capacidad_kg)
        SELECT 0,'Tolva 0',25000 WHERE NOT EXISTS (SELECT 1 FROM silos WHERE numero=0)`);
   } catch(e) { console.warn('seed silos:', e.message); }
+  // token para los feeds de calendario (ICS) — privado en la URL
+  try {
+    const t = await pool.query("SELECT 1 FROM bc_config WHERE key='cal_token'");
+    if (!t.rows.length) {
+      const tok = require('crypto').randomBytes(9).toString('hex');
+      await pool.query("INSERT INTO bc_config(key,value) VALUES('cal_token', to_jsonb($1::text))", [tok]);
+    }
+  } catch(e) { console.warn('cal token:', e.message); }
   console.log('DB ready');
 }
 
@@ -810,6 +818,64 @@ app.get('/api/faltas', async (req, res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 // líneas pendientes de preparar (no preparadas), para el resumen por artículo
+// ── CALENDARIOS ICS (suscripción en Outlook/Google, solo lectura) ─────────────
+function _icsEsc(s){ return (''+(s||'')).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n'); }
+function _icsDate(d){ return (''+d).substring(0,10).replace(/-/g,''); }
+function _icsDatePlus1(d){ const dt=new Date((''+d).substring(0,10)+'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate()+1); return dt.toISOString().substring(0,10).replace(/-/g,''); }
+function _icsWrap(name, events){
+  const now=new Date().toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
+  let out='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Cargas Arisac//ES\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nX-WR-CALNAME:'+_icsEsc(name)+'\r\n';
+  for(const e of events){
+    out+='BEGIN:VEVENT\r\nUID:'+e.uid+'\r\nDTSTAMP:'+now+'\r\nDTSTART;VALUE=DATE:'+e.start+'\r\nDTEND;VALUE=DATE:'+e.end+'\r\nSUMMARY:'+_icsEsc(e.summary)+'\r\n';
+    if(e.desc) out+='DESCRIPTION:'+_icsEsc(e.desc)+'\r\n';
+    out+='END:VEVENT\r\n';
+  }
+  return out+'END:VCALENDAR\r\n';
+}
+async function _calTokenOk(token){
+  try { const r=await pool.query("SELECT value#>>'{}' AS token FROM bc_config WHERE key='cal_token'"); return !!(r.rows[0] && r.rows[0].token && r.rows[0].token===token); }
+  catch(e){ return false; }
+}
+app.get('/api/cal-token', async (req, res) => {
+  try { const r=await pool.query("SELECT value#>>'{}' AS token FROM bc_config WHERE key='cal_token'"); res.json({ token: r.rows[0]?r.rows[0].token:null }); }
+  catch(e){ res.status(500).json({error:e.message}); }
+});
+app.get('/api/cal/:token/compras.ics', async (req, res) => {
+  try {
+    if(!await _calTokenOk(req.params.token)) return res.status(403).send('Forbidden');
+    const rows=(await pool.query(
+      `SELECT c.*, (SELECT string_agg(COALESCE(NULLIF(cl.descripcion,''),cl.referencia), ', ') FROM compra_lineas cl WHERE cl.compra_id=c.id) AS mats
+       FROM compras c WHERE c.fecha_prevista IS NOT NULL ORDER BY c.fecha_prevista`)).rows;
+    const evs=rows.map(c=>{
+      const est=c.estado==='recibido'?'OK ':(c.estado==='pedido'?'En camino ':'Por pedir ');
+      const tipo=c.tipo_produccion==='bb'?' [Big Bag]':c.tipo_produccion==='saco'?' [Sacos]':c.tipo_produccion==='ambos'?' [BB+Sacos]':'';
+      const summary=est+(c.proveedor||'Compra')+(c.mats?(' · '+c.mats):'')+tipo;
+      const desc=[c.mats?('Material: '+c.mats):'', c.tolva?('Tolva: '+c.tolva):'', 'Estado: '+(c.estado||''), c.notas||''].filter(Boolean).join('\n');
+      return { uid:'compra-'+c.id+'@cargas-arisac', start:_icsDate(c.fecha_prevista), end:_icsDatePlus1(c.fecha_prevista), summary, desc };
+    });
+    res.set('Content-Type','text/calendar; charset=utf-8');
+    res.send(_icsWrap('Arisac · Compras', evs));
+  } catch(e){ res.status(500).send('error'); }
+});
+app.get('/api/cal/:token/cargas.ics', async (req, res) => {
+  try {
+    if(!await _calTokenOk(req.params.token)) return res.status(403).send('Forbidden');
+    const rows=(await pool.query(
+      `SELECT c.*, t.nombre AS transp,
+        (SELECT string_agg(p.cliente, ', ') FROM pedidos p WHERE p.carga_id=c.id) AS clientes,
+        (SELECT COUNT(*) FROM pedidos p WHERE p.carga_id=c.id) AS npedidos
+       FROM cargas c LEFT JOIN transportistas t ON t.id=c.truck_id
+       WHERE c.fecha IS NOT NULL ORDER BY c.fecha`)).rows;
+    const evs=rows.map(c=>{
+      const summary=(c.name||'Carga')+(c.transp?(' · '+c.transp):'');
+      const desc=[c.clientes?('Clientes: '+c.clientes):((c.npedidos||0)+' pedido(s)'), c.mat_camion?('Camión: '+c.mat_camion):'', c.mat_remolque?('Remolque: '+c.mat_remolque):'', c.notas||''].filter(Boolean).join('\n');
+      return { uid:'carga-'+c.id+'@cargas-arisac', start:_icsDate(c.fecha), end:_icsDatePlus1(c.fecha), summary, desc };
+    });
+    res.set('Content-Type','text/calendar; charset=utf-8');
+    res.send(_icsWrap('Arisac · Cargas', evs));
+  } catch(e){ res.status(500).send('error'); }
+});
+// ── fin calendarios ICS ───────────────────────────────────────────────────────
 app.get('/api/preparacion-pendiente', async (req, res) => {
   try {
     const r = await pool.query(
