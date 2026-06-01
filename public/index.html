@@ -4003,57 +4003,92 @@ function vaciarSiloSinAnotar(id){
   if(!confirm('¿Vaciar sin anotar producción? Deja el silo a 0 y sin material (para limpiar restos).')) return;
   api('POST','/silos/'+id+'/vaciar').then(()=>{ document.getElementById('prodsilo-ov')?.remove(); cargarSilos(); log('Silo vaciado','ok'); }).catch(()=>log('Error','warn'));
 }
+let _ps=null;
 function abrirProducirSilo(id){
   const s=silosData.find(x=>String(x.id)===String(id)); if(!s) return;
+  _ps={ siloId:id, tipo:null, kgu:'', uni:'', step:1 };
   const ov=document.createElement('div'); ov.id='prodsilo-ov';
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10061;display:flex;align-items:flex-end;justify-content:center';
   ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
-  const vacio=!s.mp_id||Number(s.kg_actual)<=0;
-  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px;max-height:90vh;overflow:auto">
-    <b style="font-size:16px">¿Qué ha salido de ${s.producto?(''+s.producto).replace(/</g,'&lt;'):s.nombre}?</b>
-    <div style="font-size:12px;color:var(--text2);margin:2px 0 14px">${s.nombre} · quedan ${fmtN(s.kg_actual)} / ${fmtN(s.capacidad_kg)} kg</div>
-    ${vacio?'<div style="font-size:13px;color:#7A4E00;background:#FFF3E6;border-radius:8px;padding:10px;margin-bottom:12px">El silo está vacío. Puedes vaciarlo igualmente para limpiar restos.</div>':`
-    <div style="display:grid;grid-template-columns:1fr 62px 80px 28px;gap:6px;font-size:10px;color:var(--text3);margin-bottom:4px;padding:0 2px"><span>Envase</span><span style="text-align:center">Uds</span><span style="text-align:center">Kg/ud</span><span></span></div>
-    <div id="ps-lineas"></div>
-    <button onclick="psAddRow()" class="btn-sec" style="font-size:12px;padding:7px 12px;margin-top:4px"><i class="ti ti-plus"></i> Añadir línea</button>
-    <div id="ps-total" style="font-size:13px;font-weight:700;margin-top:10px;color:#0F6E56"></div>`}
-    <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:16px;flex-wrap:wrap">
-      <button class="btn-sec" onclick="vaciarSiloSinAnotar(${id})" style="font-size:11px;padding:9px 12px;color:#9A2A1B">Vaciar sin anotar</button>
-      <div style="display:flex;gap:8px">
-        <button class="btn-sec" onclick="document.getElementById('prodsilo-ov').remove()" style="font-size:13px;padding:10px 14px">Cerrar</button>
-        ${vacio?'':`<button class="btn-sec" onclick="confirmarProducir(${id},false)" style="font-size:12px;padding:10px 13px;border-color:#0F6E56;color:#0F6E56">Registrar</button>
-        <button class="btn-primary" onclick="confirmarProducir(${id},true)" style="font-size:13px;padding:10px 15px;background:#0F6E56">Registrar y vaciar</button>`}</div>
-    </div>
-  </div>`;
+  ov.innerHTML='<div id="ps-panel" style="background:var(--bg);width:100%;max-width:520px;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px"></div>';
   document.body.appendChild(ov);
-  if(!vacio){ psAddRow(); setTimeout(()=>document.querySelector('#ps-lineas .ps-uni')?.focus(),60); }
+  psRender();
 }
-function psRowHTML(){
-  const inp='font-size:14px;padding:8px 6px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);box-sizing:border-box;width:100%';
-  return `<div class="ps-row" style="display:grid;grid-template-columns:1fr 62px 80px 28px;gap:6px;margin-bottom:6px;align-items:center">
-    <select class="ps-tipo" style="${inp}"><option value="saco">Sacos</option><option value="bb">Big Bag</option></select>
-    <input class="ps-uni" type="number" min="0" inputmode="numeric" placeholder="uds" style="${inp};text-align:center" oninput="psTotal()">
-    <input class="ps-kgu" type="number" min="0" inputmode="numeric" placeholder="kg" value="${_lastKgU.saco!=null?_lastKgU.saco:''}" style="${inp};text-align:center" oninput="psTotal()">
-    <button onclick="this.closest('.ps-row').remove();psTotal()" style="background:none;border:none;color:#9A2A1B;font-size:18px;cursor:pointer;line-height:1">×</button>
-  </div>`;
+function psClose(){ document.getElementById('prodsilo-ov')?.remove(); }
+function _psBtn(sel,label,sub,onclick){
+  return `<button onclick="${onclick}" style="padding:18px 10px;border-radius:14px;border:2px solid ${sel?'#0F6E56':'var(--border2)'};background:${sel?'#EAF3EE':'var(--surface)'};color:${sel?'#0F6E56':'var(--text)'};font-weight:800;font-size:17px;cursor:pointer;min-height:66px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">${label}${sub?`<span style="font-size:11px;font-weight:500;color:var(--text2)">${sub}</span>`:''}</button>`;
 }
-function psAddRow(){ const c=document.getElementById('ps-lineas'); if(!c) return; c.insertAdjacentHTML('beforeend', psRowHTML()); psTotal(); }
-function psTotal(){
-  let kg=0; document.querySelectorAll('#ps-lineas .ps-row').forEach(r=>{ const u=Number(r.querySelector('.ps-uni').value)||0,k=Number(r.querySelector('.ps-kgu').value)||0; kg+=u*k; });
-  const el=document.getElementById('ps-total'); if(el) el.textContent=kg>0?('Saldrán '+fmtN(kg)+' kg del silo'):'';
+function psRender(){
+  const p=document.getElementById('ps-panel'); if(!p||!_ps) return;
+  const s=silosData.find(x=>String(x.id)===String(_ps.siloId)); if(!s){ psClose(); return; }
+  const prod=(s.producto?(''+s.producto):s.nombre).replace(/</g,'&lt;');
+  const vacio=!s.mp_id||Number(s.kg_actual)<=0;
+  const inpBig='width:100%;font-size:26px;font-weight:800;text-align:center;padding:14px;border:2px solid var(--border2);border-radius:12px;background:var(--surface);color:var(--text);box-sizing:border-box';
+  const inpSmall='width:100%;font-size:15px;padding:11px;border:1px solid var(--border2);border-radius:10px;background:var(--surface);color:var(--text);box-sizing:border-box';
+  const lab='font-size:13px;color:var(--text2);margin-bottom:8px';
+  const closeBtn='<button onclick="psClose()" style="background:none;border:none;font-size:26px;color:var(--text2);cursor:pointer;line-height:1">×</button>';
+  if(_ps.step===1){
+    p.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><b style="font-size:18px">¿Qué ha salido de ${prod}?</b>${closeBtn}</div>
+      <div style="font-size:12px;color:var(--text2);margin:2px 0 14px">${s.nombre} · quedan ${fmtN(s.kg_actual)} / ${fmtN(s.capacidad_kg)} kg</div>
+      ${vacio?'<div style="font-size:13px;color:#7A4E00;background:#FFF3E6;border-radius:8px;padding:10px;margin-bottom:12px">El silo está vacío. Puedes vaciarlo igualmente para limpiar restos.</div>':''}
+      <div style="${lab}">¿Qué se ha producido?</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        ${_psBtn(false,'Sacos','','psTipo(\'saco\')')}
+        ${_psBtn(false,'Big Bag','','psTipo(\'bb\')')}
+      </div>
+      <button onclick="vaciarSiloSinAnotar(${_ps.siloId})" class="btn-sec" style="margin-top:18px;font-size:12px;padding:10px 14px;color:#9A2A1B">Vaciar sin anotar</button>`;
+    return;
+  }
+  const tipo=_ps.tipo;
+  let mid='';
+  if(tipo==='bb'){
+    const sizes=[500,700,900,1000];
+    mid=`<div style="${lab}">Tamaño del Big Bag</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${sizes.map(k=>_psBtn(Number(_ps.kgu)===k,k+' kg','','psSize('+k+')')).join('')}
+      </div>
+      <input type="number" inputmode="numeric" min="0" placeholder="Otro tamaño (kg)" value="${(sizes.includes(Number(_ps.kgu))||!_ps.kgu)?'':_ps.kgu}" oninput="psSetKgu(this.value)" style="${inpSmall};margin-top:10px">`;
+  } else {
+    const ss=[15,20,25];
+    mid=`<div style="${lab}">Tamaño del saco</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        ${ss.map(k=>_psBtn(Number(_ps.kgu)===k,k+' kg','','psSize('+k+')')).join('')}
+      </div>
+      <input type="number" inputmode="numeric" min="0" placeholder="Otro tamaño (kg)" value="${(ss.includes(Number(_ps.kgu))||!_ps.kgu)?'':_ps.kgu}" oninput="psSetKgu(this.value)" style="${inpSmall};margin-top:10px">`;
+  }
+  const totalKg=(Number(_ps.kgu)||0)*(Number(_ps.uni)||0);
+  p.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:18px">${prod} · ${tipo==='bb'?'Big Bag':'Sacos'}</b>${closeBtn}</div>
+    <button onclick="_ps.step=1;psRender()" class="btn-sec" style="font-size:12px;padding:6px 12px;margin:8px 0 16px"><i class="ti ti-arrow-left"></i> Cambiar</button>
+    ${mid}
+    <div style="${lab};margin-top:18px">Unidades (${tipo==='bb'?'big bags':'sacos'})</div>
+    <input type="number" inputmode="numeric" min="0" value="${_ps.uni}" placeholder="0" oninput="psSetUni(this.value)" style="${inpBig}">
+    <div id="ps-total" style="font-size:13px;font-weight:700;color:#0F6E56;margin-top:12px;min-height:18px">${totalKg>0?('Saldrán '+fmtN(totalKg)+' kg del silo'):''}</div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn-sec" onclick="confirmarProducir(false)" style="flex:1;font-size:14px;padding:14px;border-color:#0F6E56;color:#0F6E56">Registrar</button>
+      <button class="btn-primary" onclick="confirmarProducir(true)" style="flex:1;font-size:15px;padding:14px;background:#0F6E56">Registrar y vaciar</button>
+    </div>`;
 }
-async function confirmarProducir(id, vaciar){
-  const rows=[...document.querySelectorAll('#ps-lineas .ps-row')];
-  const lineas=rows.map(r=>({tipo:r.querySelector('.ps-tipo').value, uni:Number(r.querySelector('.ps-uni').value)||0, kgu:Number(r.querySelector('.ps-kgu').value)||0})).filter(l=>l.uni>0);
-  if(!lineas.length && !vaciar){ log('Pon al menos una línea con unidades','warn'); return; }
-  if(vaciar && !lineas.length && !confirm('No has anotado producción. ¿Vaciar el silo igualmente?')) return;
+function psTipo(t){ _ps.tipo=t; if(t==='saco' && !_ps.kgu && _lastKgU.saco!=null) _ps.kgu=_lastKgU.saco; _ps.step=2; psRender(); }
+function psSize(k){ _ps.kgu=k; psRender(); }
+function psSetKgu(v){ _ps.kgu=v; psUpdateTotal(); }
+function psSetUni(v){ _ps.uni=v; psUpdateTotal(); }
+function psUpdateTotal(){ const el=document.getElementById('ps-total'); if(!el) return; const t=(Number(_ps.kgu)||0)*(Number(_ps.uni)||0); el.textContent=t>0?('Saldrán '+fmtN(t)+' kg del silo'):''; }
+async function confirmarProducir(vaciar){
+  if(!_ps) return;
+  const id=_ps.siloId, tipo=_ps.tipo, kgu=Number(_ps.kgu)||0, uni=Number(_ps.uni)||0;
+  const hay = tipo && kgu>0 && uni>0;
+  if(!hay && !vaciar){
+    if(!tipo){ _ps.step=1; psRender(); return; }
+    if(!kgu){ log(tipo==='bb'?'Elige el tamaño del big bag':'Pon los kg por saco','warn'); return; }
+    log('Pon las unidades','warn'); return;
+  }
+  if(!hay && vaciar && !confirm('No has anotado producción. ¿Vaciar el silo igualmente?')) return;
   try{
-    for(const l of lineas){ await api('POST','/silos/'+id+'/producir',{tipo:l.tipo,unidades:l.uni,kg_unidad:l.kgu}); if(l.tipo&&l.kgu) _lastKgU[l.tipo]=l.kgu; }
+    if(hay){ await api('POST','/silos/'+id+'/producir',{tipo,unidades:uni,kg_unidad:kgu}); _lastKgU[tipo]=kgu; }
     if(vaciar) await api('POST','/silos/'+id+'/vaciar');
-    document.getElementById('prodsilo-ov')?.remove();
-    await cargarSilos();
-    const uds=lineas.reduce((s,l)=>s+l.uni,0);
-    log(vaciar?('Anotado lo que salió y silo vaciado'+(uds?(' · '+uds+' uds'):'')):('Producción anotada · '+uds+' uds'),'ok');
+    psClose(); await cargarSilos();
+    const ud=uni+' '+(tipo==='bb'?'big bags':'sacos');
+    log(vaciar?('Registrado'+(hay?(' · '+ud):'')+' y silo vaciado'):('Producción anotada · '+ud),'ok');
   }catch(e){ log('Error al registrar','warn'); }
 }
 async function toggleVaciando(id,val){
