@@ -392,6 +392,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 </div>
 </div>
 
+<!-- CALENDARIO (suscripción Outlook) -->
+<div class="view" id="view-calsync">
+<div class="container" style="max-width:640px">
+  <div style="margin-bottom:14px"><div style="font-size:16px;font-weight:500">Calendario en Outlook</div><div style="font-size:12px;color:var(--text2)">Suscríbete a estas direcciones desde Outlook (o Google Calendar / el móvil) y verás las cargas y las compras actualizadas solas. Es solo lectura.</div></div>
+  <div id="calsync-content"></div>
+</div>
+</div>
+
 <!-- DASHBOARD -->
 <div class="view" id="view-dash">
 <div class="container">
@@ -744,9 +752,9 @@ const NAV_GROUPS = {
   compras:     { subs:[['compras','']] },
   produccion:  { subs:[['silos','Silos'],['matprima','Materia prima'],['pedidoscli','Pedidos'],['prodbb','Prod. BB'],['prodsacos','Prod. Sacos'],['camion','Camión'],['prodcal','Calendario'],['prodfinal','Prod. Final']] },
   resumen:     { subs:[['dash','']] },
-  ajustes:     { subs:[['trans','Transportistas'],['cats','Categorías'],['clientesauto','Clientes auto']] }
+  ajustes:     { subs:[['trans','Transportistas'],['cats','Categorías'],['clientesauto','Clientes auto'],['calsync','Calendario']] }
 };
-const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',porart:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
+const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',porart:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',calsync:'ajustes',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
 let _activeView='plan';
 function _runRenderer(t){
   if(t==='cal')renderCal();
@@ -754,6 +762,7 @@ function _runRenderer(t){
   else if(t==='trans')renderTrans();
   else if(t==='cats')renderCats();
   else if(t==='clientesauto')cargarClientesAuto();
+  else if(t==='calsync')cargarCalSync();
   else if(t==='hist')renderHist();
   else if(t==='prep'){fillPreparadorFilters();renderPrepList();}
   else if(t==='preparados'){fillPreparadorFilters();renderPreparadosList();}
@@ -777,7 +786,7 @@ function renderSubtabBar(g, activeView){
 }
 function switchView(t){
   _activeView=t;
-  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','porart','compras','silos','matprima','prodbb','prodsacos','prodfinal','camion','prodcal','pedidoscli','clientesauto'].forEach(id=>{
+  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','porart','compras','silos','matprima','prodbb','prodsacos','prodfinal','camion','prodcal','pedidoscli','clientesauto','calsync'].forEach(id=>{
     const v=document.getElementById('view-'+id); if(v) v.classList.toggle('active',id===t);
   });
   const g=VIEW_GROUP[t]||'reparto';
@@ -3645,7 +3654,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 29;
+const NEEDS_API = 30;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -4927,6 +4936,38 @@ function renderClientesAuto(){
 }
 async function addClienteAuto(){ const inp=document.getElementById('cauto-nuevo'); const v=(inp.value||'').trim(); if(!v) return; try{ await api('POST','/clientes-auto',{nombre:v}); inp.value=''; await cargarClientesAuto(); }catch(e){ log('Error','warn'); } }
 async function delClienteAuto(id){ if(!confirm('¿Quitar este cliente automático?')) return; try{ await api('DELETE','/clientes-auto/'+id); await cargarClientesAuto(); }catch(e){ log('Error','warn'); } }
+
+// ── CALENDARIO: suscripción Outlook (ICS) ─────────────────────────────────────
+let _calToken=null;
+async function cargarCalSync(){
+  const el=document.getElementById('calsync-content'); if(el) el.innerHTML='<div class="empty-state"><i class="ti ti-loader"></i>Cargando…</div>';
+  try{ const r=await api('GET','/cal-token'); _calToken=r.token; }catch(e){ _calToken=null; }
+  renderCalSync();
+}
+function renderCalSync(){
+  const el=document.getElementById('calsync-content'); if(!el) return;
+  if(!_calToken){ el.innerHTML='<div class="empty-state">No se pudo obtener el enlace. Reinicia el servidor e inténtalo de nuevo.</div>'; return; }
+  const base=location.origin;
+  const urlCargas=base+'/api/cal/'+_calToken+'/cargas.ics';
+  const urlCompras=base+'/api/cal/'+_calToken+'/compras.ics';
+  const card=(titulo,desc,url,col)=>`<div class="list-card" style="margin-bottom:14px;padding:14px 16px">
+     <div style="font-size:14px;font-weight:700;color:${col}">${titulo}</div>
+     <div style="font-size:12px;color:var(--text2);margin:2px 0 8px">${desc}</div>
+     <div style="display:flex;gap:8px;align-items:center">
+       <input readonly value="${url}" onclick="this.select()" style="flex:1;font-size:12px;font-family:monospace;padding:9px 10px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);min-width:0">
+       <button class="btn-primary" onclick="copiarTexto('${url}')" style="font-size:12px;padding:9px 13px;white-space:nowrap"><i class="ti ti-copy"></i> Copiar</button></div></div>`;
+  el.innerHTML=
+    card('Cargas','Las cargas de reparto con su fecha, transportista y clientes.',urlCargas,'#0C447C')+
+    card('Compras','Las compras previstas con su material, tolva y estado.',urlCompras,'#7A4E00')+
+    `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--text2);line-height:1.7">
+       <b style="color:var(--text)">Cómo añadirlo en Outlook</b><br>
+       1. Copia una de las direcciones de arriba.<br>
+       2. Outlook web: <b>Calendario › Agregar calendario › Suscribirse desde Internet</b> y pega la dirección.<br>
+       3. Outlook escritorio: <b>Inicio › Abrir calendario › Desde Internet</b>.<br>
+       Se actualiza solo cada cierto tiempo. Mismo proceso vale para Google Calendar (Otros calendarios › Desde URL).</div>
+     <div style="font-size:11px;color:var(--text3);margin-top:10px"><i class="ti ti-lock"></i> La dirección lleva una clave privada; no la compartas con quien no deba ver el calendario.</div>`;
+}
+async function copiarTexto(t){ try{ await navigator.clipboard.writeText(t); log('Copiado','ok'); }catch(e){ log('Selecciónalo y cópialo a mano','warn'); } }
 
 setInterval(loadAll,30000);
 loadAll();
