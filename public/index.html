@@ -469,6 +469,16 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 </div>
 
 <!-- PREPARADOS -->
+<div class="view" id="view-porart">
+<div class="container">
+  <div style="margin-bottom:14px">
+    <div style="font-size:16px;font-weight:600">Pendiente de preparar · por artículo</div>
+    <div style="font-size:12px;color:var(--text2);margin-top:2px">Suma de lo que falta por preparar. Toca un artículo para ver de qué pedidos es. Lo ya preparado no aparece.</div>
+  </div>
+  <div id="porart-content"></div>
+</div>
+</div>
+
 <div class="view" id="view-preparados">
 <div class="container">
   <div style="margin-bottom:14px">
@@ -730,13 +740,13 @@ function renderAll(){renderBCList();renderCargas();updateStats();updateCatDropdo
 
 const NAV_GROUPS = {
   reparto:     { subs:[['plan','Planificación'],['cal','Calendario'],['hist','Historial']] },
-  preparacion: { subs:[['prep','Por preparar'],['preparados','Preparados']] },
+  preparacion: { subs:[['prep','Por preparar'],['preparados','Preparados'],['porart','Por artículo']] },
   compras:     { subs:[['compras','']] },
   produccion:  { subs:[['silos','Silos'],['matprima','Materia prima'],['pedidoscli','Pedidos'],['prodbb','Prod. BB'],['prodsacos','Prod. Sacos'],['camion','Camión'],['prodcal','Calendario'],['prodfinal','Prod. Final']] },
   resumen:     { subs:[['dash','']] },
   ajustes:     { subs:[['trans','Transportistas'],['cats','Categorías'],['clientesauto','Clientes auto']] }
 };
-const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
+const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',porart:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
 let _activeView='plan';
 function _runRenderer(t){
   if(t==='cal')renderCal();
@@ -747,6 +757,7 @@ function _runRenderer(t){
   else if(t==='hist')renderHist();
   else if(t==='prep'){fillPreparadorFilters();renderPrepList();}
   else if(t==='preparados'){fillPreparadorFilters();renderPreparadosList();}
+  else if(t==='porart'){cargarPrepResumen();}
   else if(t==='compras')renderCompras();
   else if(t==='silos')cargarSilos();
   else if(t==='matprima')cargarMatPrimas(true);
@@ -766,7 +777,7 @@ function renderSubtabBar(g, activeView){
 }
 function switchView(t){
   _activeView=t;
-  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','compras','silos','matprima','prodbb','prodsacos','prodfinal','camion','prodcal','pedidoscli','clientesauto'].forEach(id=>{
+  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','porart','compras','silos','matprima','prodbb','prodsacos','prodfinal','camion','prodcal','pedidoscli','clientesauto'].forEach(id=>{
     const v=document.getElementById('view-'+id); if(v) v.classList.toggle('active',id===t);
   });
   const g=VIEW_GROUP[t]||'reparto';
@@ -2898,6 +2909,7 @@ function renderComprasPorPedir(el){
       <div style="display:flex;flex-direction:column;gap:5px">
         <button class="btn-primary" onclick="comprarFalta('${f.linea_id}')" style="font-size:11px;padding:7px 11px;white-space:nowrap"><i class="ti ti-shopping-cart-plus"></i> Comprar</button>
         <button onclick="enviarFaltaASacos('${f.linea_id}')" style="font-size:11px;padding:7px 11px;white-space:nowrap;border:1px solid #7A4E00;background:#FBE7D2;color:#7A4E00;border-radius:8px;cursor:pointer"><i class="ti ti-package"></i> A prod. sacos</button>
+        <button onclick="quitarFaltaCompras('${f.linea_id}')" style="font-size:11px;padding:7px 11px;white-space:nowrap;border:1px solid var(--border2);background:var(--surface);color:#9A2A1B;border-radius:8px;cursor:pointer"><i class="ti ti-trash"></i> Quitar falta</button>
       </div>
     </div></div>`).join('');
   }
@@ -2978,6 +2990,55 @@ function _calDia(porDia){ const iso=_isoOf(ccalRef); const items=porDia[iso]||[]
 function comprarFalta(lid){
   const f=comprasFaltas.find(x=>String(x.linea_id)===String(lid)); if(!f) return;
   abrirFormCompra(null,{ pedidos_rel:f.pedido_num||'', lineas:[{referencia:f.referencia||'',descripcion:f.descripcion||'',cantidad:f.falta||0,unidad:'',falta_linea_id:f.linea_id}] });
+}
+async function quitarFaltaCompras(lid){
+  if(!confirm('¿Quitar esta falta? Dejará de aparecer como pendiente de comprar.')) return;
+  try{ await resolverFalta(lid); log('Falta quitada','ok'); }catch(e){ log('Error','warn'); }
+}
+let prepResumenData=[], _prepArtGrupos=[], _prepArtAbierto=-1;
+async function cargarPrepResumen(){
+  const el=document.getElementById('porart-content'); if(el) el.innerHTML='<div class="empty-state"><i class="ti ti-loader"></i>Cargando…</div>';
+  try{ prepResumenData=await api('GET','/preparacion-pendiente'); }catch(e){ prepResumenData=[]; }
+  _prepArtAbierto=-1; renderPrepResumen();
+}
+function _artKey(l){ return ((l.referencia||'').trim()||(l.descripcion||'').trim().toLowerCase()); }
+function renderPrepResumen(){
+  const el=document.getElementById('porart-content'); if(!el) return;
+  const grupos={};
+  (prepResumenData||[]).forEach(l=>{
+    const k=_artKey(l); if(!k) return;
+    if(!grupos[k]) grupos[k]={ key:k, referencia:l.referencia||'', descripcion:l.descripcion||'', embalaje:l.embalaje||'', total:0, pedidos:[] };
+    grupos[k].total += Number(l.cantidad)||0;
+    grupos[k].pedidos.push(l);
+    if(!grupos[k].descripcion && l.descripcion) grupos[k].descripcion=l.descripcion;
+  });
+  const arr=Object.values(grupos).sort((a,b)=>(''+(a.descripcion||a.referencia)).localeCompare(''+(b.descripcion||b.referencia)));
+  _prepArtGrupos=arr;
+  if(!arr.length){ el.innerHTML='<div class="empty-state"><i class="ti ti-checks"></i>Todo preparado · no hay artículos pendientes</div>'; return; }
+  const totalUds=arr.reduce((s,g)=>s+g.total,0);
+  let html=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:12px;font-size:13px"><b>${arr.length}</b> artículos pendientes · <b>${fmtN(totalUds)}</b> unidades en total</div>`;
+  html+=arr.map((g,i)=>{
+    const abierto=_prepArtAbierto===i;
+    const det=abierto?`<div style="border-top:1px solid var(--border);padding:6px 14px">${g.pedidos.map(p=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)"><span><b style="font-family:monospace;color:var(--blue-d)">${(p.pedido_num||'—')}</b> · ${(p.cliente||'').replace(/</g,'&lt;')}</span><span style="font-weight:700;white-space:nowrap">${fmtN(p.cantidad)}${p.embalaje?(' '+(''+p.embalaje).replace(/</g,'&lt;')):''}</span></div>`).join('')}</div>`:'';
+    return `<div class="list-card" style="margin-bottom:8px">
+       <div onclick="togglePrepArt(${i})" style="display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer">
+         <div style="flex:1;min-width:0">
+           ${g.referencia?`<div style="font-family:monospace;font-size:11px;color:var(--blue-d)">${g.referencia.replace(/</g,'&lt;')}</div>`:''}
+           <div style="font-size:14px;font-weight:600">${(g.descripcion||g.referencia||'—').replace(/</g,'&lt;')}</div>
+           <div style="font-size:11px;color:var(--text2)">${g.pedidos.length} pedido(s) · toca para ver</div></div>
+         <div style="text-align:center;background:#FFF3E6;color:#7A4E00;border-radius:8px;padding:4px 12px"><div style="font-size:18px;font-weight:800;line-height:1">${fmtN(g.total)}</div><div style="font-size:9px">uds</div></div>
+         <i class="ti ti-chevron-${abierto?'up':'down'}" style="color:var(--text3)"></i></div>
+       ${det}
+       <div style="padding:8px 14px;border-top:1px solid var(--border)"><button onclick="enviarArtACompras(${i})" class="btn-sec" style="font-size:12px;padding:8px 12px;color:#0C447C;border-color:#0C447C"><i class="ti ti-shopping-cart-plus"></i> Enviar a compras</button></div>
+     </div>`;
+  }).join('');
+  el.innerHTML=html;
+}
+function togglePrepArt(i){ _prepArtAbierto=(_prepArtAbierto===i)?-1:i; renderPrepResumen(); }
+function enviarArtACompras(i){
+  const g=_prepArtGrupos[i]; if(!g) return;
+  const peds=[...new Set(g.pedidos.map(p=>p.pedido_num).filter(Boolean))].join(', ');
+  abrirFormCompra(null,{ pedidos_rel:peds, lineas:[{ referencia:g.referencia||'', descripcion:g.descripcion||'', cantidad:g.total, unidad:g.embalaje||'' }] });
 }
 let _faltaSacosInfo=null;
 function _faltaInfo(lid){
@@ -3584,7 +3645,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 28;
+const NEEDS_API = 29;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
