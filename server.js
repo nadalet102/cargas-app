@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 33;
+const API_VERSION = 34;
 
 const app = express();
 app.use(cors());
@@ -109,6 +109,19 @@ async function initDB() {
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS falta NUMERIC DEFAULT 0`,
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS cargada BOOLEAN DEFAULT false`,
     `UPDATE pedidos SET estado_prep='carga' WHERE estado_prep='preparado' AND fecha IS NOT NULL`,
+    `CREATE TABLE IF NOT EXISTS mant_items (
+      id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, periodicidad TEXT DEFAULT 'semanal',
+      orden INTEGER DEFAULT 0, activo BOOLEAN DEFAULT true
+    )`,
+    `CREATE TABLE IF NOT EXISTS mant_registros (
+      id SERIAL PRIMARY KEY, item_id INTEGER REFERENCES mant_items(id) ON DELETE CASCADE,
+      vehiculo TEXT DEFAULT 'Camión', fecha DATE DEFAULT CURRENT_DATE,
+      km NUMERIC, horas NUMERIC, notas TEXT, creado TIMESTAMPTZ DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS mant_reparaciones (
+      id SERIAL PRIMARY KEY, vehiculo TEXT DEFAULT 'Camión', fecha DATE DEFAULT CURRENT_DATE,
+      concepto TEXT, km NUMERIC, horas NUMERIC, creado TIMESTAMPTZ DEFAULT now()
+    )`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS origen_linea_id INTEGER`,
     `ALTER TABLE viajes ADD COLUMN IF NOT EXISTS hora TEXT`,
     `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS preparado BOOLEAN DEFAULT false`,
@@ -243,6 +256,18 @@ async function initDB() {
       await pool.query("INSERT INTO bc_config(key,value) VALUES('cal_token', to_jsonb($1::text))", [tok]);
     }
   } catch(e) { console.warn('cal token:', e.message); }
+  // sembrar items de mantenimiento la primera vez (según la hoja de Arisac)
+  try {
+    const c = await pool.query('SELECT COUNT(*)::int AS n FROM mant_items');
+    if (c.rows[0].n === 0) {
+      const seed = [
+        ['Nivel aceite motor','semanal'],['Presión neumáticos','semanal'],['Refrigerante motor','semanal'],['Filtro aire','semanal'],
+        ['Engrase','mensual'],['Nivel aceite hidráulico','mensual'],['Nivel líquido frenos','mensual'],
+        ['Cambio aceite','250h'],['Cambio filtro aceite motor','250h'],['Cambio filtro gasoil','250h']
+      ];
+      for (let i=0;i<seed.length;i++) await pool.query('INSERT INTO mant_items(nombre,periodicidad,orden) VALUES($1,$2,$3)',[seed[i][0],seed[i][1],i]);
+    }
+  } catch(e) { console.warn('seed mant:', e.message); }
   console.log('DB ready');
 }
 
@@ -492,6 +517,51 @@ app.patch('/api/lineas/:id/cargada', async (req, res) => {
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+// ── MANTENIMIENTO ──────────────────────────────────────────────────────────────
+app.get('/api/mant/items', async (req, res) => {
+  try { const r = await pool.query('SELECT * FROM mant_items WHERE activo=true ORDER BY orden, id'); res.json(r.rows); }
+  catch(e){ res.status(500).json({error:e.message}); }
+});
+app.get('/api/mant/registros', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT g.*, i.nombre AS item_nombre, i.periodicidad
+       FROM mant_registros g LEFT JOIN mant_items i ON i.id=g.item_id
+       ORDER BY g.fecha DESC, g.creado DESC`);
+    res.json(r.rows);
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
+app.post('/api/mant/registros', async (req, res) => {
+  const b = req.body || {};
+  try {
+    const r = await pool.query(
+      'INSERT INTO mant_registros(item_id,vehiculo,fecha,km,horas,notas) VALUES($1,$2,COALESCE($3,CURRENT_DATE),$4,$5,$6) RETURNING *',
+      [b.item_id||null, b.vehiculo||'Camión', b.fecha||null, b.km!=null?Number(b.km):null, b.horas!=null?Number(b.horas):null, b.notas||null]);
+    res.json(r.rows[0]);
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
+app.delete('/api/mant/registros/:id', async (req, res) => {
+  try { await pool.query('DELETE FROM mant_registros WHERE id=$1',[req.params.id]); res.json({ok:true}); }
+  catch(e){ res.status(500).json({error:e.message}); }
+});
+app.get('/api/mant/reparaciones', async (req, res) => {
+  try { const r = await pool.query('SELECT * FROM mant_reparaciones ORDER BY fecha DESC, creado DESC'); res.json(r.rows); }
+  catch(e){ res.status(500).json({error:e.message}); }
+});
+app.post('/api/mant/reparaciones', async (req, res) => {
+  const b = req.body || {};
+  try {
+    const r = await pool.query(
+      'INSERT INTO mant_reparaciones(vehiculo,fecha,concepto,km,horas) VALUES($1,COALESCE($2,CURRENT_DATE),$3,$4,$5) RETURNING *',
+      [b.vehiculo||'Camión', b.fecha||null, b.concepto||null, b.km!=null?Number(b.km):null, b.horas!=null?Number(b.horas):null]);
+    res.json(r.rows[0]);
+  } catch(e){ res.status(500).json({error:e.message}); }
+});
+app.delete('/api/mant/reparaciones/:id', async (req, res) => {
+  try { await pool.query('DELETE FROM mant_reparaciones WHERE id=$1',[req.params.id]); res.json({ok:true}); }
+  catch(e){ res.status(500).json({error:e.message}); }
+});
+// ── fin mantenimiento ───────────────────────────────────────────────────────────
 app.patch('/api/pedidos/:id/orden', async (req, res) => {
   const { orden_carga } = req.body;
   try {
@@ -680,7 +750,7 @@ app.patch('/api/pedidos/:id/comercial', async (req, res) => {
 app.get('/api/health', (req, res) => res.json({ ok: true, version: API_VERSION }));
 
 // ── COPIA DE SEGURIDAD ────────────────────────────────────────────────────────
-const BACKUP_TABLES = ['bc_config','transportistas','categorias','preparadores','comerciales','materias_primas','silos','producciones','viajes','compras_mp','compras','cargas','pedidos','pedido_lineas','compra_lineas','pedidos_cli','pedidos_cli_lineas','clientes_auto','bc_inbox'];
+const BACKUP_TABLES = ['bc_config','transportistas','categorias','preparadores','comerciales','materias_primas','silos','producciones','viajes','compras_mp','compras','cargas','pedidos','pedido_lineas','compra_lineas','pedidos_cli','pedidos_cli_lineas','clientes_auto','bc_inbox','mant_items','mant_registros','mant_reparaciones'];
 
 // Construye el volcado completo de la base de datos
 async function _dumpDatos() {
