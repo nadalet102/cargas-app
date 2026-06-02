@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 36;
+const API_VERSION = 38;
 
 const app = express();
 app.use(cors());
@@ -108,7 +108,10 @@ async function initDB() {
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS kgs NUMERIC`,
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS falta NUMERIC DEFAULT 0`,
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS cargada BOOLEAN DEFAULT false`,
-    `UPDATE pedidos SET estado_prep='carga' WHERE estado_prep='preparado' AND fecha IS NOT NULL`,
+    `ALTER TABLE pedidos_cli ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'revision'`,
+    `ALTER TABLE pedidos_cli ADD COLUMN IF NOT EXISTS nombre_carga TEXT`,
+    `ALTER TABLE pedidos_cli ADD COLUMN IF NOT EXISTS cargado_at TIMESTAMPTZ`,
+    `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS cargada BOOLEAN DEFAULT false`,
     `CREATE TABLE IF NOT EXISTS mant_items (
       id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, periodicidad TEXT DEFAULT 'semanal',
       orden INTEGER DEFAULT 0, activo BOOLEAN DEFAULT true
@@ -406,12 +409,6 @@ app.put('/api/pedidos/:id', async (req, res) => {
       [num,cliente,destino,ubicacion||null,estado_prep||'sin_preparar',fecha||null,kg||0,porte||0,prio||'normal',paradas||1,obs,carga_id||null,orden_carga||null,categoria_id||null,maps_url||null,direccion_descarga||null,comercial||null,req.params.id]
     );
     const row = r.rows[0];
-    // si queda preparado y ya tiene fecha de entrega, pasa solo a carga
-    if (row && row.estado_prep === 'preparado' && row.fecha) {
-      await pool.query("UPDATE pedidos SET estado_prep='carga' WHERE id=$1",[req.params.id]);
-      await pool.query('UPDATE pedido_lineas SET cargada=false WHERE pedido_id=$1',[req.params.id]);
-      row.estado_prep = 'carga';
-    }
     res.json(row);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -484,11 +481,6 @@ async function enviarAlertaAgrupacion(cargaId, pedidoNuevo){
 app.patch('/api/pedidos/:id/prep', async (req, res) => {
   let { estado_prep } = req.body;
   try {
-    // si lo marcan preparado y el pedido ya tiene fecha de entrega, pasa directo a carga
-    if (estado_prep === 'preparado') {
-      const cur = (await pool.query('SELECT fecha FROM pedidos WHERE id=$1',[req.params.id])).rows[0];
-      if (cur && cur.fecha) estado_prep = 'carga';
-    }
     const r = await pool.query('UPDATE pedidos SET estado_prep=$1 WHERE id=$2 RETURNING *',[estado_prep,req.params.id]);
     // al entrar en fase de carga, las líneas empiezan sin tachar (checklist de carga nuevo)
     if (estado_prep === 'carga') {
@@ -1356,6 +1348,17 @@ app.delete('/api/viajes/:id', async (req, res) => {
 });
 
 // ── PEDIDOS DE CLIENTE (construcción) ─────────────────────────────────────────
+// recalcula el estado del pedido de cliente: pasa a 'preparado' cuando TODAS las líneas
+// (menos los palets) están preparadas; vuelve a 'revision' si no. No toca carga/cargado.
+async function _recalcEstadoCli(pedidoId){
+  const lins = (await pool.query('SELECT descripcion, preparado FROM pedidos_cli_lineas WHERE pedido_id=$1',[pedidoId])).rows;
+  const cur = (await pool.query('SELECT estado FROM pedidos_cli WHERE id=$1',[pedidoId])).rows[0];
+  if (!cur || (cur.estado!=='revision' && cur.estado!=='preparado')) return;
+  const noPalet = lins.filter(l => !/pal[eé]/i.test(l.descripcion||''));
+  const todo = noPalet.length>0 && noPalet.every(l => l.preparado);
+  const nuevo = todo ? 'preparado' : 'revision';
+  if (nuevo !== cur.estado) await pool.query('UPDATE pedidos_cli SET estado=$1 WHERE id=$2',[nuevo,pedidoId]);
+}
 app.get('/api/pedidos-cli', async (req, res) => {
   try {
     const ped = (await pool.query('SELECT * FROM pedidos_cli ORDER BY creado DESC')).rows;
@@ -1436,12 +1439,37 @@ app.delete('/api/pedidos-cli/:id', async (req, res) => {
 });
 // marcar una línea como preparada / no preparada
 app.patch('/api/pedidos-cli/lineas/:id/preparado', async (req, res) => {
-  try { await pool.query('UPDATE pedidos_cli_lineas SET preparado=$1 WHERE id=$2', [!!req.body.preparado, req.params.id]); res.json({ok:true}); }
-  catch(e) { res.status(500).json({error:e.message}); }
+  try {
+    const r = await pool.query('UPDATE pedidos_cli_lineas SET preparado=$1 WHERE id=$2 RETURNING pedido_id', [!!req.body.preparado, req.params.id]);
+    if (r.rows[0]) await _recalcEstadoCli(r.rows[0].pedido_id);
+    res.json({ok:true});
+  } catch(e) { res.status(500).json({error:e.message}); }
 });
 // marcar TODO el pedido como preparado / no preparado
 app.patch('/api/pedidos-cli/:id/preparado', async (req, res) => {
-  try { await pool.query('UPDATE pedidos_cli_lineas SET preparado=$1 WHERE pedido_id=$2', [!!req.body.preparado, req.params.id]); res.json({ok:true}); }
+  try {
+    await pool.query('UPDATE pedidos_cli_lineas SET preparado=$1 WHERE pedido_id=$2', [!!req.body.preparado, req.params.id]);
+    await _recalcEstadoCli(req.params.id);
+    res.json({ok:true});
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+// estado del pedido de cliente (revision|preparado|carga|cargado)
+app.patch('/api/pedidos-cli/:id/estado', async (req, res) => {
+  const { estado, nombre_carga } = req.body || {};
+  try {
+    if (estado === 'carga') {
+      await pool.query('UPDATE pedidos_cli_lineas SET cargada=false WHERE pedido_id=$1',[req.params.id]);
+      await pool.query('UPDATE pedidos_cli SET estado=$1, nombre_carga=COALESCE($2,nombre_carga) WHERE id=$3',['carga', nombre_carga||null, req.params.id]);
+    } else if (estado === 'cargado') {
+      await pool.query('UPDATE pedidos_cli SET estado=$1, cargado_at=now() WHERE id=$2',['cargado', req.params.id]);
+    } else {
+      await pool.query('UPDATE pedidos_cli SET estado=$1 WHERE id=$2',[estado, req.params.id]);
+    }
+    res.json({ok:true});
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+app.patch('/api/pedidos-cli/lineas/:id/cargada', async (req, res) => {
+  try { await pool.query('UPDATE pedidos_cli_lineas SET cargada=$1 WHERE id=$2',[!!req.body.cargada, req.params.id]); res.json({ok:true}); }
   catch(e) { res.status(500).json({error:e.message}); }
 });
 
