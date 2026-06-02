@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 41;
+const API_VERSION = 42;
 
 const app = express();
 app.use(cors());
@@ -114,6 +114,7 @@ async function initDB() {
     `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS cargada BOOLEAN DEFAULT false`,
     `ALTER TABLE compras ADD COLUMN IF NOT EXISTS hora TEXT`,
     `ALTER TABLE clientes_auto ADD COLUMN IF NOT EXISTS min_bb INTEGER DEFAULT 1`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS entregado_at TIMESTAMPTZ`,
     `CREATE TABLE IF NOT EXISTS mant_items (
       id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, periodicidad TEXT DEFAULT 'semanal',
       orden INTEGER DEFAULT 0, activo BOOLEAN DEFAULT true
@@ -329,11 +330,11 @@ app.put('/api/cargas/:id', async (req, res) => {
       enviarAlertaCambioEstado(r.rows[0], estadoAnterior, status).catch(e=>console.warn('Alerta error:',e.message));
       // Si la carga pasa a entregada, marcar sus pedidos como entregados
       if(status==='entregada'){
-        await pool.query("UPDATE pedidos SET estado_prep='entregado' WHERE carga_id=$1",[req.params.id]);
+        await pool.query("UPDATE pedidos SET estado_prep='entregado', entregado_at=now() WHERE carga_id=$1",[req.params.id]);
       }
       // Si se revierte una entrega, devolver sus pedidos a 'preparado'
       else if(estadoAnterior==='entregada'){
-        await pool.query("UPDATE pedidos SET estado_prep='preparado' WHERE carga_id=$1",[req.params.id]);
+        await pool.query("UPDATE pedidos SET estado_prep='preparado', entregado_at=NULL WHERE carga_id=$1",[req.params.id]);
       }
     }
 
@@ -483,7 +484,7 @@ async function enviarAlertaAgrupacion(cargaId, pedidoNuevo){
 app.patch('/api/pedidos/:id/prep', async (req, res) => {
   let { estado_prep } = req.body;
   try {
-    const r = await pool.query('UPDATE pedidos SET estado_prep=$1 WHERE id=$2 RETURNING *',[estado_prep,req.params.id]);
+    const r = await pool.query("UPDATE pedidos SET estado_prep=$1, entregado_at=(CASE WHEN $1='entregado' THEN now() ELSE NULL END) WHERE id=$2 RETURNING *",[estado_prep,req.params.id]);
     // al entrar en fase de carga, las líneas empiezan sin tachar (checklist de carga nuevo)
     if (estado_prep === 'carga') {
       await pool.query('UPDATE pedido_lineas SET cargada=false WHERE pedido_id=$1',[req.params.id]);
