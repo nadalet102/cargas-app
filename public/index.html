@@ -581,7 +581,6 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 <!-- CAMIÓN -->
 <div class="view" id="view-camion"><div class="container"><div id="camion-content"></div></div></div>
 <!-- COMPRAS MATERIA PRIMA -->
-<div class="view" id="view-comprasmp"><div class="container"><div id="comprasmp-content"></div></div></div>
 <!-- CALENDARIO PRODUCCIÓN -->
 <div class="view" id="view-prodcal"><div class="container"><div id="prodcal-content"></div></div></div>
 <!-- PEDIDOS DE CLIENTE -->
@@ -847,7 +846,7 @@ function renderBCList(){
     return;
   }
   el.innerHTML=fp.map(p=>{
-    const isPrep=p.estado_prep==='preparado';
+    const isPrep=_esPrep(p);
     const cardClass=`pcard prep-${p.estado_prep}${p.prio==='urgente'?' urgente':p.prio==='baja'?' baja':''}`;
     return `<div class="${cardClass}" draggable="true" id="card-${p.id}"
       ondragstart="onDragStart(event,'${p.id}')" ondragend="onDragEnd()">
@@ -899,7 +898,7 @@ function renderCargas(){
     const costeVal=c.coste!=null?+c.coste:null;
     const margen=costeVal!=null?portes-costeVal:null;
     const isPend=c.coste_modo==='pendiente';
-    const nPrep=ps.filter(p=>p.estado_prep==='preparado').length;
+    const nPrep=ps.filter(p=>_esPrep(p)).length;
     const nNoPre=ps.filter(p=>p.estado_prep!=='preparado').length;
     return `<div class="cc" id="col-${c.id}"
       ondragover="onDragOver(event,'${c.id}')"
@@ -952,7 +951,7 @@ function renderCargas(){
         ${ps.length===0
           ?`<i class="ti ti-drag-drop" style="font-size:22px;color:var(--text3)"></i><div class="drop-hint">Arrastra pedidos aquí</div>`
           :ps.map((p,idx)=>{
-            const mc=p.estado_prep==='preparado'?'mc-preparado':p.estado_prep==='sin_preparar'?'mc-sin_preparar':'mc-default';
+            const mc=_esPrep(p)?'mc-preparado':p.estado_prep==='sin_preparar'?'mc-sin_preparar':'mc-default';
             return `<div class="mini-card ${mc}">
               <div class="mini-order">${p.orden_carga||idx+1}</div>
               <div class="mini-body">
@@ -1221,7 +1220,8 @@ function generarResumen(){
   const totalParadas=cargasInc.reduce((s,c)=>s+cargaPs(c.id).reduce((a,p)=>a+(+p.paradas||1),0),0);
   const sinAsignar=cargasInc.filter(c=>!c.truck_id).length;
   const sinFecha=cargasInc.filter(c=>!c.fecha).length;
-  const pedPrep=pedidosInc.filter(p=>p.estado_prep==='preparado').length;
+  const pedCarga=pedidosInc.filter(p=>p.estado_prep==='carga').length;
+  const pedPrep=pedidosInc.filter(p=>_esPrep(p)).length;
   const pedSinPrep=totalPedidos-pedPrep;
 
   function tarjetaCarga(c){
@@ -1229,11 +1229,11 @@ function generarResumen(){
     const kg=cargaKg(c.id);
     const tr=transportistas.find(t=>String(t.id)===String(c.truck_id));
     const cat=categorias.find(ct=>String(ct.id)===String(c.categoria_id));
-    const nPrep=ps.filter(p=>p.estado_prep==='preparado').length;
+    const nPrep=ps.filter(p=>_esPrep(p)).length;
     const matriculas=[c.mat_camion,c.mat_remolque].filter(Boolean).join(' / ');
 
     const filasPedidos=ps.length?ps.map((p,i)=>{
-      const prep=p.estado_prep==='preparado';
+      const prep=_esPrep(p);
       return `<tr>
         <td style="text-align:center;color:#6b7280;font-size:10px;width:24px">${p.orden_carga||i+1}</td>
         <td style="font-family:monospace;font-size:10px;white-space:nowrap">${p.num||'—'}</td>
@@ -1324,6 +1324,7 @@ function generarResumen(){
         {label:'Kg totales',val:totalKg.toLocaleString('es-ES'),color:'#0F6E56'},
         {label:'Paradas',val:totalParadas,color:'#854F0B'},
         {label:'Preparados',val:pedPrep+'/'+totalPedidos,color:pedSinPrep>0?'#854F0B':'#0F6E56'},
+        {label:'En carga',val:pedCarga,color:pedCarga>0?'#185FA5':'#6b7280'},
         {label:'Sin transportista',val:sinAsignar,color:sinAsignar>0?'#b91c1c':'#6b7280'},
         {label:'Sin fecha',val:sinFecha,color:sinFecha>0?'#b91c1c':'#6b7280'},
       ].map(k=>`
@@ -1366,7 +1367,7 @@ async function printCarga(cid, showPrices){
   // Build table rows safely
   let rows='';
   ps.forEach(function(p,i){
-    const isPrep=p.estado_prep==='preparado';
+    const isPrep=_esPrep(p);
     const rowBg=isPrep?'#f0fdf4':'#fff5f5';
     const ubicCell=p.ubicacion
       ? '<span style="background:#E6F1FB;color:#0C447C;padding:4px 10px;border-radius:10px;font-weight:500">'+p.ubicacion+'</span>'
@@ -1878,7 +1879,7 @@ function renderDash(){
   const portesE=entregadas.reduce((s,c)=>s+cargaPortes(c.id),0);
   const costesE=entregadas.filter(c=>c.coste!=null).reduce((s,c)=>s+(+c.coste),0);
   const pendCoste=cargas.filter(c=>c.status!=='entregada'&&c.coste_modo==='pendiente').length;
-  const prepTotal=pedidos.filter(p=>p.estado_prep==='preparado').length;
+  const prepTotal=pedidos.filter(p=>_esPrep(p)).length;
   document.getElementById('dash-kpis').innerHTML=`
     <div class="dash-card"><div class="dash-lbl">Total pedidos</div><div class="dash-val">${pedidos.length}</div><div class="dash-sub">${prepTotal} preparados · ${pedidos.length-prepTotal} sin preparar</div></div>
     <div class="dash-card"><div class="dash-lbl">Cargas</div><div class="dash-val">${cargas.length}</div><div class="dash-sub">${entregadas.length} entregadas · ${cargas.filter(c=>c.status==='ruta').length} en ruta</div></div>
@@ -1930,7 +1931,7 @@ function updateStats(){
   const usedIds=[...new Set(asig.map(p=>String(p.carga_id)))];
   const costesConoc=usedIds.reduce((s,cid)=>{const c=cargas.find(x=>String(x.id)===cid);return c&&c.coste!=null?s+(+c.coste):s;},0);
   const m=portesAsig-costesConoc;
-  const prepTotal=pedidos.filter(p=>!p.carga_id&&p.estado_prep==='preparado').length;
+  const prepTotal=pedidos.filter(p=>!p.carga_id&&_esPrep(p)).length;
   document.getElementById('st-pend').textContent=pedidos.filter(p=>!p.carga_id).length;
   document.getElementById('st-prep').textContent=prepTotal;
   document.getElementById('st-cargas').textContent=openC.length;
@@ -1990,7 +1991,7 @@ function renderHist(){
       const margen=coste!=null?portes-coste:null;
       const t=getTrans(c.truck_id);
       const col=CCOLS[Math.min(c.color_idx||0,CCOLS.length-1)];
-      const nPrep=ps.filter(p=>p.estado_prep==='preparado').length;
+      const nPrep=ps.filter(p=>_esPrep(p)).length;
       return `<div style="border-bottom:1px solid var(--border)">
         <div style="padding:12px 16px;display:flex;align-items:flex-start;gap:12px">
           <div style="width:10px;height:10px;border-radius:50%;background:${col.b};margin-top:4px;flex-shrink:0"></div>
@@ -2394,13 +2395,13 @@ function limpiarFiltrosPrep(tab){
   if(tab==='prep') renderPrepList(); else renderPreparadosList();
 }
 
+function _esPrep(p){ return p.estado_prep==='preparado'||p.estado_prep==='carga'; }
 function filtrarPedidos(estadoFiltro, prefijo){
   const q=(document.getElementById(prefijo+'-search')?.value||'').toLowerCase();
   const fPrep=document.getElementById(prefijo+'-filter-preparador')?.value||'';
   const fFecha=document.getElementById(prefijo+'-filter-fecha')?.value||'';
   return pedidos.filter(p=>{
-    if(estadoFiltro==='sin_preparar' && p.estado_prep==='preparado') return false;
-    if(estadoFiltro==='sin_preparar' && p.estado_prep==='entregado') return false;
+    if(estadoFiltro==='sin_preparar' && ['preparado','carga','entregado'].includes(p.estado_prep)) return false;
     if(estadoFiltro==='preparado' && p.estado_prep!=='preparado') return false;
     if(q && !((p.cliente||'').toLowerCase().includes(q)||(p.num||'').toLowerCase().includes(q)||(p.destino||'').toLowerCase().includes(q))) return false;
     if(fPrep && p.preparador!==fPrep) return false;
@@ -3737,7 +3738,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 34;
+const NEEDS_API = 36;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -4959,107 +4960,9 @@ async function confirmarSolicitar(id){
   catch(e){ log('Error al solicitar','warn'); }
 }
 
-// ── COMPRAS MATERIA PRIMA + CALENDARIO (Fase 4) ───────────────────────────────
-let comprasMpData=[], comprasMpFiltro='programado', pcalMode='mes', pcalRef=new Date();
-async function cargarComprasMp(){
-  if(!matPrimas.length) await cargarMatPrimas(false);
-  try{ silosData=await api('GET','/silos'); }catch(e){}
-  try{ comprasMpData=await api('GET','/compras-mp'); }catch(e){ comprasMpData=[]; }
-  renderComprasMp();
-}
-function setComprasMpFiltro(v){ comprasMpFiltro=v; renderComprasMp(); }
-function renderComprasMp(){
-  const el=document.getElementById('comprasmp-content'); if(!el) return;
-  const cont=e=> e==='todos'?comprasMpData.length:comprasMpData.filter(c=>c.estado===e).length;
-  const fbtn=(v,lbl)=>`<button onclick="setComprasMpFiltro('${v}')" style="font-size:11px;padding:6px 11px;border-radius:8px;border:1px solid var(--border);cursor:pointer;${comprasMpFiltro===v?'background:var(--blue);color:#fff;border-color:var(--blue)':'background:var(--surface);color:var(--text2)'}">${lbl} (${cont(v)})</button>`;
-  const lista=comprasMpData.filter(c=>comprasMpFiltro==='todos'||c.estado===comprasMpFiltro);
-  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <div style="font-size:16px;font-weight:500">Compras de materia prima</div>
-      <button class="btn-primary" onclick="abrirFormCompraMp()" style="font-size:12px;padding:8px 13px"><i class="ti ti-plus"></i> Nueva compra</button></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${fbtn('todos','Todas')}${fbtn('pendiente','Pendiente')}${fbtn('programado','Programado')}${fbtn('recibido','Recibido')}</div>`;
-  html += lista.length ? lista.map(compraMpCard).join('') : '<div class="empty-state"><i class="ti ti-shopping-cart"></i>Nada aquí</div>';
-  el.innerHTML=html;
-}
-function compraMpCard(c){
-  const eb={pendiente:['#FBE3E0','#9A2A1B','Pendiente'],programado:['#E9F0F8','#0C447C','Programado'],recibido:['#EAF3EE','#0F6E56','Recibido']}[c.estado]||['#eee','#555',c.estado];
-  const cita = c.fecha?(fmtDate(c.fecha)+(c.hora?(' · '+c.hora):'')):'sin fecha';
-  const acc = c.estado==='recibido'
-    ? `<button onclick="borrarCompraMp('${c.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button>`
-    : `<button onclick="abrirRecibirCompraMp('${c.id}')" class="btn-primary" style="font-size:11px;padding:6px 10px;background:#0F6E56"><i class="ti ti-package-import"></i> Recibir</button>
-       <button onclick="abrirFormCompraMp('${c.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px"><i class="ti ti-edit"></i></button>
-       <button onclick="borrarCompraMp('${c.id}')" class="btn-sec" style="font-size:11px;padding:6px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button>`;
-  return `<div class="list-card" style="margin-bottom:10px">
-     <div class="lc-hdr"><span><b>${(c.material||'(sin material)').replace(/</g,'&lt;')}</b>${c.proveedor?(' · '+(''+c.proveedor).replace(/</g,'&lt;')):''}</span><span style="font-size:10px;font-weight:700;background:${eb[0]};color:${eb[1]};border-radius:8px;padding:3px 9px">${eb[2]}</span></div>
-     <div style="padding:8px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-       <span style="font-size:18px;font-weight:800">${fmtN(c.estado==='recibido'?(c.kg_recibido||c.kg):c.kg)} kg</span>
-       <span style="font-size:12px;color:var(--text2)"><i class="ti ti-calendar"></i> ${cita}</span>
-       ${c.silo_nombre?`<span style="font-size:11px;background:#FFF3E6;color:#7A4E00;border-radius:7px;padding:2px 8px"><i class="ti ti-arrow-down"></i> ${c.silo_nombre}</span>`:''}
-     </div>
-     ${c.notas?`<div style="padding:0 16px 6px;font-size:12px;color:var(--text2)">${c.notas.replace(/</g,'&lt;')}</div>`:''}
-     <div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px;border-top:1px solid var(--border)">${acc}</div></div>`;
-}
-function abrirFormCompraMp(id, prefill){
-  const c = id? comprasMpData.find(x=>String(x.id)===String(id)) : (prefill||{});
-  const ov=document.createElement('div'); ov.id='cmp-form-ov';
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10060;display:flex;align-items:flex-end;justify-content:center';
-  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
-  const opts=matPrimas.filter(m=>m.activo!==false).map(m=>`<option value="${(m.nombre||'').replace(/"/g,'&quot;')}">`).join('');
-  const siloOpts=silosData.map(s=>`<option value="${s.id}" ${String(c.silo_id)===String(s.id)?'selected':''}>${s.nombre}${s.producto?(' · '+s.producto):''}</option>`).join('');
-  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
-  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px;max-height:92vh;overflow-y:auto">
-    <b style="font-size:15px">${id?'Editar compra':'Nueva compra de materia prima'}</b>
-    <input type="hidden" id="cmp-id" value="${id||''}">
-    <label style="font-size:12px;color:var(--text2);display:block;margin-top:12px">Material<input id="cmp-mat" list="cmp-mat-list" placeholder="Buscar…" value="${c.material?(''+c.material).replace(/"/g,'&quot;'):''}" style="${inp}"><datalist id="cmp-mat-list">${opts}</datalist></label>
-    <div style="display:flex;gap:10px;margin-top:10px">
-      <label style="font-size:12px;color:var(--text2);flex:1">Proveedor<input id="cmp-prov" value="${c.proveedor?(''+c.proveedor).replace(/"/g,'&quot;'):''}" style="${inp}"></label>
-      <label style="font-size:12px;color:var(--text2);flex:1">Kg<input id="cmp-kg" type="number" min="0" value="${c.kg!=null?c.kg:''}" style="${inp}"></label></div>
-    <div style="display:flex;gap:10px;margin-top:10px">
-      <label style="font-size:12px;color:var(--text2);flex:1">Fecha de llegada<input id="cmp-fecha" type="date" value="${c.fecha?_fechaISO(c.fecha):''}" style="${inp}"></label>
-      <label style="font-size:12px;color:var(--text2);flex:1">Hora<input id="cmp-hora" type="time" value="${c.hora||''}" style="${inp}"></label></div>
-    <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">A qué tolva<select id="cmp-silo" style="${inp}"><option value="">(sin asignar)</option>${siloOpts}</select></label>
-    <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Notas<input id="cmp-notas" value="${c.notas?(''+c.notas).replace(/"/g,'&quot;'):''}" style="${inp}"></label>
-    <div style="font-size:11px;color:var(--text3);margin-top:8px">Si pones fecha, queda "programado"; si no, "pendiente".</div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-      <button class="btn-sec" onclick="document.getElementById('cmp-form-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
-      <button class="btn-primary" onclick="guardarCompraMp()" style="font-size:13px;padding:10px 18px">Guardar</button></div>
-  </div>`;
-  document.body.appendChild(ov);
-}
-async function guardarCompraMp(){
-  const id=document.getElementById('cmp-id').value;
-  const nombre=(document.getElementById('cmp-mat').value||'').trim();
-  let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
-  if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
-  const body={ mp_id:mp?mp.id:null, proveedor:(document.getElementById('cmp-prov').value||'').trim()||null,
-    kg:Number(document.getElementById('cmp-kg').value)||0, fecha:document.getElementById('cmp-fecha').value||null,
-    hora:document.getElementById('cmp-hora').value||null, silo_id:document.getElementById('cmp-silo').value||null,
-    notas:(document.getElementById('cmp-notas').value||'').trim()||null };
-  try{ if(id) await api('PUT','/compras-mp/'+id,body); else await api('POST','/compras-mp',body); document.getElementById('cmp-form-ov')?.remove(); if(_activeView==='silos') await cargarSilos(); else await cargarComprasMp(); }
-  catch(e){ log('Error guardando compra','warn'); }
-}
-function abrirRecibirCompraMp(id){
-  const c=comprasMpData.find(x=>String(x.id)===String(id)); if(!c) return;
-  const ov=document.createElement('div'); ov.id='cmp-rec-ov';
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10061;display:flex;align-items:flex-end;justify-content:center';
-  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
-  const inp='width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);margin-top:4px;box-sizing:border-box';
-  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:440px;border-radius:16px 16px 0 0;padding:18px">
-    <b style="font-size:15px">Recibir · ${(c.material||'').replace(/</g,'&lt;')}</b>
-    <label style="font-size:12px;color:var(--text2);display:block;margin-top:12px">Kg que han llegado<input id="cmpr-kg" type="number" min="0" value="${c.kg||''}" style="${inp}"></label>
-    ${c.silo_id?`<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer"><input type="checkbox" id="cmpr-fill" checked style="width:16px;height:16px"> Añadir estos kg a ${c.silo_nombre||'la tolva'}</label>`:'<div style="font-size:11px;color:var(--text3);margin-top:10px">Sin tolva asignada: solo se cuenta, no se añade a ningún silo.</div>'}
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-      <button class="btn-sec" onclick="document.getElementById('cmp-rec-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
-      <button class="btn-primary" onclick="confirmarRecibirCompraMp('${id}')" style="font-size:13px;padding:10px 18px;background:#0F6E56">Recibir</button></div>
-  </div>`;
-  document.body.appendChild(ov);
-}
-async function confirmarRecibirCompraMp(id){
-  const kg=Number(document.getElementById('cmpr-kg').value)||0;
-  const fill=document.getElementById('cmpr-fill')?document.getElementById('cmpr-fill').checked:false;
-  try{ await api('PATCH','/compras-mp/'+id+'/recibir',{kg_recibido:kg, fill_silo:fill}); document.getElementById('cmp-rec-ov')?.remove(); await cargarComprasMp(); }
-  catch(e){ log('Error al recibir','warn'); }
-}
-async function borrarCompraMp(id){ if(!confirm('¿Borrar esta compra?')) return; try{ await api('DELETE','/compras-mp/'+id); if(_activeView==='silos') await cargarSilos(); else await cargarComprasMp(); }catch(e){ log('Error','warn'); } }
+// ── CALENDARIO DE PRODUCCIÓN (Fase 4) ───────────────────────────────
+let pcalMode='mes', pcalRef=new Date();
+
 
 // Calendario de producción (por fecha de las compras programadas)
 async function cargarProdCal(){
