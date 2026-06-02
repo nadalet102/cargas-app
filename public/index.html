@@ -509,6 +509,20 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 </div>
 </div>
 
+<!-- CARGA -->
+<div class="view" id="view-carga">
+<div class="container">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:8px;flex-wrap:wrap">
+    <div>
+      <div style="font-size:16px;font-weight:600">En carga</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px">Tacha cada línea según la vas subiendo al camión.</div>
+    </div>
+    <button onclick="cargarCargaList()" class="btn-sec" style="font-size:12px;padding:7px 11px"><i class="ti ti-refresh"></i></button>
+  </div>
+  <div id="carga-list"></div>
+</div>
+</div>
+
 <!-- COMPRAS -->
 <div class="view" id="view-compras">
 <div class="container">
@@ -748,13 +762,13 @@ function renderAll(){renderBCList();renderCargas();updateStats();updateCatDropdo
 
 const NAV_GROUPS = {
   reparto:     { subs:[['plan','Planificación'],['cal','Calendario'],['hist','Historial']] },
-  preparacion: { subs:[['prep','Por preparar'],['preparados','Preparados'],['porart','Por artículo']] },
+  preparacion: { subs:[['prep','Por preparar'],['preparados','Preparados'],['carga','Carga'],['porart','Por artículo']] },
   compras:     { subs:[['compras','']] },
   produccion:  { subs:[['silos','Silos'],['matprima','Materia prima'],['pedidoscli','Pedidos'],['prodbb','Prod. BB'],['prodsacos','Prod. Sacos'],['camion','Camión'],['prodcal','Calendario'],['prodfinal','Prod. Final']] },
   resumen:     { subs:[['dash','']] },
   ajustes:     { subs:[['trans','Transportistas'],['cats','Categorías'],['clientesauto','Clientes auto'],['calsync','Calendario']] }
 };
-const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',porart:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',calsync:'ajustes',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
+const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',carga:'preparacion',porart:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',calsync:'ajustes',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
 let _activeView='plan';
 function _runRenderer(t){
   if(t==='cal')renderCal();
@@ -766,6 +780,7 @@ function _runRenderer(t){
   else if(t==='hist')renderHist();
   else if(t==='prep'){fillPreparadorFilters();renderPrepList();}
   else if(t==='preparados'){fillPreparadorFilters();renderPreparadosList();}
+  else if(t==='carga'){cargarCargaList();}
   else if(t==='porart'){cargarPrepResumen();}
   else if(t==='compras')renderCompras();
   else if(t==='silos')cargarSilos();
@@ -786,7 +801,7 @@ function renderSubtabBar(g, activeView){
 }
 function switchView(t){
   _activeView=t;
-  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','porart','compras','silos','matprima','prodbb','prodsacos','prodfinal','camion','prodcal','pedidoscli','clientesauto','calsync'].forEach(id=>{
+  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','carga','porart','compras','silos','matprima','prodbb','prodsacos','prodfinal','camion','prodcal','pedidoscli','clientesauto','calsync'].forEach(id=>{
     const v=document.getElementById('view-'+id); if(v) v.classList.toggle('active',id===t);
   });
   const g=VIEW_GROUP[t]||'reparto';
@@ -2418,6 +2433,7 @@ function pedidoRowHTML(p, modo){
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:2px" onclick="event.stopPropagation()">
+        ${modo==='preparados'?`<button onclick="event.stopPropagation();pasarACarga('${p.id}')" style="background:#EAF3DE;border:1px solid #3B6D11;color:#27500A;cursor:pointer;padding:6px 10px;font-size:11px;font-weight:700;border-radius:8px;white-space:nowrap;display:flex;align-items:center;gap:4px"><i class="ti ti-truck-loading"></i> A carga</button>`:''}
         <button title="Ubicación en campa" onclick="event.stopPropagation();editarUbicacion('${p.id}')" style="background:none;border:none;cursor:pointer;color:var(--blue);padding:6px;font-size:17px;line-height:1"><i class="ti ti-map-pin"></i></button>
         <button title="Eliminar pedido" onclick="event.stopPropagation();eliminarPedidoPrep('${p.id}')" style="background:none;border:none;cursor:pointer;color:#c0392b;padding:6px;font-size:17px;line-height:1"><i class="ti ti-trash"></i></button>
         <i class="ti ti-chevron-right" style="color:var(--text3)"></i>
@@ -2426,6 +2442,72 @@ function pedidoRowHTML(p, modo){
   </div>`;
 }
 
+let cargaLineasCache={};
+async function pasarACarga(pid){
+  try{
+    await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:'carga'});
+    const p=pedidos.find(x=>String(x.id)===String(pid)); if(p)p.estado_prep='carga';
+    delete cargaLineasCache[pid];
+    log('Pasado a carga','ok');
+    renderPreparadosList();
+  }catch(e){ log('Error','warn'); }
+}
+async function cargarCargaList(){
+  const el=document.getElementById('carga-list'); if(el) el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text2)"><i class="ti ti-loader"></i> Cargando…</div>';
+  const ped=(pedidos||[]).filter(p=>p.estado_prep==='carga');
+  for(const p of ped){ if(!cargaLineasCache[p.id]){ try{ cargaLineasCache[p.id]=await api('GET','/pedidos/'+p.id+'/lineas'); }catch(e){ cargaLineasCache[p.id]=[]; } } }
+  renderCargaList();
+}
+function renderCargaList(){
+  const el=document.getElementById('carga-list'); if(!el) return;
+  const ped=(pedidos||[]).filter(p=>p.estado_prep==='carga').sort((a,b)=>String(a.num||'').localeCompare(String(b.num||''),undefined,{numeric:true}));
+  if(!ped.length){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text2)"><i class="ti ti-truck-loading" style="font-size:28px;opacity:.3;display:block;margin-bottom:8px"></i>No hay pedidos en carga. Pásalos desde "Preparados".</div>'; return; }
+  el.innerHTML=ped.map(p=>cargaCard(p)).join('');
+}
+function cargaCard(p){
+  const arts=(cargaLineasCache[p.id]||[]);
+  const total=arts.length, hechas=arts.filter(l=>l.cargada).length;
+  const completo = total>0 && hechas===total;
+  const filas=arts.map(l=>{
+    const ck=!!l.cargada;
+    return `<div onclick="toggleLineaCargada('${p.id}','${l.id}',${ck?'false':'true'})" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-top:1px solid var(--border);cursor:pointer;${ck?'background:var(--prep-ok)':''}">
+      <div style="width:30px;height:30px;border-radius:8px;border:2px solid ${ck?'#27500A':'var(--border2)'};background:${ck?'#3B6D11':'transparent'};color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">${ck?'<i class="ti ti-check" style="font-size:18px"></i>':''}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:15px;font-weight:600;${ck?'text-decoration:line-through;color:var(--text2)':''}">${(l.descripcion||l.referencia||'—').replace(/</g,'&lt;')}</div>
+        ${l.referencia&&l.descripcion?`<div style="font-size:11px;font-family:monospace;color:var(--text3)">${(''+l.referencia).replace(/</g,'&lt;')}</div>`:''}
+      </div>
+      <div style="font-size:18px;font-weight:800;white-space:nowrap;${ck?'color:var(--text3)':''}">${fmtN(l.cantidad)}${l.embalaje?` <span style="font-size:11px;font-weight:500;color:var(--text2)">${(''+l.embalaje).replace(/</g,'&lt;')}</span>`:''}</div>
+    </div>`;
+  }).join('');
+  return `<div class="list-card" style="margin-bottom:12px;${completo?'border:1px solid #3B6D11':''}">
+    <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:700;font-family:monospace;color:var(--blue-d)">${p.num||'—'}</span><span style="font-size:16px;font-weight:700">${p.cliente}</span></div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">${p.destino||''}${p.ubicacion?' · Campa: '+p.ubicacion:''}</div>
+      </div>
+      ${completo?'<span class="badge b-green" style="font-size:11px"><i class="ti ti-check"></i> Cargado</span>':`<span style="font-size:14px;font-weight:800;color:var(--text2);white-space:nowrap">${hechas}/${total}</span>`}
+    </div>
+    ${filas||'<div style="padding:12px 16px;color:var(--text2);font-size:12px;border-top:1px solid var(--border)">Sin líneas.</div>'}
+    <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="volverAPreparado('${p.id}')" class="btn-sec" style="font-size:12px;padding:8px 12px"><i class="ti ti-arrow-back-up"></i> Volver a preparados</button>
+    </div>
+  </div>`;
+}
+async function toggleLineaCargada(pid,lid,val){
+  const b=(val===true||val==='true');
+  try{
+    await api('PATCH','/lineas/'+lid+'/cargada',{cargada:b});
+    const ls=cargaLineasCache[pid]||[]; const l=ls.find(x=>String(x.id)===String(lid)); if(l)l.cargada=b;
+    renderCargaList();
+  }catch(e){ log('Error','warn'); }
+}
+async function volverAPreparado(pid){
+  try{
+    await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:'preparado'});
+    const p=pedidos.find(x=>String(x.id)===String(pid)); if(p)p.estado_prep='preparado';
+    log('Devuelto a preparados','ok'); renderCargaList();
+  }catch(e){ log('Error','warn'); }
+}
 function renderPrepList(){
   const el=document.getElementById('prep-list');
   if(!el) return;
@@ -3654,7 +3736,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 31;
+const NEEDS_API = 32;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
