@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 32;
+const API_VERSION = 33;
 
 const app = express();
 app.use(cors());
@@ -108,6 +108,7 @@ async function initDB() {
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS kgs NUMERIC`,
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS falta NUMERIC DEFAULT 0`,
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS cargada BOOLEAN DEFAULT false`,
+    `UPDATE pedidos SET estado_prep='carga' WHERE estado_prep='preparado' AND fecha IS NOT NULL`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS origen_linea_id INTEGER`,
     `ALTER TABLE viajes ADD COLUMN IF NOT EXISTS hora TEXT`,
     `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS preparado BOOLEAN DEFAULT false`,
@@ -393,7 +394,14 @@ app.put('/api/pedidos/:id', async (req, res) => {
       `UPDATE pedidos SET num=$1,cliente=$2,destino=$3,ubicacion=$4,estado_prep=$5,fecha=$6,kg=$7,porte=$8,prio=$9,paradas=$10,obs=$11,carga_id=$12,orden_carga=$13,categoria_id=$14,maps_url=$15,direccion_descarga=$16,comercial=$17 WHERE id=$18 RETURNING *`,
       [num,cliente,destino,ubicacion||null,estado_prep||'sin_preparar',fecha||null,kg||0,porte||0,prio||'normal',paradas||1,obs,carga_id||null,orden_carga||null,categoria_id||null,maps_url||null,direccion_descarga||null,comercial||null,req.params.id]
     );
-    res.json(r.rows[0]);
+    const row = r.rows[0];
+    // si queda preparado y ya tiene fecha de entrega, pasa solo a carga
+    if (row && row.estado_prep === 'preparado' && row.fecha) {
+      await pool.query("UPDATE pedidos SET estado_prep='carga' WHERE id=$1",[req.params.id]);
+      await pool.query('UPDATE pedido_lineas SET cargada=false WHERE pedido_id=$1',[req.params.id]);
+      row.estado_prep = 'carga';
+    }
+    res.json(row);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/pedidos/:id', async (req, res) => {
@@ -463,8 +471,13 @@ async function enviarAlertaAgrupacion(cargaId, pedidoNuevo){
   });
 }
 app.patch('/api/pedidos/:id/prep', async (req, res) => {
-  const { estado_prep } = req.body;
+  let { estado_prep } = req.body;
   try {
+    // si lo marcan preparado y el pedido ya tiene fecha de entrega, pasa directo a carga
+    if (estado_prep === 'preparado') {
+      const cur = (await pool.query('SELECT fecha FROM pedidos WHERE id=$1',[req.params.id])).rows[0];
+      if (cur && cur.fecha) estado_prep = 'carga';
+    }
     const r = await pool.query('UPDATE pedidos SET estado_prep=$1 WHERE id=$2 RETURNING *',[estado_prep,req.params.id]);
     // al entrar en fase de carga, las líneas empiezan sin tachar (checklist de carga nuevo)
     if (estado_prep === 'carga') {
