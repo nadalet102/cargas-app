@@ -3080,9 +3080,20 @@ function _calSemana(porDia){ const ini=_inicioSemana(ccalRef); const hoy=_hoyISO
 function _calDia(porDia){ const iso=_isoOf(ccalRef); const items=porDia[iso]||[];
   return `<div class="list-card"><div style="padding:0 14px">${items.length?items.map(_calItemRow).join(''):'<div class="empty-state" style="padding:24px"><i class="ti ti-calendar-off"></i>Nada llega este día</div>'}</div></div>`; }
 // ── Formulario de pedido de compra ──
+// deja el material base quitando envase/formato/tamaño ("Big Bag Blanca 0-2 500" → "Blanca 0-2")
+function _materialBase(desc){
+  let s=' '+(desc||'')+' ';
+  s=s.replace(/\b(big\s*bags?|bigbags?|b\.?b\.?|sacos?|palets?|pal[eé]s?|envases?|granel)\b/gi,' ');
+  s=s.replace(/\b\d+(?:[.,]\d+)?\s*kg\b/gi,' ');
+  s=s.replace(/(?<![\d-])(?:500|675|735|900|1000|15|20|25)(?![\d-])/g,' ');
+  s=s.replace(/\s{2,}/g,' ').trim();
+  return s || (desc||'').trim();
+}
 function comprarFalta(lid){
   const f=comprasFaltas.find(x=>String(x.linea_id)===String(lid)); if(!f) return;
-  abrirFormCompra(null,{ pedidos_rel:f.pedido_num||'', lineas:[{referencia:f.referencia||'',descripcion:f.descripcion||'',cantidad:f.falta||0,unidad:'',falta_linea_id:f.linea_id}] });
+  abrirFormCompra(null,{ tipo_produccion:'granel', pedidos_rel:f.pedido_num||'',
+    notas:'Para: '+(f.descripcion||'')+(f.cliente?(' · '+f.cliente):''),
+    lineas:[{referencia:f.referencia||'', descripcion:_materialBase(f.descripcion), cantidad:f.falta||0, unidad:'', falta_linea_id:f.linea_id}] });
 }
 async function quitarFaltaCompras(lid){
   if(!confirm('¿Quitar esta falta? Dejará de aparecer como pendiente de comprar.')) return;
@@ -3131,7 +3142,9 @@ function togglePrepArt(i){ _prepArtAbierto=(_prepArtAbierto===i)?-1:i; renderPre
 function enviarArtACompras(i){
   const g=_prepArtGrupos[i]; if(!g) return;
   const peds=[...new Set(g.pedidos.map(p=>p.pedido_num).filter(Boolean))].join(', ');
-  abrirFormCompra(null,{ pedidos_rel:peds, lineas:[{ referencia:g.referencia||'', descripcion:g.descripcion||'', cantidad:g.total, unidad:g.embalaje||'' }] });
+  abrirFormCompra(null,{ tipo_produccion:'granel', pedidos_rel:peds,
+    notas:'Para: '+(g.descripcion||g.referencia||''),
+    lineas:[{ referencia:g.referencia||'', descripcion:_materialBase(g.descripcion||g.referencia||''), cantidad:g.total, unidad:'' }] });
 }
 let _faltaSacosInfo=null;
 function _faltaInfo(lid){
