@@ -3140,7 +3140,7 @@ function _materialBase(desc){
 }
 function comprarFalta(lid){
   const f=comprasFaltas.find(x=>String(x.linea_id)===String(lid)); if(!f) return;
-  abrirFormCompra(null,{ tipo_produccion:'granel', pedidos_rel:f.pedido_num||'',
+  abrirFormCompra(null,{ tipo_produccion:(/\bsacos?\b/i.test(f.descripcion||'')?'saco':'bb'), pedidos_rel:f.pedido_num||'',
     notas:'Para: '+(f.descripcion||'')+(f.cliente?(' · '+f.cliente):''),
     lineas:[{referencia:f.referencia||'', descripcion:_materialBase(f.descripcion), cantidad:f.falta||0, unidad:'', falta_linea_id:f.linea_id}] });
 }
@@ -3191,7 +3191,7 @@ function togglePrepArt(i){ _prepArtAbierto=(_prepArtAbierto===i)?-1:i; renderPre
 function enviarArtACompras(i){
   const g=_prepArtGrupos[i]; if(!g) return;
   const peds=[...new Set(g.pedidos.map(p=>p.pedido_num).filter(Boolean))].join(', ');
-  abrirFormCompra(null,{ tipo_produccion:'granel', pedidos_rel:peds,
+  abrirFormCompra(null,{ tipo_produccion:(/\bsacos?\b/i.test(g.descripcion||g.referencia||'')?'saco':'bb'), pedidos_rel:peds,
     notas:'Para: '+(g.descripcion||g.referencia||''),
     lineas:[{ referencia:g.referencia||'', descripcion:_materialBase(g.descripcion||g.referencia||''), cantidad:g.total, unidad:'' }] });
 }
@@ -3271,11 +3271,12 @@ function abrirFormCompra(id, prefill){
           ${c.estado==='recibido'?'<option value="recibido" selected>Recibido</option>':''}
         </select></label>
         <div style="grid-column:1 / -1">
-          <div style="font-size:12px;color:var(--text2);margin-bottom:4px">Formato de la compra</div>
-          <div style="display:flex;gap:6px">
-            <button type="button" id="cf-tp-granel" onclick="setCompraTipo('granel')" class="btn-sec" style="flex:1;font-size:12px;padding:9px">Granel</button>
-            <button type="button" id="cf-tp-bb" onclick="setCompraTipo('bb')" class="btn-sec" style="flex:1;font-size:12px;padding:9px">Big Bag</button>
-            <button type="button" id="cf-tp-saco" onclick="setCompraTipo('saco')" class="btn-sec" style="flex:1;font-size:12px;padding:9px">Saco</button>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:4px">Compra a granel · ¿para qué fin?</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" id="cf-tp-bb" onclick="setCompraTipo('bb')" class="btn-sec" style="flex:1;min-width:70px;font-size:12px;padding:9px">Big Bag</button>
+            <button type="button" id="cf-tp-saco" onclick="setCompraTipo('saco')" class="btn-sec" style="flex:1;min-width:70px;font-size:12px;padding:9px">Sacos</button>
+            <button type="button" id="cf-tp-compartir" onclick="setCompraTipo('compartir')" class="btn-sec" style="flex:1;min-width:70px;font-size:12px;padding:9px">Compartir</button>
+            <button type="button" id="cf-tp-acopio" onclick="setCompraTipo('acopio')" class="btn-sec" style="flex:1;min-width:70px;font-size:12px;padding:9px">Acopio</button>
           </div>
           <div id="cf-tolva-wrap" style="margin-top:8px"></div>
         </div>
@@ -3296,33 +3297,32 @@ function abrirFormCompra(id, prefill){
   document.body.appendChild(ov);
   renderLineasCompraForm();
   renderPedrelBox(c.pedidos_rel);
-  setCompraTipo(c.tipo_produccion||'granel');   // formato de la compra (granel por defecto)
+  setCompraTipo(c.tipo_produccion||'bb');   // fin de la compra (a granel)
 }
-let _compraTipo='granel', _compraEdit={};
+let _compraTipo='bb', _compraEdit={};
 function setCompraTipo(t){
   _compraTipo=t;
-  ['granel','bb','saco'].forEach(x=>{ const b=document.getElementById('cf-tp-'+x); if(b) b.className=(x===t)?'btn-primary':'btn-sec'; });
+  ['bb','saco','compartir','acopio'].forEach(x=>{ const b=document.getElementById('cf-tp-'+x); if(b) b.className=(x===t)?'btn-primary':'btn-sec'; });
   const c=_compraEdit||{};
   let html='';
-  if(t==='granel'){
-    const silos=(silosData||[]).slice().sort((a,b)=>Number(a.numero)-Number(b.numero));
-    const curTolva=(document.getElementById('cf-tolva')?.value)||c.tolva||'';
-    const opt='<option value="">(elige tolva, opcional)</option>'+silos.map(s=>`<option value="${(s.nombre||'').replace(/"/g,'&quot;')}" ${curTolva===s.nombre?'selected':''}>Tolva ${s.numero}${s.nombre&&s.nombre!==('Tolva '+s.numero)?(' · '+(''+s.nombre).replace(/</g,'&lt;')):''}</option>`).join('');
-    html=`<label style="font-size:12px;color:var(--text2)">Tolva (granel, cualquiera)<select id="cf-tolva" onchange="autoCompra()" style="${_inp}">${opt}</select></label>`;
+  if(t==='acopio'){
+    html='<div style="font-size:12px;color:var(--text2);background:var(--surface);border:1px dashed var(--border2);border-radius:8px;padding:10px">Va a <b>acopio</b> (no entra a ninguna tolva).</div><input type="hidden" id="cf-tolva" value="">';
   } else {
-    const kgVal=(t==='bb'?c.kg_bb:c.kg_saco);
-    html=`<label style="font-size:12px;color:var(--text2)">Kg por ${t==='bb'?'big bag':'saco'} (opcional)<input id="cf-kgenv" type="number" min="0" value="${kgVal!=null?kgVal:''}" oninput="autoCompra()" style="${_inp}"></label>
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">Compra ya envasada (no entra a silo).</div>
-      <input type="hidden" id="cf-tolva" value="">`;
+    const allowed = t==='bb'?[1,2,3,4] : t==='saco'?[1,2] : [1];   // compartir -> tolva 1
+    const silos=(silosData||[]).filter(s=>allowed.includes(Number(s.numero))).sort((a,b)=>Number(a.numero)-Number(b.numero));
+    const curTolva=(document.getElementById('cf-tolva')?.value)||c.tolva||'';
+    const opt='<option value="">(elige tolva)</option>'+silos.map(s=>`<option value="${(s.nombre||'').replace(/"/g,'&quot;')}" ${curTolva===s.nombre?'selected':''}>Tolva ${s.numero}${s.nombre&&s.nombre!==('Tolva '+s.numero)?(' · '+(''+s.nombre).replace(/</g,'&lt;')):''}</option>`).join('');
+    html=`<label style="font-size:12px;color:var(--text2)">Tolva (${t==='bb'?'1·2·3·4':t==='saco'?'1·2':'1'})<select id="cf-tolva" onchange="autoCompra()" style="${_inp}">${opt}</select></label>`;
   }
   const wrap=document.getElementById('cf-tolva-wrap'); if(wrap) wrap.innerHTML=html;
   autoCompra();
 }
 function _formatoBadge(c){
   const t=c.tipo_produccion;
-  if(t==='bb') return ['#FBE7D2','#7A4E00','Big Bag'+(c.kg_bb?(' '+fmtN(c.kg_bb)+'kg'):'')];
-  if(t==='saco') return ['#E9F0F8','#0C447C','Saco'+(c.kg_saco?(' '+fmtN(c.kg_saco)+'kg'):'')];
-  if(t==='ambos') return ['#EDE7F6','#5B3FA8','BB + Sacos'];
+  if(t==='bb') return ['#FBE7D2','#7A4E00','Big Bag'];
+  if(t==='saco') return ['#E9F0F8','#0C447C','Sacos'];
+  if(t==='compartir'||t==='ambos') return ['#EDE7F6','#5B3FA8','Compartir'];
+  if(t==='acopio') return ['#EFE9DD','#6B5B36','Acopio'];
   return ['#E7F0E4','#2E5811','Granel'];
 }
 function _pedidosPendientes(){
@@ -3361,8 +3361,7 @@ function _gatherCompraBody(){
     hora:(document.getElementById('cf-hora')?.value||'')||null,
     tolva:(document.getElementById('cf-tolva')?.value||'').trim()||null, pedidos_rel:pedrel||null,
     tipo_produccion:_compraTipo||null,
-    kg_bb:_compraTipo==='bb'?(Number(document.getElementById('cf-kgenv')?.value)||null):null,
-    kg_saco:_compraTipo==='saco'?(Number(document.getElementById('cf-kgenv')?.value)||null):null,
+    kg_bb:null, kg_saco:null,
     transportista:(document.getElementById('cf-trans')?.value||'').trim()||null, transportista_tel:(document.getElementById('cf-tel')?.value||'').trim()||null,
     notas:(document.getElementById('cf-notas')?.value||'').trim()||null, estado,
     lineas:_compraLineasForm.filter(l=>(''+(l.descripcion||l.referencia||'')).trim()||Number(l.cantidad)>0) };
@@ -3932,10 +3931,10 @@ function comprasProximasHTML(){
   const ayer=_fechaISO(new Date(d0.getTime()-86400000)), manana=_fechaISO(new Date(d0.getTime()+86400000));
   const ventana=new Set([ayer,hoy,manana]);
   const diaLbl=f=> f===hoy?'Hoy':f===ayer?'Ayer':f===manana?'Mañana':fmtDate(f);
-  const cps=(comprasData||[]).filter(c=>c.estado!=='recibido' && c.fecha_prevista && ventana.has(_fechaISO(c.fecha_prevista)) && (!c.tipo_produccion||c.tipo_produccion==='granel'||c.tipo_produccion==='ambos'))
+  const cps=(comprasData||[]).filter(c=>c.estado!=='recibido' && c.fecha_prevista && ventana.has(_fechaISO(c.fecha_prevista)) && c.tipo_produccion!=='acopio')
     .sort((a,b)=>(''+(a.fecha_prevista||'')+(a.hora||'')).localeCompare(''+(b.fecha_prevista||'')+(b.hora||'')));
   if(!cps.length) return '';
-  const allowedOf=t=> (!t||t==='granel')?[0,1,2,3,4,5] : t==='bb'?[1,2,3,4]:t==='saco'?[0,1]:t==='ambos'?[1]:[0,1,2,3,4,5];
+  const allowedOf=t=> t==='bb'?[1,2,3,4] : t==='saco'?[1,2] : (t==='compartir'||t==='ambos')?[1] : [0,1,2,3,4,5];
   const chip=c=>{
     const t=(c.lineas||[]).map(l=>(l.descripcion||l.referencia||'')).filter(Boolean).join(', ');
     const allowed=allowedOf(c.tipo_produccion);
