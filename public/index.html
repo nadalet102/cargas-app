@@ -2492,6 +2492,7 @@ function cargaCard(p){
     ${filas||'<div style="padding:12px 16px;color:var(--text2);font-size:12px;border-top:1px solid var(--border)">Sin líneas.</div>'}
     <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
       <button onclick="volverAPreparado('${p.id}')" class="btn-sec" style="font-size:12px;padding:8px 12px"><i class="ti ti-arrow-back-up"></i> Volver a preparados</button>
+      <button onclick="marcarCargado('${p.id}')" class="btn-primary" style="font-size:12px;padding:8px 14px;background:${completo?'#0F6E56':'#5a6b7b'}"><i class="ti ti-checks"></i> Ya cargado</button>
     </div>
   </div>`;
 }
@@ -2508,6 +2509,14 @@ async function volverAPreparado(pid){
     await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:'preparado'});
     const p=pedidos.find(x=>String(x.id)===String(pid)); if(p)p.estado_prep='preparado';
     log('Devuelto a preparados','ok'); renderCargaList();
+  }catch(e){ log('Error','warn'); }
+}
+async function marcarCargado(pid){
+  if(!confirm('¿Marcar este pedido como cargado? Saldrá de la lista de carga.')) return;
+  try{
+    await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:'entregado'});
+    const p=pedidos.find(x=>String(x.id)===String(pid)); if(p)p.estado_prep='entregado';
+    log('Pedido cargado','ok'); renderCargaList();
   }catch(e){ log('Error','warn'); }
 }
 function renderPrepList(){
