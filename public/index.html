@@ -1614,6 +1614,7 @@ function openModal(type,id){
           <select id="f-estadoprep">
             <option value="sin_preparar" ${(!p||p.estado_prep==='sin_preparar')?'selected':''}>Sin preparar</option>
             <option value="preparado" ${p&&p.estado_prep==='preparado'?'selected':''}>Preparado</option>
+            <option value="carga" ${p&&p.estado_prep==='carga'?'selected':''}>En carga</option>
           </select>
         </div>
       </div>
@@ -3736,7 +3737,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 32;
+const NEEDS_API = 33;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
