@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 38;
+const API_VERSION = 39;
 
 const app = express();
 app.use(cors());
@@ -112,6 +112,7 @@ async function initDB() {
     `ALTER TABLE pedidos_cli ADD COLUMN IF NOT EXISTS nombre_carga TEXT`,
     `ALTER TABLE pedidos_cli ADD COLUMN IF NOT EXISTS cargado_at TIMESTAMPTZ`,
     `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS cargada BOOLEAN DEFAULT false`,
+    `ALTER TABLE compras ADD COLUMN IF NOT EXISTS hora TEXT`,
     `CREATE TABLE IF NOT EXISTS mant_items (
       id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, periodicidad TEXT DEFAULT 'semanal',
       orden INTEGER DEFAULT 0, activo BOOLEAN DEFAULT true
@@ -996,11 +997,11 @@ app.post('/api/compras', async (req, res) => {
   try {
     await client.query('BEGIN');
     const r = await client.query(
-      `INSERT INTO compras(proveedor,estado,fecha_prevista,tolva,transportista,transportista_tel,pedidos_rel,prioridad,notas,tipo_produccion,kg_bb,kg_saco)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      `INSERT INTO compras(proveedor,estado,fecha_prevista,tolva,transportista,transportista_tel,pedidos_rel,prioridad,notas,tipo_produccion,kg_bb,kg_saco,hora)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [c.proveedor||null, c.estado||'por_pedir', c.fecha_prevista||null, c.tolva||null,
        c.transportista||null, c.transportista_tel||null, c.pedidos_rel||null, c.prioridad||'normal', c.notas||null,
-       c.tipo_produccion||null, c.kg_bb!=null?Number(c.kg_bb):null, c.kg_saco!=null?Number(c.kg_saco):null]);
+       c.tipo_produccion||null, c.kg_bb!=null?Number(c.kg_bb):null, c.kg_saco!=null?Number(c.kg_saco):null, c.hora||null]);
     const compra = r.rows[0];
     for (const l of (c.lineas||[])) {
       await client.query(
@@ -1021,10 +1022,10 @@ app.put('/api/compras/:id', async (req, res) => {
     await client.query('BEGIN');
     await client.query(
       `UPDATE compras SET proveedor=$1,estado=$2,fecha_prevista=$3,tolva=$4,transportista=$5,
-       transportista_tel=$6,pedidos_rel=$7,prioridad=$8,notas=$9,tipo_produccion=$11,kg_bb=$12,kg_saco=$13 WHERE id=$10`,
+       transportista_tel=$6,pedidos_rel=$7,prioridad=$8,notas=$9,tipo_produccion=$11,kg_bb=$12,kg_saco=$13,hora=$14 WHERE id=$10`,
       [c.proveedor||null, c.estado||'por_pedir', c.fecha_prevista||null, c.tolva||null,
        c.transportista||null, c.transportista_tel||null, c.pedidos_rel||null, c.prioridad||'normal', c.notas||null, req.params.id,
-       c.tipo_produccion||null, c.kg_bb!=null?Number(c.kg_bb):null, c.kg_saco!=null?Number(c.kg_saco):null]);
+       c.tipo_produccion||null, c.kg_bb!=null?Number(c.kg_bb):null, c.kg_saco!=null?Number(c.kg_saco):null, c.hora||null]);
     await client.query('DELETE FROM compra_lineas WHERE compra_id=$1', [req.params.id]);
     for (const l of (c.lineas||[])) {
       await client.query(
