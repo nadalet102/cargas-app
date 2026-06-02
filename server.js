@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 39;
+const API_VERSION = 41;
 
 const app = express();
 app.use(cors());
@@ -113,6 +113,7 @@ async function initDB() {
     `ALTER TABLE pedidos_cli ADD COLUMN IF NOT EXISTS cargado_at TIMESTAMPTZ`,
     `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS cargada BOOLEAN DEFAULT false`,
     `ALTER TABLE compras ADD COLUMN IF NOT EXISTS hora TEXT`,
+    `ALTER TABLE clientes_auto ADD COLUMN IF NOT EXISTS min_bb INTEGER DEFAULT 1`,
     `CREATE TABLE IF NOT EXISTS mant_items (
       id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, periodicidad TEXT DEFAULT 'semanal',
       orden INTEGER DEFAULT 0, activo BOOLEAN DEFAULT true
@@ -1375,21 +1376,24 @@ app.post('/api/pedidos-cli', async (req, res) => {
     await client.query('BEGIN');
     const p = (await client.query('INSERT INTO pedidos_cli(cliente,notas) VALUES($1,$2) RETURNING *', [b.cliente||null, b.notas||null])).rows[0];
     // ¿cliente automático? (match tolerante: sin mayúsculas/acentos/puntuación/"S.L.", y por contención)
-    let auto = false;
+    let autoCli = null;
     if (b.cliente) {
       const norm = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
         .replace(/[.,;:_/\\-]/g,' ').replace(/\b(s\s*l|s\s*a|s\s*l\s*u|sociedad limitada|sociedad anonima|cb|scp)\b/g,' ')
         .replace(/\s+/g,' ').trim();
       const cn = norm(b.cliente);
-      const all = (await client.query('SELECT nombre FROM clientes_auto')).rows;
-      auto = all.some(r => { const an = norm(r.nombre); return an && cn && (cn.includes(an) || an.includes(cn)); });
+      const all = (await client.query('SELECT * FROM clientes_auto')).rows;
+      autoCli = all.find(r => { const an = norm(r.nombre); return an && cn && (cn.includes(an) || an.includes(cn)); }) || null;
     }
+    const auto = !!autoCli;
+    const minBB = autoCli ? (Number(autoCli.min_bb)||1) : 1;
     let autoTareas = 0;
     for (const l of (b.lineas||[])) {
       const lin = (await client.query('INSERT INTO pedidos_cli_lineas(pedido_id,descripcion,cantidad,unidad) VALUES($1,$2,$3,$4) RETURNING *',
         [p.id, l.descripcion||null, Number(l.cantidad)||0, l.unidad||null])).rows[0];
       const esPalet = /\b(palet|pallet|paleta)\b/i.test(l.descripcion||'');
-      if (auto && !esPalet) {
+      const esSaco = /\bsacos?\b/i.test((l.descripcion||'')+' '+(l.unidad||''));
+      if (auto && !esPalet && !esSaco && (Number(l.cantidad)||0) >= minBB) {
         // intentar emparejar material por nombre; si no, queda sin material
         let mp_id = null;
         if (l.descripcion) {
@@ -1486,6 +1490,14 @@ app.post('/api/clientes-auto', async (req, res) => {
 app.delete('/api/clientes-auto/:id', async (req, res) => {
   try { await pool.query('DELETE FROM clientes_auto WHERE id=$1', [req.params.id]); res.json({ok:true}); }
   catch(e) { res.status(500).json({error:e.message}); }
+});
+app.patch('/api/clientes-auto/:id', async (req, res) => {
+  const b = req.body || {};
+  try {
+    const r = await pool.query('UPDATE clientes_auto SET nombre=COALESCE($1,nombre), min_bb=COALESCE($2,min_bb) WHERE id=$3 RETURNING *',
+      [b.nombre!=null?(''+b.nombre).trim():null, b.min_bb!=null?Math.max(1,Number(b.min_bb)||1):null, req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
 });
 
 
