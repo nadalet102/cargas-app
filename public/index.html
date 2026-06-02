@@ -4090,7 +4090,7 @@ function vaciarSiloSinAnotar(id){
 let _ps=null;
 function abrirProducirSilo(id){
   const s=silosData.find(x=>String(x.id)===String(id)); if(!s) return;
-  _ps={ siloId:id, tipo:null, kgu:'', uni:'', step:1 };
+  _ps={ siloId:id, tipo:null, kgu:'', uni:'', step:1, vaciar:false };
   const ov=document.createElement('div'); ov.id='prodsilo-ov';
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10061;display:flex;align-items:flex-end;justify-content:center';
   ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
@@ -4145,23 +4145,28 @@ function psRender(){
   }
   const totalKg=(Number(_ps.kgu)||0)*(Number(_ps.uni)||0);
   p.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:18px">${prod} · ${tipo==='bb'?'Big Bag':'Sacos'}</b>${closeBtn}</div>
-    <button onclick="_ps.step=1;psRender()" class="btn-sec" style="font-size:12px;padding:6px 12px;margin:8px 0 16px"><i class="ti ti-arrow-left"></i> Cambiar</button>
+    <button onclick="_ps.step=1;psRender()" class="btn-sec" style="font-size:12px;padding:6px 12px;margin:8px 0 14px"><i class="ti ti-arrow-left"></i> Cambiar</button>
+    <div style="${lab}">¿Qué hago al registrar?</div>
+    <div style="display:flex;gap:8px;margin:6px 0 16px">
+      <button onclick="psVaciar(false)" style="flex:1;padding:13px 8px;border-radius:12px;border:2px solid ${!_ps.vaciar?'#0F6E56':'var(--border2)'};background:${!_ps.vaciar?'#EAF7F1':'var(--surface)'};color:${!_ps.vaciar?'#0B5A45':'var(--text2)'};font-weight:700;font-size:13px;cursor:pointer"><i class="ti ti-clipboard-check" style="font-size:20px;display:block;margin-bottom:3px"></i>Solo anotar</button>
+      <button onclick="psVaciar(true)" style="flex:1;padding:13px 8px;border-radius:12px;border:2px solid ${_ps.vaciar?'#A9461C':'var(--border2)'};background:${_ps.vaciar?'#FBE7DD':'var(--surface)'};color:${_ps.vaciar?'#8A3A16':'var(--text2)'};font-weight:700;font-size:13px;cursor:pointer"><i class="ti ti-droplet-off" style="font-size:20px;display:block;margin-bottom:3px"></i>Anotar y vaciar silo</button>
+    </div>
     ${mid}
     <div style="${lab};margin-top:18px">Unidades (${tipo==='bb'?'big bags':'sacos'})</div>
     <input type="number" inputmode="numeric" min="0" value="${_ps.uni}" placeholder="0" oninput="psSetUni(this.value)" style="${inpBig}">
     <div id="ps-total" style="font-size:13px;font-weight:700;color:#0F6E56;margin-top:12px;min-height:18px">${totalKg>0?('Saldrán '+fmtN(totalKg)+' kg del silo'):''}</div>
-    <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn-sec" onclick="confirmarProducir(false)" style="flex:1;font-size:14px;padding:14px;border-color:#0F6E56;color:#0F6E56">Registrar</button>
-      <button class="btn-primary" onclick="confirmarProducir(true)" style="flex:1;font-size:15px;padding:14px;background:#0F6E56">Registrar y vaciar</button>
-    </div>`;
+    ${_ps.vaciar?`<div style="background:#FBE7DD;border:1px solid #D9A07F;color:#8A3A16;border-radius:10px;padding:9px 12px;margin-top:12px;font-size:12.5px;font-weight:600"><i class="ti ti-alert-triangle"></i> Al registrar se vaciará el silo (saldo a 0).</div>`:''}
+    <button onclick="confirmarProducir()" style="width:100%;margin-top:16px;font-size:16px;padding:15px;border:none;border-radius:12px;color:#fff;font-weight:800;cursor:pointer;background:${_ps.vaciar?'#A9461C':'#0F6E56'}"><i class="ti ti-${_ps.vaciar?'droplet-off':'clipboard-check'}"></i> ${_ps.vaciar?'Registrar y VACIAR silo':'Registrar producción'}</button>`;
 }
 function psTipo(t){ _ps.tipo=t; if(t==='saco' && !_ps.kgu && _lastKgU.saco!=null) _ps.kgu=_lastKgU.saco; _ps.step=2; psRender(); }
 function psSize(k){ _ps.kgu=k; psRender(); }
 function psSetKgu(v){ _ps.kgu=v; psUpdateTotal(); }
 function psSetUni(v){ _ps.uni=v; psUpdateTotal(); }
 function psUpdateTotal(){ const el=document.getElementById('ps-total'); if(!el) return; const t=(Number(_ps.kgu)||0)*(Number(_ps.uni)||0); el.textContent=t>0?('Saldrán '+fmtN(t)+' kg del silo'):''; }
-async function confirmarProducir(vaciar){
+function psVaciar(v){ _ps.vaciar=v; psRender(); }
+async function confirmarProducir(){
   if(!_ps) return;
+  const vaciar=!!_ps.vaciar;
   const id=_ps.siloId, tipo=_ps.tipo, kgu=Number(_ps.kgu)||0, uni=Number(_ps.uni)||0;
   const hay = tipo && kgu>0 && uni>0;
   if(!hay && !vaciar){
