@@ -3738,7 +3738,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 36;
+const NEEDS_API = 38;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -5001,7 +5001,7 @@ function _pcalDia(porDia){ const it=porDia[_isoOf(pcalRef)]||[];
   return `<div class="list-card"><div style="padding:0 14px">${it.length?it.map(_pcalRow).join(''):'<div class="empty-state" style="padding:24px"><i class="ti ti-calendar-off"></i>Nada programado este día</div>'}</div></div>`; }
 
 // ── PEDIDOS DE CLIENTE (Fase 5) ───────────────────────────────────────────────
-let pedidosCliData=[], _pedLineas=[], _apTipo='saco';
+let pedidosCliData=[], _pedLineas=[], _apTipo='saco', pedCliTab='revision';
 async function cargarPedidosCli(){
   if(!matPrimas.length) await cargarMatPrimas(false);
   try{ pedidosCliData=await api('GET','/pedidos-cli'); }catch(e){ pedidosCliData=[]; }
@@ -5027,44 +5027,107 @@ async function importarPedidoCliPDF(input){
 }
 function renderPedidosCli(){
   const el=document.getElementById('pedidoscli-content'); if(!el) return;
-  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <div><div style="font-size:16px;font-weight:500">Pedidos de cliente</div><div style="font-size:12px;color:var(--text2)">Manda cada línea a producción (BB o sacos)</div></div>
+  const c={revision:0,preparado:0,carga:0,cargado:0};
+  pedidosCliData.forEach(p=>{ const e=p.estado||'revision'; if(c[e]!=null) c[e]++; });
+  const tb=(v,lbl,n,ic)=>`<button onclick="setPedCliTab('${v}')" style="flex:1;font-size:12px;padding:11px 4px;border:none;background:none;border-bottom:2.5px solid ${pedCliTab===v?'var(--blue)':'transparent'};color:${pedCliTab===v?'var(--blue-d)':'var(--text2)'};font-weight:${pedCliTab===v?'700':'500'};cursor:pointer;white-space:nowrap"><i class="ti ti-${ic}"></i> ${lbl}${n?` <span style="font-size:10px;background:var(--surface2);border-radius:8px;padding:0 6px">${n}</span>`:''}</button>`;
+  el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:16px;font-weight:500">Pedidos de cliente</div>
       <div style="display:flex;gap:6px">
         <button class="btn-sec" onclick="document.getElementById('pcli-pdf-file').click()" style="font-size:12px;padding:8px 12px"><i class="ti ti-file-import"></i> Importar PDF</button>
-        <button class="btn-primary" onclick="abrirFormPedidoCli()" style="font-size:12px;padding:8px 13px"><i class="ti ti-plus"></i> Nuevo pedido</button></div>
-      <input type="file" id="pcli-pdf-file" accept=".pdf" style="display:none" onchange="importarPedidoCliPDF(this)"></div>`;
-  html += pedidosCliData.length ? pedidosCliData.map(pedidoCliCard).join('') : '<div class="empty-state"><i class="ti ti-clipboard-list"></i>Sin pedidos de cliente</div>';
-  el.innerHTML=html;
+        <button class="btn-primary" onclick="abrirFormPedidoCli()" style="font-size:12px;padding:8px 13px"><i class="ti ti-plus"></i> Nuevo</button></div>
+      <input type="file" id="pcli-pdf-file" accept=".pdf" style="display:none" onchange="importarPedidoCliPDF(this)"></div>
+    <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:14px">${tb('revision','Revisión',c.revision,'eye-search')}${tb('preparado','Preparados',c.preparado,'checks')}${tb('carga','En carga',c.carga,'package-export')}${tb('historico','Histórico',c.cargado,'history')}</div>
+    <div id="pedcli-sub"></div>`;
+  renderPedCliSub();
 }
-function pedidoCliCard(p){
+function setPedCliTab(t){ pedCliTab=t; renderPedidosCli(); }
+function renderPedCliSub(){
+  const el=document.getElementById('pedcli-sub'); if(!el) return;
+  if(pedCliTab==='historico') return renderPedCliHistorico(el);
+  const lista=pedidosCliData.filter(p=>(p.estado||'revision')===pedCliTab);
+  if(!lista.length){ el.innerHTML='<div class="empty-state"><i class="ti ti-clipboard-list"></i>Nada aquí</div>'; return; }
+  el.innerHTML=lista.map(p=> pedCliTab==='carga'?pedCliCargaCard(p):pedidoCliCard(p,pedCliTab)).join('');
+}
+const _esPaletLin=l=>/pal[eé]/i.test(l.descripcion||'');
+function pedidoCliCard(p, modo){
   const lins=p.lineas||[];
-  const prep=lins.filter(l=>l.preparado).length;
-  const todoPrep = lins.length>0 && prep===lins.length;
+  const noPalet=lins.filter(l=>!_esPaletLin(l));
+  const prep=noPalet.filter(l=>l.preparado).length;
+  const todoPrep = noPalet.length>0 && prep===noPalet.length;
   const lineHtml=lins.map(l=>{
-    const eb = l.preparado ? ['#1E8C6E','#fff','PREPARADO']
+    const pal=_esPaletLin(l);
+    const eb = pal ? ['#EDE7DA','#6B5B36','PALET · no cuenta']
+      : l.preparado ? ['#1E8C6E','#fff','PREPARADO']
       : ({pendiente:['#FBE3E0','#9A2A1B','Pendiente'],en_produccion:['#E9F0F8','#0C447C','En producción'],hecho:['#EAF3EE','#0F6E56','Producido']}[l.estado]||['#eee','#555',l.estado]);
-    return `<div style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:10px;margin-bottom:6px;background:${l.preparado?'#EAF7F1':'var(--surface)'};border:1px solid ${l.preparado?'#1E8C6E':'var(--border)'}">
+    return `<div style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:10px;margin-bottom:6px;background:${l.preparado?'#EAF7F1':'var(--surface)'};border:1px solid ${l.preparado?'#1E8C6E':'var(--border)'};${pal?'opacity:.7':''}">
        <div style="flex:1;min-width:0">
          <div style="font-size:18px;font-weight:800;line-height:1.1">${fmtN(l.cantidad)}${l.unidad?(' <span style="font-size:12px;font-weight:600;color:var(--text2)">'+(''+l.unidad).replace(/</g,'&lt;')+'</span>'):''}</div>
          <div style="font-size:13px;color:var(--text);margin-top:2px">${(l.descripcion||'').replace(/</g,'&lt;')||'<span style="color:var(--text3)">—</span>'}</div>
        </div>
        <span style="font-size:11px;font-weight:800;background:${eb[0]};color:${eb[1]};border-radius:8px;padding:5px 10px;white-space:nowrap">${eb[2]}</span>
-       <button onclick="toggleLineaPreparada('${l.id}',${l.preparado?'false':'true'})" style="border:1px solid ${l.preparado?'#E8A599':'#1E8C6E'};background:${l.preparado?'#fff':'#1E8C6E'};color:${l.preparado?'#9A2A1B':'#fff'};border-radius:8px;padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">${l.preparado?'Quitar':'Preparar'}</button>
-       ${(!l.preparado && l.estado==='pendiente')?`<button onclick="abrirAProduccion('${l.id}')" class="btn-sec" style="font-size:10px;padding:6px 8px;white-space:nowrap">A prod.</button>`:''}</div>`;
+       ${pal?'':`<button onclick="toggleLineaPreparada('${l.id}',${l.preparado?'false':'true'})" style="border:1px solid ${l.preparado?'#E8A599':'#1E8C6E'};background:${l.preparado?'#fff':'#1E8C6E'};color:${l.preparado?'#9A2A1B':'#fff'};border-radius:8px;padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">${l.preparado?'Quitar':'Preparar'}</button>
+       ${(!l.preparado && l.estado==='pendiente')?`<button onclick="abrirAProduccion('${l.id}')" class="btn-sec" style="font-size:10px;padding:6px 8px;white-space:nowrap">A prod.</button>`:''}`}</div>`;
   }).join('');
+  let footer='';
+  if(modo==='preparado'){
+    footer=`<button onclick="pedCliEstado('${p.id}','revision')" class="btn-sec" style="font-size:12px;padding:9px 12px"><i class="ti ti-arrow-back-up"></i> A revisión</button>
+       <button onclick="enviarPedCliACarga('${p.id}')" class="btn-primary" style="font-size:12px;padding:9px 13px;background:#185FA5"><i class="ti ti-package-export"></i> Enviar a carga</button>`;
+  } else {
+    footer=`<button onclick="marcarPedidoPreparado('${p.id}',${todoPrep?'false':'true'})" class="btn-primary" style="font-size:12px;padding:9px 13px;background:${todoPrep?'#9A2A1B':'#0F6E56'}"><i class="ti ti-${todoPrep?'x':'checks'}"></i> ${todoPrep?'Quitar preparado':'Marcar todo preparado'}</button>`;
+  }
+  footer+=`<button onclick="document.getElementById('pcli-reimport-${p.id}').click()" class="btn-sec" style="font-size:12px;padding:9px 12px"><i class="ti ti-file-import"></i> PDF</button>
+     <input type="file" id="pcli-reimport-${p.id}" accept=".pdf" style="display:none" onchange="reimportarPedidoCli('${p.id}',this)">
+     <button onclick="abrirFormPedidoCli('${p.id}')" class="btn-sec" style="font-size:12px;padding:9px 12px"><i class="ti ti-edit"></i></button>
+     <button onclick="borrarPedidoCli('${p.id}')" class="btn-sec" style="font-size:12px;padding:9px 12px;color:#9A2A1B"><i class="ti ti-trash"></i></button>`;
   return `<div class="list-card" style="margin-bottom:14px;border:2px solid ${todoPrep?'#1E8C6E':'var(--border)'}">
      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;${todoPrep?'background:#EAF7F1;':''}border-bottom:1px solid var(--border)">
        <span style="font-size:17px;font-weight:800">${(p.cliente||'(sin cliente)').replace(/</g,'&lt;')}</span>
-       <span style="font-size:12px;font-weight:800;${todoPrep?'color:#0F6E56':'color:var(--text2)'}">${todoPrep?'✓ PREPARADO':(prep+'/'+lins.length+' preparadas')}</span></div>
+       <span style="font-size:12px;font-weight:800;${todoPrep?'color:#0F6E56':'color:var(--text2)'}">${todoPrep?'✓ PREPARADO':(prep+'/'+noPalet.length+' preparadas')}</span></div>
      <div style="padding:10px 12px">${lineHtml||'<div style="font-size:12px;color:var(--text3);padding:6px">Sin líneas</div>'}</div>
      ${p.notas?`<div style="padding:0 14px 8px;font-size:12px;color:var(--text2)">${p.notas.replace(/</g,'&lt;')}</div>`:''}
-     <div style="display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--border)">
-       <button onclick="marcarPedidoPreparado('${p.id}',${todoPrep?'false':'true'})" class="btn-primary" style="font-size:12px;padding:9px 13px;background:${todoPrep?'#9A2A1B':'#0F6E56'}"><i class="ti ti-${todoPrep?'x':'checks'}"></i> ${todoPrep?'Quitar preparado':'Marcar todo preparado'}</button>
-       <button onclick="document.getElementById('pcli-reimport-${p.id}').click()" class="btn-sec" style="font-size:12px;padding:9px 12px"><i class="ti ti-file-import"></i> Actualizar PDF</button>
-       <input type="file" id="pcli-reimport-${p.id}" accept=".pdf" style="display:none" onchange="reimportarPedidoCli('${p.id}',this)">
-       <button onclick="abrirFormPedidoCli('${p.id}')" class="btn-sec" style="font-size:12px;padding:9px 12px"><i class="ti ti-edit"></i> Editar</button>
-       <button onclick="borrarPedidoCli('${p.id}')" class="btn-sec" style="font-size:12px;padding:9px 12px;color:#9A2A1B"><i class="ti ti-trash"></i></button></div></div>`;
+     <div style="display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--border)">${footer}</div></div>`;
 }
+function pedCliCargaCard(p){
+  const lins=p.lineas||[];
+  const carg=lins.filter(l=>l.cargada).length;
+  const todoCarg = lins.length>0 && carg===lins.length;
+  const lineHtml=lins.map(l=>`<div onclick="toggleLineaCargadaCli('${l.id}',${l.cargada?'false':'true'})" style="display:flex;align-items:center;gap:10px;padding:12px 13px;border-radius:10px;margin-bottom:6px;background:${l.cargada?'#EAF7F1':'var(--surface)'};border:1px solid ${l.cargada?'#1E8C6E':'var(--border)'};cursor:pointer">
+     <input type="checkbox" ${l.cargada?'checked':''} onclick="event.stopPropagation()" onchange="toggleLineaCargadaCli('${l.id}',this.checked)" style="width:24px;height:24px;cursor:pointer;flex:0 0 auto">
+     <div style="flex:1;min-width:0;${l.cargada?'opacity:.6;text-decoration:line-through':''}">
+       <div style="font-size:17px;font-weight:800;line-height:1.1">${fmtN(l.cantidad)}${l.unidad?(' <span style="font-size:12px;font-weight:600;color:var(--text2)">'+(''+l.unidad).replace(/</g,'&lt;')+'</span>'):''}</div>
+       <div style="font-size:13px;color:var(--text);margin-top:2px">${(l.descripcion||'').replace(/</g,'&lt;')||'—'}</div></div></div>`).join('');
+  return `<div class="list-card" style="margin-bottom:14px;border:2px solid ${todoCarg?'#1E8C6E':'#185FA5'}">
+     <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border)">
+       <div><div style="font-size:17px;font-weight:800">${(p.cliente||'(sin cliente)').replace(/</g,'&lt;')}</div>${p.nombre_carga?`<div style="font-size:12px;color:#185FA5;font-weight:600"><i class="ti ti-tag"></i> ${(''+p.nombre_carga).replace(/</g,'&lt;')}</div>`:''}</div>
+       <span style="font-size:13px;font-weight:800;color:${todoCarg?'#0F6E56':'var(--text2)'}">${carg}/${lins.length} cargadas</span></div>
+     <div style="padding:10px 12px">${lineHtml||'<div style="font-size:12px;color:var(--text3);padding:6px">Sin líneas</div>'}</div>
+     <div style="display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--border)">
+       <button onclick="pedCliEstado('${p.id}','preparado')" class="btn-sec" style="font-size:12px;padding:9px 12px"><i class="ti ti-arrow-back-up"></i> A preparados</button>
+       <button onclick="todoCargadoCli('${p.id}')" class="btn-primary" style="font-size:13px;padding:9px 14px;background:#0F6E56"><i class="ti ti-checks"></i> Todo cargado</button></div></div>`;
+}
+function renderPedCliHistorico(el){
+  const hist=pedidosCliData.filter(p=>(p.estado||'')==='cargado');
+  if(!hist.length){ el.innerHTML='<div class="empty-state"><i class="ti ti-history"></i>Aún no hay cargas en el histórico</div>'; return; }
+  const dias={};
+  hist.forEach(p=>{ const d=p.cargado_at?_fechaISO(p.cargado_at):'—'; (dias[d]=dias[d]||[]).push(p); });
+  const orden=Object.keys(dias).sort((a,b)=>b.localeCompare(a));
+  el.innerHTML=orden.map(d=>{
+    const ps=dias[d];
+    const cards=ps.map(p=>{
+      const lins=p.lineas||[];
+      const tot=lins.reduce((s,l)=>s+(Number(l.cantidad)||0),0);
+      const detalle=lins.map(l=>`<div style="font-size:12px;color:var(--text2);display:flex;justify-content:space-between;padding:2px 0"><span>${(l.descripcion||'—').replace(/</g,'&lt;')}</span><span>${fmtN(l.cantidad)}${l.unidad?(' '+(''+l.unidad).replace(/</g,'&lt;')):''}</span></div>`).join('');
+      return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+         <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span style="font-size:14px;font-weight:700">${(p.cliente||'(sin cliente)').replace(/</g,'&lt;')}</span>${p.nombre_carga?`<span style="font-size:11px;color:#185FA5;font-weight:700"><i class="ti ti-tag"></i> ${(''+p.nombre_carga).replace(/</g,'&lt;')}</span>`:''}</div>
+         <div style="font-size:11px;color:var(--text3);margin:3px 0 6px">${lins.length} línea(s) · ${fmtN(tot)} uds</div>${detalle}</div>`;
+    }).join('');
+    return `<div style="margin-bottom:16px"><div style="font-size:14px;font-weight:800;margin-bottom:8px">${d==='—'?'Sin fecha':fmtDate(d)} <span style="font-size:12px;color:var(--text2);font-weight:500">· ${ps.length} carga(s)</span></div>${cards}</div>`;
+  }).join('');
+}
+async function pedCliEstado(id, estado, nombre){ try{ await api('PATCH','/pedidos-cli/'+id+'/estado',{estado, nombre_carga:nombre}); await cargarPedidosCli(); }catch(e){ log('Error','warn'); } }
+function enviarPedCliACarga(id){ const n=(prompt('Nombre para esta carga (opcional):')||'').trim(); pedCliEstado(id,'carga',n||null); }
+async function toggleLineaCargadaCli(id,val){ try{ await api('PATCH','/pedidos-cli/lineas/'+id+'/cargada',{cargada:val}); await cargarPedidosCli(); }catch(e){ log('Error','warn'); } }
+function todoCargadoCli(id){ if(!confirm('¿Marcar como todo cargado y enviar al histórico?')) return; pedCliEstado(id,'cargado',null); }
 async function toggleLineaPreparada(id,val){ try{ await api('PATCH','/pedidos-cli/lineas/'+id+'/preparado',{preparado:val}); await cargarPedidosCli(); }catch(e){ log('Error','warn'); } }
 async function reimportarPedidoCli(id, input){
   const file=input.files[0]; if(!file) return;
