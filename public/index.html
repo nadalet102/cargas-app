@@ -4540,6 +4540,7 @@ async function cargarViajes(){
   try{ silosData=await api('GET','/silos'); }catch(e){}
   try{ viajesData=await api('GET','/viajes'); }catch(e){ viajesData=[]; }
   renderCamion();
+  cargarMantData().then(()=>renderCamion());   // para el aviso de la pestaña Mantenimiento
 }
 let camionTab='viajes';
 function setCamionFiltro(v){ camionFiltro=v; renderCamion(); }
@@ -4547,7 +4548,7 @@ function setCamionTab(t){ camionTab=t; renderCamion(); }
 function renderCamion(){
   const el=document.getElementById('camion-content'); if(!el) return;
   const tb=(v,lbl,ic)=>`<button onclick="setCamionTab('${v}')" style="flex:1;font-size:12.5px;padding:12px 6px;border:none;background:none;border-bottom:2.5px solid ${camionTab===v?'var(--blue)':'transparent'};color:${camionTab===v?'var(--blue-d)':'var(--text2)'};font-weight:${camionTab===v?'700':'500'};cursor:pointer;white-space:nowrap"><i class="ti ti-${ic}"></i> ${lbl}</button>`;
-  el.innerHTML=`<div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:14px">${tb('viajes','Viajes','truck')}${tb('historial','Historial','calendar-stats')}${tb('mant','Mantenimiento','tool')}</div><div id="camion-sub"></div>`;
+  el.innerHTML=`<div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:14px">${tb('viajes','Viajes','truck')}${tb('historial','Historial','calendar-stats')}${tb('mant','Mantenimiento'+((mantItems&&mantOverdue().length)?` <span style="background:#A32D2D;color:#fff;border-radius:10px;font-size:9px;padding:1px 6px;margin-left:1px;font-weight:700">${mantOverdue().length}</span>`:''),'tool')}</div><div id="camion-sub"></div>`;
   if(camionTab==='viajes') renderCamionViajes();
   else if(camionTab==='historial') renderCamionHistorial();
   else renderCamionMant();
@@ -4639,11 +4640,36 @@ async function exportarHistorialCamion(){
 }
 // ── Mantenimiento ──
 let mantItems=null, mantRegs=[], mantReps=[], mantVehiculo='Camión';
-async function cargarMant(){
-  try{ mantItems=await api('GET','/mant/items'); }catch(e){ mantItems=[]; }
+async function cargarMantData(){
+  try{ mantItems=await api('GET','/mant/items'); }catch(e){ mantItems=mantItems||[]; }
   try{ mantRegs=await api('GET','/mant/registros'); }catch(e){ mantRegs=[]; }
   try{ mantReps=await api('GET','/mant/reparaciones'); }catch(e){ mantReps=[]; }
-  renderCamionMant();
+}
+async function cargarMant(){ await cargarMantData(); renderCamionMant(); }
+function mantCurHoras(){
+  const hs=[...mantRegs,...mantReps].filter(r=>r.vehiculo===mantVehiculo && r.horas!=null).map(r=>Number(r.horas));
+  return hs.length?Math.max(...hs):null;
+}
+function mantLast(itemId){
+  const rs=mantRegs.filter(r=>r.vehiculo===mantVehiculo && String(r.item_id)===String(itemId));
+  return rs.length?rs[0]:null; // vienen ordenados por fecha desc
+}
+function _mantEstado(item,last,curHoras){
+  if(!last) return {due:true,txt:'Nunca registrada'};
+  const dias=Math.floor((Date.now()-new Date(_fechaISO(last.fecha)+'T00:00:00').getTime())/86400000);
+  const diasTxt='Hace '+dias+' día'+(dias===1?'':'s');
+  if(item.periodicidad==='semanal') return {due:dias>=7,txt:diasTxt};
+  if(item.periodicidad==='mensual') return {due:dias>=30,txt:diasTxt};
+  if(item.periodicidad==='250h'){
+    if(last.horas!=null && curHoras!=null){ const dh=curHoras-Number(last.horas); return {due:dh>=250,txt:fmtN(dh)+' h desde la última'}; }
+    return {due:false,txt:diasTxt};
+  }
+  return {due:false,txt:diasTxt};
+}
+function mantOverdue(){
+  if(!mantItems) return [];
+  const ch=mantCurHoras();
+  return mantItems.filter(i=>_mantEstado(i,mantLast(i.id),ch).due);
 }
 function setMantVeh(v){ mantVehiculo=v; renderCamionMant(); }
 function nuevoVehMant(){ const v=prompt('Nombre del vehículo o máquina:'); if(v&&v.trim()){ mantVehiculo=v.trim(); renderCamionMant(); } }
@@ -4653,30 +4679,49 @@ function renderCamionMant(){
   const vehs=[...new Set(['Camión',...mantRegs.map(r=>r.vehiculo),...mantReps.map(r=>r.vehiculo)].filter(Boolean))];
   if(!vehs.includes(mantVehiculo)) mantVehiculo=vehs[0]||'Camión';
   const vbtns=vehs.map(v=>`<button onclick="setMantVeh('${(''+v).replace(/'/g,"\\'")}')" style="font-size:12px;padding:7px 12px;border-radius:8px;border:1px solid ${v===mantVehiculo?'var(--blue)':'var(--border2)'};background:${v===mantVehiculo?'var(--blue)':'var(--surface)'};color:${v===mantVehiculo?'#fff':'var(--text)'};cursor:pointer">${(''+v).replace(/</g,'&lt;')}</button>`).join('');
+  const curHoras=mantCurHoras();
   const peri=[['semanal','Semanal','#F4D35E','#6E5200'],['mensual','Mensual','#9BD17C','#2E5811'],['250h','Cada 250 horas','#7FB3E8','#0C447C']];
-  const regsVeh=mantRegs.filter(r=>r.vehiculo===mantVehiculo);
-  const lastOf=id=>{ const rs=regsVeh.filter(r=>String(r.item_id)===String(id)); return rs.length?rs[0]:null; };
+  const vencidas=mantOverdue();
   let html=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px"><span style="font-size:12px;color:var(--text2)">Vehículo:</span>${vbtns}<button onclick="nuevoVehMant()" style="font-size:12px;padding:7px 10px;border-radius:8px;border:1px dashed var(--border2);background:var(--surface);color:var(--text2);cursor:pointer"><i class="ti ti-plus"></i></button></div>`;
+  if(vencidas.length){
+    html+=`<div style="background:#FCEBEB;border:1px solid #E6A6A6;border-radius:10px;padding:11px 14px;margin-bottom:14px">
+       <div style="font-size:13px;font-weight:700;color:#9A2A1B"><i class="ti ti-alert-triangle"></i> ${vencidas.length} revisión(es) pendiente(s)</div>
+       <div style="font-size:12px;color:#7A1F1F;margin-top:4px">${vencidas.map(i=>i.nombre.replace(/</g,'&lt;')).join(' · ')}</div></div>`;
+  }
   html+=`<div style="font-size:15px;font-weight:700;margin-bottom:6px">Revisiones</div>`;
   peri.forEach(([key,lbl,col,txt])=>{
     const its=mantItems.filter(i=>i.periodicidad===key);
     if(!its.length) return;
     html+=`<div style="font-size:11px;font-weight:700;color:${txt};background:${col};display:inline-block;border-radius:6px;padding:3px 10px;margin:8px 0 6px">${lbl}</div>`;
-    html+=its.map(i=>{ const last=lastOf(i.id);
-      return `<div class="list-card" style="margin-bottom:8px;border-left:4px solid ${col}">
+    html+=its.map(i=>{ const last=mantLast(i.id); const est=_mantEstado(i,last,curHoras);
+      const badge = est.due
+        ? '<span style="font-size:10px;font-weight:700;background:#FCEBEB;color:#9A2A1B;border-radius:6px;padding:2px 8px;white-space:nowrap"><i class="ti ti-alert-triangle" style="font-size:10px"></i> Toca</span>'
+        : '<span style="font-size:10px;font-weight:700;background:#EAF3DE;color:#27500A;border-radius:6px;padding:2px 8px;white-space:nowrap"><i class="ti ti-check" style="font-size:10px"></i> Al día</span>';
+      return `<div class="list-card" style="margin-bottom:8px;border-left:4px solid ${est.due?'#A32D2D':col}">
          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 14px">
-           <div style="min-width:0"><div style="font-size:15px;font-weight:600">${i.nombre.replace(/</g,'&lt;')}</div>
-             <div style="font-size:11px;color:var(--text2)">${last?('Última: '+fmtDate(last.fecha)+(last.km!=null?(' · '+fmtN(last.km)+' km'):'')+(last.horas!=null?(' · '+fmtN(last.horas)+' h'):'')):'Nunca registrada'}</div></div>
+           <div style="min-width:0"><div style="font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${i.nombre.replace(/</g,'&lt;')} ${badge}</div>
+             <div style="font-size:11px;color:var(--text2);margin-top:2px">${last?('Última: '+fmtDate(last.fecha)+(last.km!=null?(' · '+fmtN(last.km)+' km'):'')+(last.horas!=null?(' · '+fmtN(last.horas)+' h'):'')+' · '+est.txt):est.txt}</div></div>
            <button onclick="marcarMant('${i.id}')" class="btn-primary" style="font-size:13px;padding:10px 14px;white-space:nowrap;background:#0F6E56"><i class="ti ti-check"></i> Hecho</button>
          </div></div>`;
     }).join('');
   });
+  // reparaciones
   const repsVeh=mantReps.filter(r=>r.vehiculo===mantVehiculo);
   html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin:20px 0 8px"><div style="font-size:15px;font-weight:700">Reparaciones</div><button onclick="nuevaReparacion()" class="btn-sec" style="font-size:12px;padding:7px 11px"><i class="ti ti-plus"></i> Añadir</button></div>`;
   html+= repsVeh.length? repsVeh.map(r=>`<div class="list-card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:10px;padding:11px 14px">
        <div style="min-width:0"><div style="font-size:14px;font-weight:600">${(r.concepto||'—').replace(/</g,'&lt;')}</div><div style="font-size:11px;color:var(--text2)">${fmtDate(r.fecha)}${r.km!=null?(' · '+fmtN(r.km)+' km'):''}${r.horas!=null?(' · '+fmtN(r.horas)+' h'):''}</div></div>
        <button onclick="borrarReparacion('${r.id}')" style="background:none;border:none;color:#9A2A1B;cursor:pointer;font-size:16px"><i class="ti ti-trash"></i></button></div></div>`).join('') : '<div style="font-size:12px;color:var(--text2);padding:6px 2px">Sin reparaciones registradas.</div>';
+  // registro / historial de revisiones
+  const regsVeh=mantRegs.filter(r=>r.vehiculo===mantVehiculo);
+  html+=`<div style="font-size:15px;font-weight:700;margin:20px 0 8px">Registro de revisiones</div>`;
+  html+= regsVeh.length? regsVeh.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border)">
+       <div style="min-width:0"><div style="font-size:13px;font-weight:600">${(r.item_nombre||'—').replace(/</g,'&lt;')}</div><div style="font-size:11px;color:var(--text2)">${fmtDate(r.fecha)}${r.km!=null?(' · '+fmtN(r.km)+' km'):''}${r.horas!=null?(' · '+fmtN(r.horas)+' h'):''}</div></div>
+       <button onclick="borrarRegistroMant('${r.id}')" style="background:none;border:none;color:#9A2A1B;cursor:pointer;font-size:15px"><i class="ti ti-trash"></i></button></div>`).join('') : '<div style="font-size:12px;color:var(--text2);padding:6px 2px">Aún no hay revisiones registradas.</div>';
   el.innerHTML=html;
+}
+async function borrarRegistroMant(id){
+  if(!confirm('¿Borrar este registro de revisión?')) return;
+  try{ await api('DELETE','/mant/registros/'+id); await cargarMant(); }catch(e){ log('Error','warn'); }
 }
 function marcarMant(itemId){
   const it=mantItems.find(i=>String(i.id)===String(itemId)); if(!it) return;
