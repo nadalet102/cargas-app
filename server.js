@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 31;
+const API_VERSION = 32;
 
 const app = express();
 app.use(cors());
@@ -107,6 +107,7 @@ async function initDB() {
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS embalaje TEXT`,
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS kgs NUMERIC`,
     `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS falta NUMERIC DEFAULT 0`,
+    `ALTER TABLE pedido_lineas ADD COLUMN IF NOT EXISTS cargada BOOLEAN DEFAULT false`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS origen_linea_id INTEGER`,
     `ALTER TABLE viajes ADD COLUMN IF NOT EXISTS hora TEXT`,
     `ALTER TABLE pedidos_cli_lineas ADD COLUMN IF NOT EXISTS preparado BOOLEAN DEFAULT false`,
@@ -465,6 +466,16 @@ app.patch('/api/pedidos/:id/prep', async (req, res) => {
   const { estado_prep } = req.body;
   try {
     const r = await pool.query('UPDATE pedidos SET estado_prep=$1 WHERE id=$2 RETURNING *',[estado_prep,req.params.id]);
+    // al entrar en fase de carga, las líneas empiezan sin tachar (checklist de carga nuevo)
+    if (estado_prep === 'carga') {
+      await pool.query('UPDATE pedido_lineas SET cargada=false WHERE pedido_id=$1',[req.params.id]);
+    }
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+app.patch('/api/lineas/:id/cargada', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE pedido_lineas SET cargada=$1 WHERE id=$2 RETURNING *',[!!req.body.cargada,req.params.id]);
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
