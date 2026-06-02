@@ -862,7 +862,7 @@ function renderBCList(){
   }
   el.innerHTML=fp.map(p=>{
     const isPrep=_esPrep(p);
-    const cardClass=`pcard prep-${p.estado_prep}${p.prio==='urgente'?' urgente':p.prio==='baja'?' baja':''}`;
+    const cardClass=`pcard prep-${isPrep?'preparado':(p.estado_prep||'sin_preparar')}${p.prio==='urgente'?' urgente':p.prio==='baja'?' baja':''}`;
     return `<div class="${cardClass}" draggable="true" id="card-${p.id}"
       ondragstart="onDragStart(event,'${p.id}')" ondragend="onDragEnd()">
       <div class="pc-top">
