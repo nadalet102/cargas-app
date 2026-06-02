@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 34;
+const API_VERSION = 36;
 
 const app = express();
 app.use(cors());
@@ -214,20 +214,6 @@ async function initDB() {
       notas TEXT,
       hora TEXT,
       hecho_at TIMESTAMPTZ,
-      creado TIMESTAMPTZ DEFAULT now()
-    )`,
-    `CREATE TABLE IF NOT EXISTS compras_mp (
-      id SERIAL PRIMARY KEY,
-      mp_id INTEGER,
-      proveedor TEXT,
-      kg NUMERIC DEFAULT 0,
-      estado TEXT DEFAULT 'pendiente',
-      fecha DATE,
-      hora TEXT,
-      silo_id INTEGER,
-      kg_recibido NUMERIC,
-      recibido_at TIMESTAMPTZ,
-      notas TEXT,
       creado TIMESTAMPTZ DEFAULT now()
     )`,
   ];
@@ -750,7 +736,7 @@ app.patch('/api/pedidos/:id/comercial', async (req, res) => {
 app.get('/api/health', (req, res) => res.json({ ok: true, version: API_VERSION }));
 
 // ── COPIA DE SEGURIDAD ────────────────────────────────────────────────────────
-const BACKUP_TABLES = ['bc_config','transportistas','categorias','preparadores','comerciales','materias_primas','silos','producciones','viajes','compras_mp','compras','cargas','pedidos','pedido_lineas','compra_lineas','pedidos_cli','pedidos_cli_lineas','clientes_auto','bc_inbox','mant_items','mant_registros','mant_reparaciones'];
+const BACKUP_TABLES = ['bc_config','transportistas','categorias','preparadores','comerciales','materias_primas','silos','producciones','viajes','compras','cargas','pedidos','pedido_lineas','compra_lineas','pedidos_cli','pedidos_cli_lineas','clientes_auto','bc_inbox','mant_items','mant_registros','mant_reparaciones'];
 
 // Construye el volcado completo de la base de datos
 async function _dumpDatos() {
@@ -1104,7 +1090,14 @@ app.get('/api/materias-primas', async (req, res) => {
 });
 app.post('/api/materias-primas', async (req, res) => {
   try {
-    const r = await pool.query('INSERT INTO materias_primas(nombre) VALUES($1) RETURNING *', [(req.body.nombre||'').trim()]);
+    const nombre = (req.body.nombre||'').trim();
+    if (!nombre) return res.status(400).json({error:'nombre vacío'});
+    // si ya existe uno igual (ignorando mayúsculas y espacios), reutilizarlo en vez de duplicar
+    const ya = await pool.query(
+      "SELECT * FROM materias_primas WHERE regexp_replace(lower(trim(nombre)),'\\s+',' ','g') = regexp_replace(lower(trim($1)),'\\s+',' ','g') LIMIT 1",
+      [nombre]);
+    if (ya.rows.length) return res.json(ya.rows[0]);
+    const r = await pool.query('INSERT INTO materias_primas(nombre) VALUES($1) RETURNING *', [nombre]);
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
@@ -1359,67 +1352,6 @@ app.patch('/api/viajes/:id/completar', async (req, res) => {
 });
 app.delete('/api/viajes/:id', async (req, res) => {
   try { await pool.query('DELETE FROM viajes WHERE id=$1', [req.params.id]); res.json({ok:true}); }
-  catch(e) { res.status(500).json({error:e.message}); }
-});
-
-// ── COMPRAS DE MATERIA PRIMA ──────────────────────────────────────────────────
-app.get('/api/compras-mp', async (req, res) => {
-  try {
-    const r = await pool.query(
-      `SELECT c.*, mp.nombre AS material, s.nombre AS silo_nombre
-       FROM compras_mp c
-       LEFT JOIN materias_primas mp ON mp.id = c.mp_id
-       LEFT JOIN silos s ON s.id = c.silo_id
-       ORDER BY (c.estado='recibido'), c.fecha NULLS LAST, c.hora NULLS LAST, c.creado DESC`);
-    res.json(r.rows);
-  } catch(e) { res.status(500).json({error:e.message}); }
-});
-function estadoCompraMp(b){ if (b.estado === 'recibido') return 'recibido'; return b.fecha ? 'programado' : 'pendiente'; }
-app.post('/api/compras-mp', async (req, res) => {
-  const b = req.body || {};
-  try {
-    const r = await pool.query(
-      `INSERT INTO compras_mp(mp_id,proveedor,kg,fecha,hora,silo_id,notas,estado)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [b.mp_id||null, b.proveedor||null, Number(b.kg)||0, b.fecha||null, b.hora||null, b.silo_id||null, b.notas||null, estadoCompraMp(b)]);
-    res.json(r.rows[0]);
-  } catch(e) { res.status(500).json({error:e.message}); }
-});
-app.put('/api/compras-mp/:id', async (req, res) => {
-  const b = req.body || {};
-  try {
-    const cur = (await pool.query('SELECT estado FROM compras_mp WHERE id=$1', [req.params.id])).rows[0] || {};
-    const est = cur.estado === 'recibido' ? 'recibido' : estadoCompraMp(b);
-    const r = await pool.query(
-      `UPDATE compras_mp SET mp_id=$1,proveedor=$2,kg=$3,fecha=$4,hora=$5,silo_id=$6,notas=$7,estado=$8 WHERE id=$9 RETURNING *`,
-      [b.mp_id||null, b.proveedor||null, Number(b.kg)||0, b.fecha||null, b.hora||null, b.silo_id||null, b.notas||null, est, req.params.id]);
-    res.json(r.rows[0]);
-  } catch(e) { res.status(500).json({error:e.message}); }
-});
-// recibir: marca recibido + cuenta kg; opcionalmente añade los kg al silo asignado
-app.patch('/api/compras-mp/:id/recibir', async (req, res) => {
-  const { kg_recibido, fill_silo } = req.body || {};
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const c = (await client.query('SELECT * FROM compras_mp WHERE id=$1', [req.params.id])).rows[0];
-    await client.query('UPDATE compras_mp SET estado=$1, kg_recibido=$2, recibido_at=now() WHERE id=$3',
-      ['recibido', Number(kg_recibido)||0, req.params.id]);
-    if (fill_silo && c && c.silo_id) {
-      const s = (await client.query('SELECT * FROM silos WHERE id=$1', [c.silo_id])).rows[0];
-      if (s) {
-        const nuevoMp = (s.mp_id && Number(s.kg_actual) > 0) ? s.mp_id : (c.mp_id || s.mp_id);
-        const nuevoKg = Math.min(Number(s.capacidad_kg), Number(s.kg_actual) + (Number(kg_recibido)||0));
-        await client.query('UPDATE silos SET mp_id=$1, kg_actual=$2 WHERE id=$3', [nuevoMp, nuevoKg, c.silo_id]);
-      }
-    }
-    await client.query('COMMIT');
-    res.json({ ok:true });
-  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
-  finally { client.release(); }
-});
-app.delete('/api/compras-mp/:id', async (req, res) => {
-  try { await pool.query('DELETE FROM compras_mp WHERE id=$1', [req.params.id]); res.json({ok:true}); }
   catch(e) { res.status(500).json({error:e.message}); }
 });
 
