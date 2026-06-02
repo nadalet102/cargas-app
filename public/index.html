@@ -3737,7 +3737,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 33;
+const NEEDS_API = 34;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -4541,16 +4541,25 @@ async function cargarViajes(){
   try{ viajesData=await api('GET','/viajes'); }catch(e){ viajesData=[]; }
   renderCamion();
 }
+let camionTab='viajes';
 function setCamionFiltro(v){ camionFiltro=v; renderCamion(); }
+function setCamionTab(t){ camionTab=t; renderCamion(); }
 function renderCamion(){
   const el=document.getElementById('camion-content'); if(!el) return;
-  const pend=viajesData.filter(v=>v.estado!=='hecho'), hechos=viajesData.filter(v=>v.estado==='hecho');
+  const tb=(v,lbl,ic)=>`<button onclick="setCamionTab('${v}')" style="flex:1;font-size:12.5px;padding:12px 6px;border:none;background:none;border-bottom:2.5px solid ${camionTab===v?'var(--blue)':'transparent'};color:${camionTab===v?'var(--blue-d)':'var(--text2)'};font-weight:${camionTab===v?'700':'500'};cursor:pointer;white-space:nowrap"><i class="ti ti-${ic}"></i> ${lbl}</button>`;
+  el.innerHTML=`<div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:14px">${tb('viajes','Viajes','truck')}${tb('historial','Historial','calendar-stats')}${tb('mant','Mantenimiento','tool')}</div><div id="camion-sub"></div>`;
+  if(camionTab==='viajes') renderCamionViajes();
+  else if(camionTab==='historial') renderCamionHistorial();
+  else renderCamionMant();
+}
+function renderCamionViajes(){
+  const el=document.getElementById('camion-sub'); if(!el) return;
+  const pend=viajesData.filter(v=>v.estado!=='hecho' && v.origen!=='compra'), hechos=viajesData.filter(v=>v.estado==='hecho' && v.origen!=='compra');
   const hoy=_hoyISO();
   const hoyHechos=hechos.filter(v=>v.hecho_at && _fechaISO(v.hecho_at)===hoy);
   const strip=silosData.map(s=>{ const pct=Math.round((Number(s.kg_actual)||0)/(Number(s.capacidad_kg)||1)*100); return `<div style="flex:0 0 auto;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:6px 10px;font-size:11px;white-space:nowrap"><b>${s.nombre}</b> · ${s.producto?(''+s.producto).replace(/</g,'&lt;'):'vacío'} · ${pct}%</div>`; }).join('');
   const fbtn=(v,lbl,n)=>`<button onclick="setCamionFiltro('${v}')" style="font-size:11px;padding:6px 11px;border-radius:8px;border:1px solid var(--border);cursor:pointer;${camionFiltro===v?'background:var(--blue);color:#fff;border-color:var(--blue)':'background:var(--surface);color:var(--text2)'}">${lbl}${n!=null?(' ('+n+')'):''}</button>`;
-  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-      <div style="font-size:16px;font-weight:500">Camión</div>
+  let html=`<div style="display:flex;justify-content:flex-end;margin-bottom:10px">
       <button class="btn-primary" onclick="abrirFormViaje()" style="font-size:12px;padding:8px 13px"><i class="ti ti-plus"></i> Nuevo viaje</button></div>
     <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Estado de las tolvas (dónde echar)</div>
     <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;padding-bottom:2px">${strip||'<span style="font-size:12px;color:var(--text3)">sin silos</span>'}</div>
@@ -4589,6 +4598,146 @@ function viajeCard(v){
        <button onclick="abrirCompletarViaje('${v.id}')" class="btn-primary" style="font-size:11px;padding:7px 12px;background:#0F6E56"><i class="ti ti-package-import"></i> Descargar</button>
        <button onclick="abrirFormViaje('${v.id}')" class="btn-sec" style="font-size:11px;padding:7px 10px"><i class="ti ti-edit"></i></button>
        <button onclick="borrarViaje('${v.id}')" class="btn-sec" style="font-size:11px;padding:7px 10px;color:#9A2A1B"><i class="ti ti-trash"></i></button></div></div>`;
+}
+function _tons(kg){ return (Number(kg||0)/1000).toLocaleString('es-ES',{minimumFractionDigits:1,maximumFractionDigits:2})+' t'; }
+// ── Historial por días ──
+let _camHistAbierto=null;
+function renderCamionHistorial(){
+  const el=document.getElementById('camion-sub'); if(!el) return;
+  const hechos=viajesData.filter(v=>v.estado==='hecho' && v.hecho_at && v.origen!=='compra');
+  const dias={};
+  hechos.forEach(v=>{ const d=_fechaISO(v.hecho_at); if(!dias[d])dias[d]={dia:d,kg:0,viajes:[],mat:{}}; const kg=Number(v.kg_final||v.kg||0); dias[d].kg+=kg; dias[d].viajes.push(v); const m=(v.material||'Sin material'); dias[d].mat[m]=(dias[d].mat[m]||0)+kg; });
+  const lista=Object.values(dias).sort((a,b)=>b.dia.localeCompare(a.dia));
+  if(!lista.length){ el.innerHTML='<div class="empty-state"><i class="ti ti-calendar-off"></i>Aún no hay viajes completados</div>'; return; }
+  const totalKg=lista.reduce((s,d)=>s+d.kg,0);
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap">
+     <div style="font-size:13px;color:var(--text2)">${lista.length} día(s) · <b style="color:var(--text)">${_tons(totalKg)}</b> en total</div>
+     <button class="btn-primary" onclick="exportarHistorialCamion()" style="font-size:12px;padding:8px 12px"><i class="ti ti-file-spreadsheet"></i> Exportar</button></div>`;
+  html+=lista.map(d=>{
+    const abierto=_camHistAbierto===d.dia;
+    const mats=Object.keys(d.mat).sort((a,b)=>d.mat[b]-d.mat[a]);
+    const matRows=mats.map(m=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-top:1px solid var(--border)"><span>${m.replace(/</g,'&lt;')}</span><span style="font-weight:700">${_tons(d.mat[m])} <span style="font-size:11px;color:var(--text2);font-weight:400">(${fmtN(d.mat[m])} kg)</span></span></div>`).join('');
+    const viajeRows=abierto?d.viajes.map(v=>{ const dest=v.destino_tipo==='silo'?('Tolva: '+(v.destino_silo_nombre||'')):('Acopio'+(v.acopio?': '+v.acopio:'')); return `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:3px 0"><span>${(v.material||'').replace(/</g,'&lt;')} · ${dest}</span><span>${fmtN(v.kg_final||v.kg||0)} kg</span></div>`; }).join(''):'';
+    return `<div class="list-card" style="margin-bottom:10px">
+       <div onclick="toggleCamHist('${d.dia}')" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;cursor:pointer">
+         <div><div style="font-size:15px;font-weight:700">${fmtDate(d.dia)}</div><div style="font-size:11px;color:var(--text2)">${d.viajes.length} viaje(s)</div></div>
+         <div style="text-align:right;display:flex;align-items:center;gap:8px"><div style="font-size:18px;font-weight:800">${_tons(d.kg)}</div><i class="ti ti-chevron-${abierto?'up':'down'}" style="color:var(--text3)"></i></div></div>
+       <div style="padding:0 14px 10px">${matRows}${abierto&&viajeRows?`<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)"><div style="font-size:11px;color:var(--text3);margin-bottom:2px">Viajes del día</div>${viajeRows}</div>`:''}</div>
+     </div>`;
+  }).join('');
+  el.innerHTML=html;
+}
+function toggleCamHist(d){ _camHistAbierto=(_camHistAbierto===d)?null:d; renderCamionHistorial(); }
+async function exportarHistorialCamion(){
+  const hechos=viajesData.filter(v=>v.estado==='hecho' && v.hecho_at && v.origen!=='compra').slice().sort((a,b)=>_fechaISO(a.hecho_at).localeCompare(_fechaISO(b.hecho_at)));
+  const rows=[['Fecha','Material','Destino','Kg','Toneladas']];
+  hechos.forEach(v=>{ const dest=v.destino_tipo==='silo'?('Tolva '+(v.destino_silo_nombre||'')):('Acopio'+(v.acopio?' '+v.acopio:'')); const kg=Number(v.kg_final||v.kg||0); rows.push([fmtDate(v.hecho_at),v.material||'',dest,kg,Number((kg/1000).toFixed(3))]); });
+  try{ await _cargarScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js');
+    const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('Historial camión'); rows.forEach(r=>ws.addRow(r)); ws.getRow(1).font={bold:true};
+    const buf=await wb.xlsx.writeBuffer(); _descargarBlob(new Blob([buf]),'historial_camion.xlsx');
+  }catch(e){ _descargarBlob(new Blob([rows.map(r=>r.join(';')).join('\n')],{type:'text/csv'}),'historial_camion.csv'); }
+}
+// ── Mantenimiento ──
+let mantItems=null, mantRegs=[], mantReps=[], mantVehiculo='Camión';
+async function cargarMant(){
+  try{ mantItems=await api('GET','/mant/items'); }catch(e){ mantItems=[]; }
+  try{ mantRegs=await api('GET','/mant/registros'); }catch(e){ mantRegs=[]; }
+  try{ mantReps=await api('GET','/mant/reparaciones'); }catch(e){ mantReps=[]; }
+  renderCamionMant();
+}
+function setMantVeh(v){ mantVehiculo=v; renderCamionMant(); }
+function nuevoVehMant(){ const v=prompt('Nombre del vehículo o máquina:'); if(v&&v.trim()){ mantVehiculo=v.trim(); renderCamionMant(); } }
+function renderCamionMant(){
+  const el=document.getElementById('camion-sub'); if(!el) return;
+  if(mantItems===null){ el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text2)"><i class="ti ti-loader"></i> Cargando…</div>'; cargarMant(); return; }
+  const vehs=[...new Set(['Camión',...mantRegs.map(r=>r.vehiculo),...mantReps.map(r=>r.vehiculo)].filter(Boolean))];
+  if(!vehs.includes(mantVehiculo)) mantVehiculo=vehs[0]||'Camión';
+  const vbtns=vehs.map(v=>`<button onclick="setMantVeh('${(''+v).replace(/'/g,"\\'")}')" style="font-size:12px;padding:7px 12px;border-radius:8px;border:1px solid ${v===mantVehiculo?'var(--blue)':'var(--border2)'};background:${v===mantVehiculo?'var(--blue)':'var(--surface)'};color:${v===mantVehiculo?'#fff':'var(--text)'};cursor:pointer">${(''+v).replace(/</g,'&lt;')}</button>`).join('');
+  const peri=[['semanal','Semanal','#F4D35E','#6E5200'],['mensual','Mensual','#9BD17C','#2E5811'],['250h','Cada 250 horas','#7FB3E8','#0C447C']];
+  const regsVeh=mantRegs.filter(r=>r.vehiculo===mantVehiculo);
+  const lastOf=id=>{ const rs=regsVeh.filter(r=>String(r.item_id)===String(id)); return rs.length?rs[0]:null; };
+  let html=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px"><span style="font-size:12px;color:var(--text2)">Vehículo:</span>${vbtns}<button onclick="nuevoVehMant()" style="font-size:12px;padding:7px 10px;border-radius:8px;border:1px dashed var(--border2);background:var(--surface);color:var(--text2);cursor:pointer"><i class="ti ti-plus"></i></button></div>`;
+  html+=`<div style="font-size:15px;font-weight:700;margin-bottom:6px">Revisiones</div>`;
+  peri.forEach(([key,lbl,col,txt])=>{
+    const its=mantItems.filter(i=>i.periodicidad===key);
+    if(!its.length) return;
+    html+=`<div style="font-size:11px;font-weight:700;color:${txt};background:${col};display:inline-block;border-radius:6px;padding:3px 10px;margin:8px 0 6px">${lbl}</div>`;
+    html+=its.map(i=>{ const last=lastOf(i.id);
+      return `<div class="list-card" style="margin-bottom:8px;border-left:4px solid ${col}">
+         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 14px">
+           <div style="min-width:0"><div style="font-size:15px;font-weight:600">${i.nombre.replace(/</g,'&lt;')}</div>
+             <div style="font-size:11px;color:var(--text2)">${last?('Última: '+fmtDate(last.fecha)+(last.km!=null?(' · '+fmtN(last.km)+' km'):'')+(last.horas!=null?(' · '+fmtN(last.horas)+' h'):'')):'Nunca registrada'}</div></div>
+           <button onclick="marcarMant('${i.id}')" class="btn-primary" style="font-size:13px;padding:10px 14px;white-space:nowrap;background:#0F6E56"><i class="ti ti-check"></i> Hecho</button>
+         </div></div>`;
+    }).join('');
+  });
+  const repsVeh=mantReps.filter(r=>r.vehiculo===mantVehiculo);
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin:20px 0 8px"><div style="font-size:15px;font-weight:700">Reparaciones</div><button onclick="nuevaReparacion()" class="btn-sec" style="font-size:12px;padding:7px 11px"><i class="ti ti-plus"></i> Añadir</button></div>`;
+  html+= repsVeh.length? repsVeh.map(r=>`<div class="list-card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:10px;padding:11px 14px">
+       <div style="min-width:0"><div style="font-size:14px;font-weight:600">${(r.concepto||'—').replace(/</g,'&lt;')}</div><div style="font-size:11px;color:var(--text2)">${fmtDate(r.fecha)}${r.km!=null?(' · '+fmtN(r.km)+' km'):''}${r.horas!=null?(' · '+fmtN(r.horas)+' h'):''}</div></div>
+       <button onclick="borrarReparacion('${r.id}')" style="background:none;border:none;color:#9A2A1B;cursor:pointer;font-size:16px"><i class="ti ti-trash"></i></button></div></div>`).join('') : '<div style="font-size:12px;color:var(--text2);padding:6px 2px">Sin reparaciones registradas.</div>';
+  el.innerHTML=html;
+}
+function marcarMant(itemId){
+  const it=mantItems.find(i=>String(i.id)===String(itemId)); if(!it) return;
+  const lastKm=(mantRegs.filter(r=>r.vehiculo===mantVehiculo && r.km!=null)[0]||{}).km;
+  const ov=document.createElement('div'); ov.id='mant-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10072;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const inp='width:100%;font-size:18px;padding:12px;border:2px solid var(--border2);border-radius:10px;background:var(--surface);color:var(--text);box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:440px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:16px">${it.nombre.replace(/</g,'&lt;')}</b>
+    <div style="font-size:12px;color:var(--text2);margin:2px 0 14px">${(''+mantVehiculo).replace(/</g,'&lt;')} · marcar como hecho</div>
+    <div style="display:flex;gap:10px">
+      <label style="flex:1;font-size:12px;color:var(--text2)">Km<input id="mant-km" type="number" inputmode="numeric" value="${lastKm!=null?lastKm:''}" style="${inp}"></label>
+      <label style="flex:1;font-size:12px;color:var(--text2)">Horas<input id="mant-horas" type="number" inputmode="numeric" style="${inp}"></label></div>
+    <label style="display:block;font-size:12px;color:var(--text2);margin-top:10px">Fecha<input id="mant-fecha" type="date" value="${_hoyISO()}" style="${inp}"></label>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('mant-ov').remove()" style="font-size:13px;padding:11px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarMant('${itemId}')" style="font-size:14px;padding:11px 18px;background:#0F6E56"><i class="ti ti-check"></i> Guardar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+async function confirmarMant(itemId){
+  const km=document.getElementById('mant-km')?.value, horas=document.getElementById('mant-horas')?.value, fecha=document.getElementById('mant-fecha')?.value;
+  try{
+    await api('POST','/mant/registros',{ item_id:itemId, vehiculo:mantVehiculo, km:km?Number(km):null, horas:horas?Number(horas):null, fecha:fecha||null });
+    document.getElementById('mant-ov')?.remove();
+    await cargarMant(); log('Revisión registrada','ok');
+  }catch(e){ log('Error','warn'); }
+}
+function nuevaReparacion(){
+  const ov=document.createElement('div'); ov.id='rep-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10072;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const inp='width:100%;font-size:16px;padding:12px;border:2px solid var(--border2);border-radius:10px;background:var(--surface);color:var(--text);box-sizing:border-box';
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:460px;border-radius:16px 16px 0 0;padding:18px">
+    <b style="font-size:16px">Nueva reparación</b>
+    <div style="font-size:12px;color:var(--text2);margin:2px 0 14px">${(''+mantVehiculo).replace(/</g,'&lt;')}</div>
+    <label style="display:block;font-size:12px;color:var(--text2)">Concepto<input id="rep-concepto" placeholder="Qué se reparó" style="${inp}"></label>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <label style="flex:1;font-size:12px;color:var(--text2)">Fecha<input id="rep-fecha" type="date" value="${_hoyISO()}" style="${inp}"></label>
+      <label style="flex:1;font-size:12px;color:var(--text2)">Km<input id="rep-km" type="number" inputmode="numeric" style="${inp}"></label>
+      <label style="flex:1;font-size:12px;color:var(--text2)">Horas<input id="rep-horas" type="number" inputmode="numeric" style="${inp}"></label></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn-sec" onclick="document.getElementById('rep-ov').remove()" style="font-size:13px;padding:11px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarReparacion()" style="font-size:14px;padding:11px 18px"><i class="ti ti-check"></i> Guardar</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+async function confirmarReparacion(){
+  const concepto=(document.getElementById('rep-concepto')?.value||'').trim();
+  if(!concepto){ log('Pon el concepto','warn'); return; }
+  const fecha=document.getElementById('rep-fecha')?.value, km=document.getElementById('rep-km')?.value, horas=document.getElementById('rep-horas')?.value;
+  try{
+    await api('POST','/mant/reparaciones',{ vehiculo:mantVehiculo, concepto, fecha:fecha||null, km:km?Number(km):null, horas:horas?Number(horas):null });
+    document.getElementById('rep-ov')?.remove();
+    await cargarMant(); log('Reparación guardada','ok');
+  }catch(e){ log('Error','warn'); }
+}
+async function borrarReparacion(id){
+  if(!confirm('¿Borrar esta reparación?')) return;
+  try{ await api('DELETE','/mant/reparaciones/'+id); await cargarMant(); }catch(e){ log('Error','warn'); }
 }
 const MATERIALES_CAMION=['Planche','Blanca 0-2','Mortero 0-2','Forna 2-4','Forna 4-6','Forna 6-12','Forna 12-20','Forna 20-25','Machaca 25-60'];
 let _vf=null;
@@ -4728,7 +4877,7 @@ async function confirmarCompletar(id){
 async function borrarViaje(id){ if(!confirm('¿Quitar este viaje?')) return; try{ await api('DELETE','/viajes/'+id); if(_activeView==='silos') await cargarSilos(); else await cargarViajes(); }catch(e){ log('Error','warn'); } }
 async function exportarParteCamion(){
   const hoy=_hoyISO();
-  const delDia=viajesData.filter(v=>(v.hecho_at && _fechaISO(v.hecho_at)===hoy) || (v.estado!=='hecho' && v.fecha && _fechaISO(v.fecha)===hoy));
+  const delDia=viajesData.filter(v=>v.origen!=='compra' && ((v.hecho_at && _fechaISO(v.hecho_at)===hoy) || (v.estado!=='hecho' && v.fecha && _fechaISO(v.fecha)===hoy)));
   const fuente = delDia.length ? delDia : viajesData;
   const rows=[['Estado','Material','Kg previsto','Tolva prevista','Destino','Kg final','Fecha']];
   fuente.forEach(v=>rows.push([v.estado,v.material||'',v.kg,v.silo_nombre||'',v.estado==='hecho'?(v.destino_tipo==='silo'?('Silo '+(v.destino_silo_nombre||'')):('Acopio '+(v.acopio||''))):'',v.kg_final||'',v.hecho_at?fmtDate(v.hecho_at):'']));
