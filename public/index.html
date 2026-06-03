@@ -3271,14 +3271,13 @@ function abrirFormCompra(id, prefill){
           ${c.estado==='recibido'?'<option value="recibido" selected>Recibido</option>':''}
         </select></label>
         <div style="grid-column:1 / -1">
-          <div style="font-size:12px;color:var(--text2);margin-bottom:4px">Compra a granel · ¿para qué fin?</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button type="button" id="cf-tp-bb" onclick="setCompraTipo('bb')" class="btn-sec" style="flex:1;min-width:70px;font-size:12px;padding:9px">Big Bag</button>
-            <button type="button" id="cf-tp-saco" onclick="setCompraTipo('saco')" class="btn-sec" style="flex:1;min-width:70px;font-size:12px;padding:9px">Sacos</button>
-            <button type="button" id="cf-tp-compartir" onclick="setCompraTipo('compartir')" class="btn-sec" style="flex:1;min-width:70px;font-size:12px;padding:9px">Compartir</button>
-            <button type="button" id="cf-tp-acopio" onclick="setCompraTipo('acopio')" class="btn-sec" style="flex:1;min-width:70px;font-size:12px;padding:9px">Acopio</button>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:4px">Formato de la compra</div>
+          <div style="display:flex;gap:6px">
+            <button type="button" id="cf-fmt-granel" onclick="setCompraFormato('granel')" class="btn-sec" style="flex:1;font-size:12px;padding:9px">Granel</button>
+            <button type="button" id="cf-fmt-bb" onclick="setCompraFormato('bb')" class="btn-sec" style="flex:1;font-size:12px;padding:9px">Big Bag</button>
+            <button type="button" id="cf-fmt-saco" onclick="setCompraFormato('saco')" class="btn-sec" style="flex:1;font-size:12px;padding:9px">Saco</button>
           </div>
-          <div id="cf-tolva-wrap" style="margin-top:8px"></div>
+          <div id="cf-fmt-sub" style="margin-top:8px"></div>
         </div>
         <label style="font-size:12px;color:var(--text2)">Transportista (compra)<input id="cf-trans" value="${_h(c.transportista)}" onchange="autoCompra()" style="${_inp}"></label>
         <label style="font-size:12px;color:var(--text2)">Teléfono transportista<input id="cf-tel" value="${_h(c.transportista_tel)}" onchange="autoCompra()" style="${_inp}"></label>
@@ -3297,9 +3296,33 @@ function abrirFormCompra(id, prefill){
   document.body.appendChild(ov);
   renderLineasCompraForm();
   renderPedrelBox(c.pedidos_rel);
-  setCompraTipo(c.tipo_produccion||'bb');   // fin de la compra (a granel)
+  _compraTipo = ['bb','saco','compartir','acopio'].includes(c.tipo_produccion)?c.tipo_produccion:'bb';
+  setCompraFormato(c.formato||'granel');   // formato (granel/bb/saco), y si granel pinta el fin
 }
-let _compraTipo='bb', _compraEdit={};
+let _compraFormato='granel', _compraTipo='bb', _compraEdit={};
+function setCompraFormato(f){
+  _compraFormato=f;
+  ['granel','bb','saco'].forEach(x=>{ const b=document.getElementById('cf-fmt-'+x); if(b) b.className=(x===f)?'btn-primary':'btn-sec'; });
+  const c=_compraEdit||{};
+  const sub=document.getElementById('cf-fmt-sub'); if(!sub) return;
+  if(f==='granel'){
+    sub.innerHTML=`<div style="font-size:12px;color:var(--text2);margin-bottom:4px">¿Para qué fin?</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button type="button" id="cf-tp-bb" onclick="setCompraTipo('bb')" class="btn-sec" style="flex:1;min-width:70px;font-size:12px;padding:9px">Big Bag</button>
+        <button type="button" id="cf-tp-saco" onclick="setCompraTipo('saco')" class="btn-sec" style="flex:1;min-width:70px;font-size:12px;padding:9px">Sacos</button>
+        <button type="button" id="cf-tp-compartir" onclick="setCompraTipo('compartir')" class="btn-sec" style="flex:1;min-width:70px;font-size:12px;padding:9px">Compartir</button>
+        <button type="button" id="cf-tp-acopio" onclick="setCompraTipo('acopio')" class="btn-sec" style="flex:1;min-width:70px;font-size:12px;padding:9px">Acopio</button>
+      </div>
+      <div id="cf-tolva-wrap" style="margin-top:8px"></div>`;
+    setCompraTipo(['bb','saco','compartir','acopio'].includes(_compraTipo)?_compraTipo:'bb');
+  } else {
+    const kgVal=(f==='bb'?c.kg_bb:c.kg_saco);
+    sub.innerHTML=`<label style="font-size:12px;color:var(--text2)">Kg por ${f==='bb'?'big bag':'saco'} (opcional)<input id="cf-kgenv" type="number" min="0" value="${kgVal!=null?kgVal:''}" oninput="autoCompra()" style="${_inp}"></label>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Compra ya envasada (no entra a tolva).</div>
+      <input type="hidden" id="cf-tolva" value="">`;
+    autoCompra();
+  }
+}
 function setCompraTipo(t){
   _compraTipo=t;
   ['bb','saco','compartir','acopio'].forEach(x=>{ const b=document.getElementById('cf-tp-'+x); if(b) b.className=(x===t)?'btn-primary':'btn-sec'; });
@@ -3318,12 +3341,12 @@ function setCompraTipo(t){
   autoCompra();
 }
 function _formatoBadge(c){
+  const f=c.formato||'granel';
+  if(f==='bb') return ['#FBE7D2','#7A4E00','Big Bag env.'+(c.kg_bb?(' '+fmtN(c.kg_bb)+'kg'):'')];
+  if(f==='saco') return ['#E9F0F8','#0C447C','Saco env.'+(c.kg_saco?(' '+fmtN(c.kg_saco)+'kg'):'')];
   const t=c.tipo_produccion;
-  if(t==='bb') return ['#FBE7D2','#7A4E00','Big Bag'];
-  if(t==='saco') return ['#E9F0F8','#0C447C','Sacos'];
-  if(t==='compartir'||t==='ambos') return ['#EDE7F6','#5B3FA8','Compartir'];
-  if(t==='acopio') return ['#EFE9DD','#6B5B36','Acopio'];
-  return ['#E7F0E4','#2E5811','Granel'];
+  const fin = t==='bb'?'Big Bag':t==='saco'?'Sacos':(t==='compartir'||t==='ambos')?'Compartir':t==='acopio'?'Acopio':'Granel';
+  return ['#E7F0E4','#2E5811','Granel · '+fin];
 }
 function _pedidosPendientes(){
   const entregadas=new Set((cargas||[]).filter(c=>c.status==='entregada').map(c=>String(c.id)));
@@ -3360,8 +3383,10 @@ function _gatherCompraBody(){
   return { proveedor:(document.getElementById('cf-prov')?.value||'').trim()||null, fecha_prevista:fecha||null,
     hora:(document.getElementById('cf-hora')?.value||'')||null,
     tolva:(document.getElementById('cf-tolva')?.value||'').trim()||null, pedidos_rel:pedrel||null,
-    tipo_produccion:_compraTipo||null,
-    kg_bb:null, kg_saco:null,
+    formato:_compraFormato||'granel',
+    tipo_produccion:_compraFormato==='granel'?(_compraTipo||null):null,
+    kg_bb:_compraFormato==='bb'?(Number(document.getElementById('cf-kgenv')?.value)||null):null,
+    kg_saco:_compraFormato==='saco'?(Number(document.getElementById('cf-kgenv')?.value)||null):null,
     transportista:(document.getElementById('cf-trans')?.value||'').trim()||null, transportista_tel:(document.getElementById('cf-tel')?.value||'').trim()||null,
     notas:(document.getElementById('cf-notas')?.value||'').trim()||null, estado,
     lineas:_compraLineasForm.filter(l=>(''+(l.descripcion||l.referencia||'')).trim()||Number(l.cantidad)>0) };
@@ -3806,7 +3831,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 42;
+const NEEDS_API = 43;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -3931,7 +3956,7 @@ function comprasProximasHTML(){
   const ayer=_fechaISO(new Date(d0.getTime()-86400000)), manana=_fechaISO(new Date(d0.getTime()+86400000));
   const ventana=new Set([ayer,hoy,manana]);
   const diaLbl=f=> f===hoy?'Hoy':f===ayer?'Ayer':f===manana?'Mañana':fmtDate(f);
-  const cps=(comprasData||[]).filter(c=>c.estado!=='recibido' && c.fecha_prevista && ventana.has(_fechaISO(c.fecha_prevista)) && c.tipo_produccion!=='acopio')
+  const cps=(comprasData||[]).filter(c=>c.estado!=='recibido' && c.fecha_prevista && ventana.has(_fechaISO(c.fecha_prevista)) && (c.formato||'granel')==='granel' && c.tipo_produccion!=='acopio')
     .sort((a,b)=>(''+(a.fecha_prevista||'')+(a.hora||'')).localeCompare(''+(b.fecha_prevista||'')+(b.hora||'')));
   if(!cps.length) return '';
   const allowedOf=t=> t==='bb'?[1,2,3,4] : t==='saco'?[1,2] : (t==='compartir'||t==='ambos')?[1] : [0,1,2,3,4,5];
