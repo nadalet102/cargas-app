@@ -970,7 +970,7 @@ function renderCargas(){
             return `<div class="mini-card ${mc}">
               <div class="mini-order">${p.orden_carga||idx+1}</div>
               <div class="mini-body">
-                <div class="mini-client">${p.cliente}${p.prio==='urgente'?' <span class="badge b-red" style="font-size:9px">U</span>':''}</div>
+                <div class="mini-client">${p.cliente}${p.prio==='urgente'?' <span class="badge b-red" style="font-size:9px">U</span>':''}${p.estado_prep==='entregado'?' <span class="badge b-green" style="font-size:9px"><i class="ti ti-check" style="font-size:9px"></i> Cargado</span>':''}</div>
                 ${p.num?`<div style="font-size:10px;color:var(--blue-d);font-weight:600;font-family:monospace;margin-top:1px">${p.num}</div>`:''}
                 ${p.ubicacion?`<div class="mini-ubic"><i class="ti ti-box" style="font-size:10px"></i>${p.ubicacion}</div>`:''}
                 <div class="mini-meta"><span>${p.destino.split(',')[0]}</span><span>·</span><span>${fmtN(p.kg)} kg</span><span>·</span><span style="color:var(--green)">${fmtN(p.porte)} €</span>${p.categoria_nombre?`<span>·</span><span style="background:${p.categoria_color}22;color:${p.categoria_color};font-size:9px;padding:1px 5px;border-radius:6px;font-weight:600">${p.categoria_nombre}</span>`:''}</div>
@@ -978,6 +978,7 @@ function renderCargas(){
               </div>
               <div class="mini-acts">
                 <input type="number" class="order-input" value="${p.orden_carga||''}" placeholder="#" title="Orden en la carga" onchange="setOrden('${p.id}',this.value)" min="1">
+                ${p.estado_prep!=='entregado'?`<button class="mini-rm" style="color:#2E5811;padding:2px 4px" onclick="marcarCargadoReparto('${p.id}')" title="Marcar cargado"><i class="ti ti-checks"></i></button>`:''}
                 <button class="mini-rm" style="color:var(--blue);padding:2px 4px" onclick="openModal('pedido','${p.id}')" title="Editar"><i class="ti ti-pencil"></i></button>
                 <button class="mini-rm" onclick="removeFromCarga('${p.id}')" title="Quitar de la carga"><i class="ti ti-x"></i></button>
               </div>
@@ -2500,7 +2501,8 @@ function cargaCard(p){
     <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
       <div style="min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:700;font-family:monospace;color:var(--blue-d)">${p.num||'—'}</span><span style="font-size:16px;font-weight:700">${p.cliente}</span></div>
-        <div style="font-size:11px;color:var(--text2);margin-top:2px">${p.destino||''}${p.ubicacion?' · Campa: '+p.ubicacion:''}</div>
+        ${p.ubicacion?`<div style="display:inline-flex;align-items:center;gap:6px;margin-top:5px;background:#E8F1FB;color:var(--blue-d);font-size:21px;font-weight:800;padding:5px 14px;border-radius:10px;line-height:1.1"><i class="ti ti-map-pin" style="font-size:19px"></i>${(''+p.ubicacion).replace(/</g,'&lt;')}</div>`:''}
+        <div style="font-size:12px;color:var(--text2);margin-top:3px">${(p.destino||'').replace(/</g,'&lt;')}</div>
       </div>
       ${completo?'<span class="badge b-green" style="font-size:11px"><i class="ti ti-check"></i> Cargado</span>':`<span style="font-size:14px;font-weight:800;color:var(--text2);white-space:nowrap">${hechas}/${total}</span>`}
     </div>
@@ -2532,6 +2534,16 @@ async function marcarCargado(pid){
     await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:'entregado'});
     const p=pedidos.find(x=>String(x.id)===String(pid)); if(p)p.estado_prep='entregado';
     log('Pedido cargado','ok'); renderCargaList();
+  }catch(e){ log('Error','warn'); }
+}
+async function marcarCargadoReparto(pid){
+  if(!confirm('¿Marcar este pedido como cargado? Saldrá de "En carga" y pasará al histórico.')) return;
+  try{
+    await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:'entregado'});
+    const p=pedidos.find(x=>String(x.id)===String(pid)); if(p)p.estado_prep='entregado';
+    log('Pedido cargado','ok');
+    if(typeof renderCargas==='function') renderCargas();
+    if(typeof renderCargaList==='function') renderCargaList();
   }catch(e){ log('Error','warn'); }
 }
 async function cargarHistPed(){ try{ pedidos=await api('GET','/pedidos'); }catch(e){} renderHistPed(); }
