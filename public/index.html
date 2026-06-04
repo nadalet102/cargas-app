@@ -160,6 +160,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 .cal-dn{font-size:11px;color:var(--text2);margin-bottom:3px;font-weight:500}
 .cal-day.today .cal-dn{color:var(--blue);font-weight:600}
 .cal-ev{border-radius:3px;padding:2px 5px;font-size:10px;font-weight:500;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-drop-hi{outline:2px dashed var(--blue)!important;outline-offset:-2px;background:#EAF2FB!important}
 /* TRANS */
 .trans-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:10px}
 .trans-hdr{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
@@ -1864,7 +1865,7 @@ function renderCal(){
     const ds=calY+'-'+String(calM+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     const isToday=today.getFullYear()===calY&&today.getMonth()===calM&&today.getDate()===d;
     const dc=cargas.filter(c=>c.fecha&&String(c.fecha).substring(0,10)===ds&&(!catFilter||String(c.categoria_id)===catFilter));
-    html+=`<div class="cal-day${isToday?' today':''}"><div class="cal-dn">${d}</div>${dc.map(c=>{const col=CCOLS[Math.min(c.color_idx||0,CCOLS.length-1)];return`<div class="cal-ev" style="background:${col.bg};color:${col.t}">${c.name}</div>`;}).join('')}</div>`;
+    html+=`<div class="cal-day${isToday?' today':''}" data-iso="${ds}"><div class="cal-dn">${d}</div>${dc.map(c=>{const col=CCOLS[Math.min(c.color_idx||0,CCOLS.length-1)];return`<div class="cal-ev" onpointerdown="calChipDown(event,'carga','${c.id}')" style="background:${col.bg};color:${col.t};touch-action:none;cursor:grab">${c.name}</div>`;}).join('')}</div>`;
   }
   document.getElementById('cal-grid').innerHTML=html;
   const mc=cargas.filter(c=>c.fecha&&String(c.fecha).substring(0,7)===(calY+'-'+String(calM+1).padStart(2,'0'))&&(!catFilter||String(c.categoria_id)===catFilter));
@@ -3113,6 +3114,59 @@ function _calRefresh(){ if(_activeView==='prodcal'){ const el=document.getElemen
 function setCalMode(m){ ccalMode=m; _calRefresh(); }
 function calNav(d){ if(ccalMode==='mes') ccalRef.setMonth(ccalRef.getMonth()+d); else if(ccalMode==='semana') ccalRef.setDate(ccalRef.getDate()+7*d); else ccalRef.setDate(ccalRef.getDate()+d); ccalRef=new Date(ccalRef); _calRefresh(); }
 function calHoy(){ ccalRef=new Date(); _calRefresh(); }
+// ── Arrastre de eventos del calendario entre días (táctil + ratón) ──
+let _cdrag=null;
+function _cellUnder(x,y){ const el=document.elementFromPoint(x,y); return el?el.closest('[data-iso]'):null; }
+function calChipDown(ev,tipo,id){
+  if(ev.button!=null && ev.button!==0) return;
+  const startX=ev.clientX, startY=ev.clientY, target=ev.currentTarget;
+  _cdrag={tipo,id:String(id),startX,startY,moved:false,clone:null,cell:null,target};
+  const move=(e)=>{
+    if(!_cdrag) return;
+    const x=e.clientX, y=e.clientY;
+    if(!_cdrag.moved && (Math.abs(x-startX)>6||Math.abs(y-startY)>6)){
+      _cdrag.moved=true;
+      const cl=target.cloneNode(true);
+      cl.style.cssText+=';position:fixed;z-index:99999;pointer-events:none;opacity:.9;width:'+target.offsetWidth+'px;box-shadow:0 6px 18px rgba(0,0,0,.25)';
+      document.body.appendChild(cl); _cdrag.clone=cl; target.style.opacity='.35';
+    }
+    if(_cdrag.moved){
+      e.preventDefault();
+      if(_cdrag.clone){ _cdrag.clone.style.left=(x-22)+'px'; _cdrag.clone.style.top=(y-14)+'px'; }
+      const cell=_cellUnder(x,y);
+      if(_cdrag.cell&&_cdrag.cell!==cell) _cdrag.cell.classList.remove('cal-drop-hi');
+      if(cell) cell.classList.add('cal-drop-hi');
+      _cdrag.cell=cell;
+    }
+  };
+  const up=(e)=>{
+    document.removeEventListener('pointermove',move,true);
+    document.removeEventListener('pointerup',up,true);
+    const d=_cdrag; _cdrag=null;
+    if(d.clone) d.clone.remove();
+    if(d.target) d.target.style.opacity='';
+    if(d.cell) d.cell.classList.remove('cal-drop-hi');
+    if(!d.moved){ if(d.tipo==='compra') abrirFormCompra(Number(d.id)); return; }
+    const x=(e.clientX!=null?e.clientX:d.startX), y=(e.clientY!=null?e.clientY:d.startY);
+    const cell=_cellUnder(x,y); if(!cell) return;
+    const iso=cell.getAttribute('data-iso'); if(!iso) return;
+    if(d.tipo==='carga') _moverCargaDia(d.id,iso); else _moverCompraDia(d.id,iso);
+  };
+  document.addEventListener('pointermove',move,true);
+  document.addEventListener('pointerup',up,true);
+}
+async function _moverCargaDia(id,iso){
+  const c=cargas.find(x=>String(x.id)===String(id)); if(!c) return;
+  if(String(c.fecha||'').substring(0,10)===iso) return;
+  try{ await api('PUT','/cargas/'+id,{...c,fecha:iso}); c.fecha=iso; renderCal(); log('Carga movida a '+fmtDate(iso),'ok'); }
+  catch(e){ log('Error moviendo carga','warn'); renderCal(); }
+}
+async function _moverCompraDia(id,iso){
+  const c=comprasData.find(x=>String(x.id)===String(id)); if(!c) return;
+  if(_fechaISO(c.fecha_prevista)===iso) return;
+  try{ await api('PUT','/compras/'+id,{...c,fecha_prevista:iso}); c.fecha_prevista=iso; _calRefresh(); log('Compra movida a '+fmtDate(iso),'ok'); }
+  catch(e){ log('Error moviendo compra','warn'); _calRefresh(); }
+}
 function _calTitulo(){
   if(ccalMode==='mes') return MESES[ccalRef.getMonth()]+' '+ccalRef.getFullYear();
   if(ccalMode==='dia') return ccalRef.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
@@ -3120,22 +3174,22 @@ function _calTitulo(){
   return ini.getDate()+' '+MESES[ini.getMonth()].slice(0,3)+' – '+fin.getDate()+' '+MESES[fin.getMonth()].slice(0,3);
 }
 function _chipDia(items){ return items.map(c=>{ const t=(c.lineas||[]).map(l=>l.descripcion||l.referencia).filter(Boolean).join(', ')||'compra';
-  return `<div onclick="abrirFormCompra(${c.id})" style="background:${c.estado==='pedido'?'#E6F1FB':'#FFF3E6'};color:${c.estado==='pedido'?'#0C447C':'#7A4E00'};border-radius:5px;padding:2px 5px;font-size:10px;margin-bottom:2px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${((c.proveedor||'—')+': '+t).replace(/</g,'&lt;')}</div>`; }).join(''); }
+  return `<div onpointerdown="calChipDown(event,'compra','${c.id}')" style="background:${c.estado==='pedido'?'#E6F1FB':'#FFF3E6'};color:${c.estado==='pedido'?'#0C447C':'#7A4E00'};border-radius:5px;padding:2px 5px;font-size:10px;margin-bottom:2px;cursor:grab;touch-action:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${((c.proveedor||'—')+': '+t).replace(/</g,'&lt;')}</div>`; }).join(''); }
 function _calMes(porDia){
   const y=ccalRef.getFullYear(), m=ccalRef.getMonth(); const ini=_inicioSemana(new Date(y,m,1)); const hoy=_hoyISO();
   let dias='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
   ['L','M','X','J','V','S','D'].forEach(d=>dias+=`<div style="text-align:center;font-size:10px;color:var(--text2);font-weight:600">${d}</div>`);
   const cur=new Date(ini);
   for(let i=0;i<42;i++){ const iso=_isoOf(cur); const items=porDia[iso]||[]; const otroMes=cur.getMonth()!==m; const esHoy=iso===hoy;
-    dias+=`<div style="min-height:62px;border:1px solid ${esHoy?'#0F6E56':'var(--border)'};border-radius:6px;padding:3px;background:${esHoy?'#F1FAF6':otroMes?'var(--surface2)':'var(--surface)'};opacity:${otroMes?'.45':'1'}"><div style="font-size:10px;color:${esHoy?'#0F6E56':'var(--text2)'};font-weight:${esHoy?'700':'400'};margin-bottom:2px">${cur.getDate()}</div>${_chipDia(items)}</div>`;
+    dias+=`<div data-iso="${iso}" style="min-height:62px;border:1px solid ${esHoy?'#0F6E56':'var(--border)'};border-radius:6px;padding:3px;background:${esHoy?'#F1FAF6':otroMes?'var(--surface2)':'var(--surface)'};opacity:${otroMes?'.45':'1'}"><div style="font-size:10px;color:${esHoy?'#0F6E56':'var(--text2)'};font-weight:${esHoy?'700':'400'};margin-bottom:2px">${cur.getDate()}</div>${_chipDia(items)}</div>`;
     cur.setDate(cur.getDate()+1); }
   return dias+'</div>';
 }
 function _calItemRow(c){ const t=(c.lineas||[]).map(l=>(l.descripcion||l.referencia||'')+' ('+fmtN(l.cantidad)+' '+(l.unidad||'')+')').join(', ');
-  return `<div onclick="abrirFormCompra(${c.id})" style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer"><span style="font-size:13px"><b>${(c.proveedor||'—').replace(/</g,'&lt;')}</b> — ${t.replace(/</g,'&lt;')}</span><span style="font-size:11px;color:var(--text2);white-space:nowrap">${c.estado==='pedido'?'en camino':'por pedir'}</span></div>`; }
+  return `<div onpointerdown="calChipDown(event,'compra','${c.id}')" style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);cursor:grab;touch-action:none"><span style="font-size:13px"><b>${(c.proveedor||'—').replace(/</g,'&lt;')}</b> — ${t.replace(/</g,'&lt;')}</span><span style="font-size:11px;color:var(--text2);white-space:nowrap">${c.estado==='pedido'?'en camino':'por pedir'}</span></div>`; }
 function _calSemana(porDia){ const ini=_inicioSemana(ccalRef); const hoy=_hoyISO(); let html='';
   for(let i=0;i<7;i++){ const d=new Date(ini); d.setDate(ini.getDate()+i); const iso=_isoOf(d); const items=porDia[iso]||[]; const esHoy=iso===hoy;
-    html+=`<div class="list-card" style="margin-bottom:6px;${esHoy?'border-color:#0F6E56':''}"><div style="padding:8px 14px;font-size:12px;font-weight:600;${esHoy?'color:#0F6E56':''}">${d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'short'})}${esHoy?' · HOY':''}</div><div style="padding:0 14px 10px">${items.length?items.map(_calItemRow).join(''):'<span style="font-size:12px;color:var(--text3)">—</span>'}</div></div>`; }
+    html+=`<div class="list-card" data-iso="${iso}" style="margin-bottom:6px;${esHoy?'border-color:#0F6E56':''}"><div style="padding:8px 14px;font-size:12px;font-weight:600;${esHoy?'color:#0F6E56':''}">${d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'short'})}${esHoy?' · HOY':''}</div><div style="padding:0 14px 10px">${items.length?items.map(_calItemRow).join(''):'<span style="font-size:12px;color:var(--text3)">—</span>'}</div></div>`; }
   return html;
 }
 function _calDia(porDia){ const iso=_isoOf(ccalRef); const items=porDia[iso]||[];
