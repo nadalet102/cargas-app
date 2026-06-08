@@ -1530,6 +1530,18 @@ async function updateCargaField(cid,field,value){
   }catch(e){log('Error al guardar: '+e.message,'warn');}
 }
 
+async function guardarCosteHist(cid,val){
+  const c=cargas.find(x=>String(x.id)===String(cid)); if(!c) return;
+  c.coste = (val===''||val==null) ? null : Number(val);
+  try{
+    const upd=await api('PUT','/cargas/'+cid,c);
+    Object.assign(c,upd);
+    log('Coste guardado','ok');
+  }catch(e){ log('Error al guardar coste: '+e.message,'warn'); }
+  renderHist();
+  if(typeof updateStats==='function') updateStats();
+}
+
 async function toggleCosteModo(cid){
   const c=cargas.find(x=>String(x.id)===String(cid));
   if(!c)return;
@@ -2032,18 +2044,19 @@ function renderHist(){
               </span>`).join('')}
             </div>`:''}
           </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:14px;font-weight:500;color:var(--green)">${fmtN(portes)} €</div>
-            <div style="margin-top:4px">
-              <div style="font-size:10px;color:var(--text2);margin-bottom:2px">Coste transportista</div>
-              <div style="display:flex;align-items:center;gap:4px">
-                <input type="number" value="${c.coste!=null?+c.coste:''}" placeholder="—" style="width:80px;font-size:12px;font-weight:500;border:1px solid var(--border2);border-radius:4px;padding:2px 6px;font-family:'DM Mono',monospace;color:var(--text);background:var(--surface2);text-align:right" onchange="updateCargaField('${c.id}','coste',this.value);setTimeout(renderHist,300)" title="Editar coste">
-                <span style="font-size:11px;color:var(--text2)">€</span>
-              </div>
-              ${coste!=null?`<div style="font-size:12px;font-weight:500;color:${margen>=0?'var(--green)':'var(--red)'}">${margen>=0?'+':''}${fmtN(margen)} € margen</div>`:''}
+          <div style="text-align:right;flex-shrink:0;min-width:150px">
+            <div style="font-size:9px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">Precio del viaje (cobramos)</div>
+            <div style="font-size:17px;font-weight:700;color:var(--green);margin-bottom:7px">${fmtN(portes)} €</div>
+            <div style="font-size:9px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Lo que nos cobran</div>
+            <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">
+              <input type="number" inputmode="decimal" value="${coste!=null?coste:''}" placeholder="0" style="width:92px;font-size:14px;font-weight:600;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-family:'DM Mono',monospace;color:var(--text);background:var(--surface);text-align:right" onchange="guardarCosteHist('${c.id}',this.value)" title="Lo que nos cobra el transportista">
+              <span style="font-size:12px;color:var(--text2)">€</span>
             </div>
-            <button onclick="openPdfModal('${c.id}')" style="margin-top:6px;background:var(--blue-d);color:#fff;border:none;border-radius:var(--radius-sm);padding:4px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif"><i class="ti ti-printer"></i> PDF</button>
-            <button onclick="revertirEntrega('${c.id}')" style="margin-top:6px;background:none;color:#b45309;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:4px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif" title="Marcar como no entregada y volver a En ruta"><i class="ti ti-arrow-back-up"></i> No entregada</button>
+            ${coste!=null?`<div style="font-size:12px;font-weight:600;margin-top:4px;color:${margen>=0?'var(--green)':'var(--red)'}">Margen ${margen>=0?'+':''}${fmtN(margen)} €</div>`:'<div style="font-size:10px;color:var(--text3);margin-top:4px">pon el coste para ver el margen</div>'}
+            <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
+              <button onclick="openPdfModal('${c.id}')" style="background:var(--blue-d);color:#fff;border:none;border-radius:var(--radius-sm);padding:4px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif"><i class="ti ti-printer"></i> PDF</button>
+              <button onclick="revertirEntrega('${c.id}')" style="background:none;color:#b45309;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:4px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif" title="Marcar como no entregada y volver a En ruta"><i class="ti ti-arrow-back-up"></i> No entregada</button>
+            </div>
           </div>
         </div>
       </div>`;
