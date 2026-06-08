@@ -1595,8 +1595,9 @@ async function onDrop(e,cid){
   const c=cargas.find(x=>String(x.id)===String(cid));
   if(!c||c.status==='entregada'){log('Carga ya entregada','warn');return;}
   try{
-    await api('PATCH','/pedidos/'+p.id+'/carga',{carga_id:cid});
+    const upd=await api('PATCH','/pedidos/'+p.id+'/carga',{carga_id:cid});
     p.carga_id=cid;
+    if(upd&&upd.estado_prep) p.estado_prep=upd.estado_prep;
     dragId=null;renderAll();log('Pedido asignado a '+c.name,'ok');
   }catch(e){log('Error al asignar','warn');}
 }
@@ -2494,6 +2495,7 @@ function cargaCard(p){
       <div style="flex:1;min-width:0">
         <div style="font-size:15px;font-weight:600;${ck?'text-decoration:line-through;color:var(--text2)':''}">${(l.descripcion||l.referencia||'—').replace(/</g,'&lt;')}</div>
         ${l.referencia&&l.descripcion?`<div style="font-size:11px;font-family:monospace;color:var(--text3)">${(''+l.referencia).replace(/</g,'&lt;')}</div>`:''}
+        ${l.observaciones?`<div style="font-size:12px;color:#8a5a00;margin-top:3px;white-space:normal"><i class="ti ti-message-2" style="font-size:12px"></i> ${(''+l.observaciones).replace(/</g,'&lt;')}</div>`:''}
       </div>
       <div style="font-size:18px;font-weight:800;white-space:nowrap;${ck?'color:var(--text3)':''}">${fmtN(l.cantidad)}${l.embalaje?` <span style="font-size:11px;font-weight:500;color:var(--text2)">${(''+l.embalaje).replace(/</g,'&lt;')}</span>`:''}</div>
     </div>`;
@@ -2507,6 +2509,7 @@ function cargaCard(p){
       </div>
       ${completo?'<span class="badge b-green" style="font-size:11px"><i class="ti ti-check"></i> Cargado</span>':`<span style="font-size:14px;font-weight:800;color:var(--text2);white-space:nowrap">${hechas}/${total}</span>`}
     </div>
+    ${p.obs?`<div style="margin:0 16px 8px;padding:8px 12px;background:#FFF7E6;border-left:3px solid #E0A100;border-radius:6px;font-size:13px;color:#5a4500;white-space:normal"><i class="ti ti-note"></i> ${(''+p.obs).replace(/</g,'&lt;')}</div>`:''}
     ${filas||'<div style="padding:12px 16px;color:var(--text2);font-size:12px;border-top:1px solid var(--border)">Sin líneas.</div>'}
     <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
       <button onclick="volverAPreparado('${p.id}')" class="btn-sec" style="font-size:12px;padding:8px 12px"><i class="ti ti-arrow-back-up"></i> Volver a preparados</button>
@@ -2524,9 +2527,11 @@ async function toggleLineaCargada(pid,lid,val){
 }
 async function volverAPreparado(pid){
   try{
-    await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:'preparado'});
-    const p=pedidos.find(x=>String(x.id)===String(pid)); if(p)p.estado_prep='preparado';
-    log('Devuelto a preparados','ok'); renderCargaList();
+    const up=await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:'preparado'});
+    const p=pedidos.find(x=>String(x.id)===String(pid)); if(p)p.estado_prep=(up&&up.estado_prep)||'preparado';
+    if(p&&p.estado_prep==='carga'){ log('Sigue en una carga: para volver a preparados, quítalo de la carga','warn'); }
+    else log('Devuelto a preparados','ok');
+    renderCargaList();
   }catch(e){ log('Error','warn'); }
 }
 async function marcarCargado(pid){
@@ -2851,9 +2856,10 @@ async function toggleLineaPrep(pid,lid,checked){
     const target = (total>0 && nPrep===total) ? 'preparado' : (nPrep>0 ? 'en_preparacion' : 'sin_preparar');
     const p=pedidos.find(x=>String(x.id)===String(pid));
     if(p && p.estado_prep!=='entregado' && p.estado_prep!==target){
-      await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:target});
-      p.estado_prep=target;
-      if(target==='preparado') log('Pedido '+(p.num||'')+' preparado','ok');
+      const up=await api('PATCH','/pedidos/'+pid+'/prep',{estado_prep:target});
+      p.estado_prep=(up&&up.estado_prep)||target;
+      if(p.estado_prep==='preparado') log('Pedido '+(p.num||'')+' preparado','ok');
+      else if(p.estado_prep==='carga') log('Pedido '+(p.num||'')+' preparado → pasa a carga','ok');
     }
   }catch(e){ log('Error: '+e.message,'warn'); }
 }
@@ -3897,7 +3903,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 43;
+const NEEDS_API = 44;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
