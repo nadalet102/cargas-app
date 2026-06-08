@@ -6,7 +6,7 @@ const { extraerLineas, extraerTodasLineas, extraerCliente } = require('./parseLi
 
 // Versión de la API: súbela cuando cambie server.js. La app compara con la que
 // necesita y avisa si el servidor desplegado se quedó atrás (no reiniciado).
-const API_VERSION = 43;
+const API_VERSION = 44;
 
 const app = express();
 app.use(cors());
@@ -436,6 +436,13 @@ app.patch('/api/pedidos/:id/carga', async (req, res) => {
 
     const r = await pool.query('UPDATE pedidos SET carga_id=$1 WHERE id=$2 RETURNING *',[carga_id||null,req.params.id]);
 
+    // Si el pedido ya estaba PREPARADO y se mete en una carga → pasa directo a CARGA
+    if (carga_id && r.rows[0] && r.rows[0].estado_prep === 'preparado') {
+      const r2 = await pool.query("UPDATE pedidos SET estado_prep='carga' WHERE id=$1 RETURNING *",[req.params.id]);
+      await pool.query('UPDATE pedido_lineas SET cargada=false WHERE pedido_id=$1',[req.params.id]);
+      if (r2.rows[0]) r.rows[0] = r2.rows[0];
+    }
+
     // Si se añade a una carga que YA tenía al menos un pedido → alerta de agrupación
     if(carga_id && yaTenia >= 1){
       enviarAlertaAgrupacion(carga_id, r.rows[0]).catch(e=>console.warn('Alerta agrupación error:',e.message));
@@ -485,6 +492,11 @@ async function enviarAlertaAgrupacion(cargaId, pedidoNuevo){
 app.patch('/api/pedidos/:id/prep', async (req, res) => {
   let { estado_prep } = req.body;
   try {
+    // Si se marca preparado y el pedido YA está dentro de una carga → pasa directo a CARGA
+    if (estado_prep === 'preparado') {
+      const cur = await pool.query('SELECT carga_id FROM pedidos WHERE id=$1',[req.params.id]);
+      if (cur.rows[0] && cur.rows[0].carga_id) estado_prep = 'carga';
+    }
     const r = await pool.query("UPDATE pedidos SET estado_prep=$1, entregado_at=(CASE WHEN $1='entregado' THEN now() ELSE NULL END) WHERE id=$2 RETURNING *",[estado_prep,req.params.id]);
     // al entrar en fase de carga, las líneas empiezan sin tachar (checklist de carga nuevo)
     if (estado_prep === 'carga') {
