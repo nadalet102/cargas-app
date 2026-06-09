@@ -1,0 +1,14 @@
+{
+  "name": "cargas-app",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "cors": "^2.8.5",
+    "pdf2json": "^4.0.3"
+  }
+}
