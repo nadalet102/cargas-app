@@ -119,4 +119,40 @@ router.post('/api/bc/sincronizar', async (req, res) => {
   } catch(e) { res.status(502).json({error:e.message}); }
 });
 
+// POST /api/bc/importar — importa UN pedido desde un flujo de Power Automate
+// lanzado desde el menú "Automatizar" de Business Central. Acepta un JSON plano
+// y lo deja en la bandeja "Pedidos BC" (estado pendiente) para revisar y añadir.
+// Seguridad opcional: si BC_IMPORT_TOKEN está definido, exige la cabecera
+// x-import-token con ese valor.
+router.post('/api/bc/importar', async (req, res) => {
+  const tok = process.env.BC_IMPORT_TOKEN;
+  if (tok && req.get('x-import-token') !== tok) return res.status(401).json({ error: 'token inválido' });
+  const b = req.body || {};
+  if (!b.num) return res.status(400).json({ error: 'falta el número de pedido (num)' });
+  try {
+    const lineas = Array.isArray(b.lineas) ? b.lineas.map(l => ({
+      ref_bc: l.referencia || l.ref || l.ref_bc || null,
+      descripcion: l.descripcion || l.description || null,
+      cantidad: Number(l.cantidad || l.quantity) || 0,
+      precio_unidad: Number(l.precio != null ? l.precio : l.precio_unidad) || 0,
+      peso: Number(l.peso != null ? l.peso : l.kgs) || 0
+    })) : [];
+    const kg = b.kg != null ? Number(b.kg)
+             : (lineas.reduce((s, l) => s + (l.peso || 0) * (l.cantidad || 0), 0) || null);
+    const porte = b.porte != null ? Number(b.porte) : null;
+    const destino = b.destino || null;
+    const direccion = b.direccion_descarga || b.direccion || null;
+    const r = await pool.query(
+      `INSERT INTO bc_inbox (num,cliente,destino,direccion_descarga,fecha,kg,porte,lineas)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT(num) DO UPDATE SET
+         cliente=$2,destino=$3,direccion_descarga=$4,fecha=$5,kg=$6,porte=$7,lineas=$8,synced_at=NOW()
+       WHERE bc_inbox.estado='pendiente'
+       RETURNING (xmax=0) AS inserted`,
+      [b.num, b.cliente || null, destino, direccion, b.fecha || null, kg, porte, JSON.stringify(lineas)]
+    );
+    res.json({ ok: true, num: b.num, nuevo: !!(r.rows[0] && r.rows[0].inserted), lineas: lineas.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
