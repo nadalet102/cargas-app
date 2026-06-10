@@ -141,11 +141,15 @@ router.post('/api/bc/importar', async (req, res) => {
       const ref = l.referencia || l.ref || l.ref_bc || null;
       const cant = Number(l.cantidad != null ? l.cantidad : l.quantity) || 0;
       const precio = Number(l.precio != null ? l.precio : l.precio_unidad) || 0;
+      // 'peso' = peso por unidad (de la ficha del artículo). kgs de la línea = peso × cantidad.
+      // Si en vez de 'peso' llega 'kgs' (peso total ya calculado), se usa tal cual.
+      const pesoUnit = Number(l.peso != null ? l.peso : l.peso_unitario) || 0;
+      const kgsLinea = pesoUnit > 0 ? Math.round(pesoUnit * cant * 100) / 100 : (Number(l.kgs) || 0);
       return {
         referencia: ref,
         descripcion: l.descripcion || l.description || null,
         cantidad: cant,
-        kgs: Number(l.peso != null ? l.peso : l.kgs) || 0,
+        kgs: kgsLinea,
         embalaje: l.embalaje || l.unidad || l.unitOfMeasureCode || l.unitOfMeasure || null,
         precio,
         es_articulo: !!ref && !/^PORT/i.test(ref)
@@ -155,9 +159,9 @@ router.post('/api/bc/importar', async (req, res) => {
     const porteLn = lineas.find(l => /^PORT/i.test(l.referencia || ''));
     const porte = b.porte != null ? Number(b.porte)
                 : (porteLn ? Math.round(porteLn.precio * (porteLn.cantidad || 1) * 100) / 100 : null);
-    // Kg total: suma de peso × cantidad de las líneas salvo que venga dado
+    // Kg total: suma de los kgs (ya total por línea) salvo que venga dado
     const kg = b.kg != null ? Number(b.kg)
-             : (lineas.reduce((s, l) => s + (l.kgs || 0) * (l.cantidad || 0), 0) || null);
+             : (lineas.reduce((s, l) => s + (l.kgs || 0), 0) || null);
     const destino = b.destino || null;
     const direccion = b.direccion_descarga || b.direccion || null;
     const r = await pool.query(
