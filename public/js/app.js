@@ -27,6 +27,9 @@ let pedidos=[],cargas=[],transportistas=[],categorias=[],preparadoresList=[],com
 let pdfImportLineas=null;  // líneas del último PDF importado en el modal de planificación
 let dragId=null,searchQ='',prepFilter='all',catFilter='',editId=null,modalType=null,cargaN=0;
 let calY=new Date().getFullYear(),calM=new Date().getMonth();
+// Cargas plegadas (solo nombre + resumen). Persistente entre sesiones.
+let cargasColapsadas=new Set();
+try{ cargasColapsadas=new Set(JSON.parse(localStorage.getItem('cargasColapsadas')||'[]')); }catch(e){}
 
 const fmtN=n=>Math.round(n||0).toLocaleString('es-ES');
 const fmtDate=d=>{if(!d)return'';const s=String(d).substring(0,10);const[y,m,dd]=s.split('-');return dd+'/'+m+'/'+y;};
@@ -220,7 +223,8 @@ function renderCargas(){
     const isPend=c.coste_modo==='pendiente';
     const nPrep=ps.filter(p=>_esPrep(p)).length;
     const nNoPre=ps.filter(p=>p.estado_prep!=='preparado').length;
-    return `<div class="cc" id="col-${c.id}"
+    const plegada=cargasColapsadas.has(String(c.id));
+    return `<div class="cc${plegada?' cc-collapsed':''}" id="col-${c.id}"
       ondragover="onDragOver(event,'${c.id}')"
       ondragleave="onDragLeave()"
       ondrop="onDrop(event,'${c.id}')">
@@ -237,7 +241,9 @@ function renderCargas(){
               <input class="mat-input" style="color:${col.t}" type="text" placeholder="Matrícula remolque" value="${c.mat_remolque||''}" onchange="updateCargaField('${c.id}','mat_remolque',this.value)" title="Matrícula remolque">
             </div>
           </div>
+          <span class="cc-collapsed-info" style="color:${col.t}">${ps.length} ped · ${fmtN(kg)} kg</span>
           <div class="cc-acts">
+            <button class="cc-btn cc-collapse-btn" onclick="toggleCargaCollapse('${c.id}')" title="Plegar / desplegar" style="color:${col.t}"><i class="ti ti-chevron-${plegada?'right':'down'}"></i></button>
             <button class="cc-btn" onclick="openPdfModal('${c.id}')" title="Generar PDF" style="color:${col.t}"><i class="ti ti-printer"></i></button>
             <button class="cc-btn" onclick="confirmDelete('carga','${c.id}')" title="Eliminar" style="color:${col.t}"><i class="ti ti-x"></i></button>
           </div>
@@ -305,6 +311,7 @@ function renderCargas(){
       </div>
     </div>`;
   }).join('')+`<button class="new-carga-btn" onclick="addCarga()"><i class="ti ti-plus" style="font-size:20px;opacity:.4"></i><span>Nueva carga</span></button>`;
+  _actualizarBotonPlegar();
 }
 
 async function setOrden(pid, val){
@@ -914,9 +921,48 @@ async function onDrop(e,cid){
     const upd=await api('PATCH','/pedidos/'+p.id+'/carga',{carga_id:cid});
     p.carga_id=cid;
     if(upd&&upd.estado_prep) p.estado_prep=upd.estado_prep;
+    // al soltar, desplegar la carga destino para ver que el pedido entró
+    cargasColapsadas.delete(String(cid));_guardarColapsadas();
     dragId=null;renderAll();log('Pedido asignado a '+c.name,'ok');
   }catch(e){log('Error al asignar','warn');}
 }
+
+// ── PLEGAR CARGAS (para que quepan más al arrastrar pedidos) ──────────────────
+function _guardarColapsadas(){ try{ localStorage.setItem('cargasColapsadas', JSON.stringify([...cargasColapsadas])); }catch(e){} }
+function toggleCargaCollapse(cid){
+  cid=String(cid);
+  if(cargasColapsadas.has(cid)) cargasColapsadas.delete(cid); else cargasColapsadas.add(cid);
+  _guardarColapsadas();
+  const el=document.getElementById('col-'+cid);
+  if(el){
+    const plegada=cargasColapsadas.has(cid);
+    el.classList.toggle('cc-collapsed',plegada);
+    const ic=el.querySelector('.cc-collapse-btn i');
+    if(ic) ic.className='ti ti-chevron-'+(plegada?'right':'down');
+  }
+  _actualizarBotonPlegar();
+}
+function togglePlegarTodas(){
+  const activas=cargas.filter(c=>c.status!=='entregada');
+  const todasPlegadas=activas.length>0 && activas.every(c=>cargasColapsadas.has(String(c.id)));
+  if(todasPlegadas) cargasColapsadas.clear();
+  else activas.forEach(c=>cargasColapsadas.add(String(c.id)));
+  _guardarColapsadas();
+  renderCargas();
+}
+function _actualizarBotonPlegar(){
+  const b=document.getElementById('btn-plegar-cargas'); if(!b) return;
+  const activas=cargas.filter(c=>c.status!=='entregada');
+  const todasPlegadas=activas.length>0 && activas.every(c=>cargasColapsadas.has(String(c.id)));
+  b.innerHTML=todasPlegadas?'<i class="ti ti-chevrons-down"></i> Desplegar todas':'<i class="ti ti-chevrons-up"></i> Plegar todas';
+}
+// Auto-scroll al arrastrar cerca de los bordes (alcanzar cargas fuera de pantalla)
+document.addEventListener('dragover',function(e){
+  if(!dragId) return;
+  const m=80, sp=22, y=e.clientY, h=window.innerHeight||document.documentElement.clientHeight;
+  if(y<m) window.scrollBy(0,-sp);
+  else if(y>h-m) window.scrollBy(0,sp);
+});
 
 // ── MODAL ─────────────────────────────────────────────────────────────────────
 function openModal(type,id){
