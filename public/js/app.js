@@ -82,14 +82,14 @@ function updateCatDropdowns(){
 function renderAll(){renderBCList();renderCargas();updateStats();updateCatDropdowns();}
 
 const NAV_GROUPS = {
-  reparto:     { subs:[['plan','Planificación'],['cal','Calendario'],['hist','Historial']] },
+  reparto:     { subs:[['plan','Planificación'],['bc','Bandeja BC'],['cal','Calendario'],['hist','Historial']] },
   preparacion: { subs:[['prep','Por preparar'],['preparados','Preparados'],['carga','Carga'],['histped','Histórico'],['porart','Por artículo']] },
   compras:     { subs:[['compras','']] },
   produccion:  { subs:[['silos','Silos'],['matprima','Materia prima'],['pedidoscli','Pedidos'],['prodbb','Prod. BB'],['prodsacos','Prod. Sacos'],['camion','Camión'],['prodcal','Calendario'],['prodfinal','Prod. Final']] },
   resumen:     { subs:[['dash','']] },
   ajustes:     { subs:[['trans','Transportistas'],['cats','Categorías'],['clientesauto','Clientes auto'],['calsync','Calendario']] }
 };
-const VIEW_GROUP = {plan:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',carga:'preparacion',histped:'preparacion',porart:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',calsync:'ajustes',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
+const VIEW_GROUP = {plan:'reparto',bc:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',carga:'preparacion',histped:'preparacion',porart:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',calsync:'ajustes',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
 let _activeView='plan';
 function _runRenderer(t){
   if(t==='cal')renderCal();
@@ -113,6 +113,7 @@ function _runRenderer(t){
   else if(t==='camion')cargarViajes();
   else if(t==='prodcal')cargarProdCal();
   else if(t==='pedidoscli')cargarPedidosCli();
+  else if(t==='bc'){ loadBCConfig(); loadBCPedidos(); }
 }
 function renderSubtabBar(g, activeView){
   const bar=document.getElementById('subtab-bar'); if(!bar) return;
@@ -3187,7 +3188,7 @@ function renderBCBandeja(){
           ${yaImportado?'<span style="background:var(--green-l);color:var(--green);font-size:10px;padding:1px 7px;border-radius:8px;font-weight:600">Ya importado</span>':''}
         </div>
         <div style="font-size:13px;font-weight:500;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.cliente}</div>
-        <div style="font-size:11px;color:var(--text2)">${p.destino||''}${p.fecha?' · '+fmtD(p.fecha):''}</div>
+        <div style="font-size:11px;color:var(--text2)">${p.destino||''}${p.fecha?' · '+fmtDate(p.fecha):''}</div>
       </div>
       <div style="display:flex;gap:5px;flex-shrink:0">
         ${!yaImportado
