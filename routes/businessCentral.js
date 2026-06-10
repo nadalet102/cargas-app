@@ -146,6 +146,7 @@ router.post('/api/bc/importar', async (req, res) => {
         descripcion: l.descripcion || l.description || null,
         cantidad: cant,
         kgs: Number(l.peso != null ? l.peso : l.kgs) || 0,
+        embalaje: l.embalaje || l.unidad || l.unitOfMeasureCode || l.unitOfMeasure || null,
         precio,
         es_articulo: !!ref && !/^PORT/i.test(ref)
       };
