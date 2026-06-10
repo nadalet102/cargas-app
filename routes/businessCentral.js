@@ -130,16 +130,29 @@ router.post('/api/bc/importar', async (req, res) => {
   const b = req.body || {};
   if (!b.num) return res.status(400).json({ error: 'falta el número de pedido (num)' });
   try {
-    const lineas = Array.isArray(b.lineas) ? b.lineas.map(l => ({
-      ref_bc: l.referencia || l.ref || l.ref_bc || null,
-      descripcion: l.descripcion || l.description || null,
-      cantidad: Number(l.cantidad || l.quantity) || 0,
-      precio_unidad: Number(l.precio != null ? l.precio : l.precio_unidad) || 0,
-      peso: Number(l.peso != null ? l.peso : l.kgs) || 0
-    })) : [];
+    // Normalizar líneas. Mismas reglas que el import de PDF: la línea de portes
+    // (referencia "PORT…") no es artículo (no va a la preparación) y su importe
+    // se usa como porte del pedido.
+    const lineas = (Array.isArray(b.lineas) ? b.lineas : []).map(l => {
+      const ref = l.referencia || l.ref || l.ref_bc || null;
+      const cant = Number(l.cantidad != null ? l.cantidad : l.quantity) || 0;
+      const precio = Number(l.precio != null ? l.precio : l.precio_unidad) || 0;
+      return {
+        referencia: ref,
+        descripcion: l.descripcion || l.description || null,
+        cantidad: cant,
+        kgs: Number(l.peso != null ? l.peso : l.kgs) || 0,
+        precio,
+        es_articulo: !!ref && !/^PORT/i.test(ref)
+      };
+    });
+    // Porte: de la línea PORT (precio × cantidad) salvo que venga dado explícitamente
+    const porteLn = lineas.find(l => /^PORT/i.test(l.referencia || ''));
+    const porte = b.porte != null ? Number(b.porte)
+                : (porteLn ? Math.round(porteLn.precio * (porteLn.cantidad || 1) * 100) / 100 : null);
+    // Kg total: suma de peso × cantidad de las líneas salvo que venga dado
     const kg = b.kg != null ? Number(b.kg)
-             : (lineas.reduce((s, l) => s + (l.peso || 0) * (l.cantidad || 0), 0) || null);
-    const porte = b.porte != null ? Number(b.porte) : null;
+             : (lineas.reduce((s, l) => s + (l.kgs || 0) * (l.cantidad || 0), 0) || null);
     const destino = b.destino || null;
     const direccion = b.direccion_descarga || b.direccion || null;
     const r = await pool.query(
@@ -151,7 +164,7 @@ router.post('/api/bc/importar', async (req, res) => {
        RETURNING (xmax=0) AS inserted`,
       [b.num, b.cliente || null, destino, direccion, b.fecha || null, kg, porte, JSON.stringify(lineas)]
     );
-    res.json({ ok: true, num: b.num, nuevo: !!(r.rows[0] && r.rows[0].inserted), lineas: lineas.length });
+    res.json({ ok: true, num: b.num, nuevo: !!(r.rows[0] && r.rows[0].inserted), lineas: lineas.length, porte, kg });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

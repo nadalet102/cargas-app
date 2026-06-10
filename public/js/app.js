@@ -3217,6 +3217,17 @@ async function importarDesdeBCBandeja(num){
     if(p.kg) document.getElementById('f-kg').value=Math.round(p.kg);
     if(p.porte) document.getElementById('f-porte').value=p.porte;
     if(p.fecha) document.getElementById('f-fecha').value=p.fecha;
+    // Volcar las líneas igual que el import de PDF: se crean al pulsar Guardar.
+    // guardarLineasPedido se queda solo con los artículos (excluye la línea de portes).
+    pdfImportLineas = (Array.isArray(p.lineas) ? p.lineas : []).map(l=>({
+      referencia: l.referencia || l.ref_bc || null,
+      descripcion: l.descripcion || null,
+      cantidad: l.cantidad || 0,
+      kgs: (l.kgs != null ? l.kgs : (l.peso != null ? l.peso : null)),
+      embalaje: l.embalaje || null,
+      es_articulo: l.es_articulo !== false && !/^PORT/i.test(l.referencia || l.ref_bc || '')
+    }));
+    if(!pdfImportLineas.length) pdfImportLineas = null;
     // Show banner
     const banner=document.createElement('div');
     banner.style.cssText='background:#e6f5ea;border:1px solid #2d7a3a;border-radius:6px;padding:8px 12px;font-size:12px;color:#2d7a3a;margin-bottom:10px';
