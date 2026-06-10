@@ -130,10 +130,14 @@ router.post('/api/bc/importar', async (req, res) => {
   const b = req.body || {};
   if (!b.num) return res.status(400).json({ error: 'falta el número de pedido (num)' });
   try {
+    // Las líneas pueden venir como array o como texto JSON (Power Automate, al usar
+    // @{body('Seleccionar')} entre comillas, las manda "stringificadas"). Aceptamos ambas.
+    let rawLineas = b.lineas;
+    if (typeof rawLineas === 'string') { try { rawLineas = JSON.parse(rawLineas); } catch (e) { rawLineas = []; } }
     // Normalizar líneas. Mismas reglas que el import de PDF: la línea de portes
     // (referencia "PORT…") no es artículo (no va a la preparación) y su importe
     // se usa como porte del pedido.
-    const lineas = (Array.isArray(b.lineas) ? b.lineas : []).map(l => {
+    const lineas = (Array.isArray(rawLineas) ? rawLineas : []).map(l => {
       const ref = l.referencia || l.ref || l.ref_bc || null;
       const cant = Number(l.cantidad != null ? l.cantidad : l.quantity) || 0;
       const precio = Number(l.precio != null ? l.precio : l.precio_unidad) || 0;
