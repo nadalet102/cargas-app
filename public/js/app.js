@@ -1346,6 +1346,10 @@ function renderHist(){
   let list=entregadas;
   if(curMes) list=list.filter(c=>c.fecha&&String(c.fecha).substring(0,7)===curMes);
   if(curTrans) list=list.filter(c=>String(c.truck_id)===curTrans);
+  // Filtro por estado del coste (lo que nos cobran): sin precio / con precio
+  const curCoste=document.getElementById('hist-filter-coste')?.value||'';
+  if(curCoste==='sin') list=list.filter(c=>c.coste==null);
+  else if(curCoste==='con') list=list.filter(c=>c.coste!=null);
   list=list.sort((a,b)=>new Date(b.fecha||0)-new Date(a.fecha||0));
   // KPIs
   const totalPortes=list.reduce((s,c)=>s+cargaPortes(c.id),0);
@@ -1363,8 +1367,9 @@ function renderHist(){
     el.innerHTML=`<div class="empty-state"><i class="ti ti-history"></i>Sin cargas entregadas${curMes||curTrans?' con estos filtros':' aún'}</div>`;
     return;
   }
+  const sinPrecio=entregadas.filter(c=>c.coste==null).length;
   el.innerHTML=`<div class="list-card">
-    <div class="lc-hdr"><span>${list.length} carga${list.length>1?'s':''}</span><span style="font-size:11px;color:var(--text2)">ordenadas por fecha desc.</span></div>
+    <div class="lc-hdr"><span>${list.length} carga${list.length>1?'s':''}</span>${sinPrecio?`<span onclick="document.getElementById('hist-filter-coste').value='sin';renderHist()" style="font-size:11px;color:var(--amber);cursor:pointer;text-decoration:underline" title="Ver solo las que faltan de precio">⚠ ${sinPrecio} sin precio</span>`:`<span style="font-size:11px;color:var(--text2)">ordenadas por fecha desc.</span>`}</div>
     ${list.map(c=>{
       const ps=cargaPs(c.id).sort((a,b)=>(a.orden_carga||999)-(b.orden_carga||999));
       const portes=cargaPortes(c.id),kg=cargaKg(c.id);
@@ -1407,6 +1412,7 @@ function renderHist(){
             <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
               <button onclick="openPdfModal('${c.id}')" style="background:var(--blue-d);color:#fff;border:none;border-radius:var(--radius-sm);padding:4px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif"><i class="ti ti-printer"></i> PDF</button>
               <button onclick="revertirEntrega('${c.id}')" style="background:none;color:#b45309;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:4px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif" title="Marcar como no entregada y volver a En ruta"><i class="ti ti-arrow-back-up"></i> No entregada</button>
+              <button onclick="eliminarCargaHist('${c.id}')" style="background:none;color:var(--red);border:1px solid var(--red);border-radius:var(--radius-sm);padding:4px 9px;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;font-family:'DM Sans',sans-serif" title="Eliminar esta carga del historial"><i class="ti ti-trash"></i> Borrar</button>
             </div>
           </div>
         </div>
@@ -1619,6 +1625,20 @@ async function revertirEntrega(cid){
     await loadAll();
     log('Entrega revertida: "'+c.name+'" vuelve a Planificada','ok');
   }catch(e){ log('Error al revertir: '+e.message,'warn'); }
+}
+
+// Eliminar definitivamente una carga del historial (refresca el historial)
+async function eliminarCargaHist(cid){
+  const c=cargas.find(x=>String(x.id)===String(cid));
+  if(!c) return;
+  if(!confirm('¿Eliminar la carga "'+c.name+'" del historial?\nSe borra definitivamente. Los pedidos entregados se conservan en el histórico de pedidos.')) return;
+  try{
+    await api('DELETE','/cargas/'+cid);
+    cargas=cargas.filter(x=>String(x.id)!==String(cid));
+    pedidos.forEach(p=>{ if(String(p.carga_id)===String(cid)) p.carga_id=null; });
+    log('Carga eliminada del historial','ok');
+    renderHist(); updateStats();
+  }catch(e){ log('Error al eliminar: '+e.message,'warn'); }
 }
 
 function log(msg,type=''){

@@ -211,6 +211,11 @@ document.addEventListener('DOMContentLoaded', _pintarBotonTema);
       <select id="hist-filter-trans" onchange="renderHist()" style="font-size:11px;padding:5px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);color:var(--text)">
         <option value="">Todos los transportistas</option>
       </select>
+      <select id="hist-filter-coste" onchange="renderHist()" title="Filtrar por estado del coste (lo que nos cobran)" style="font-size:11px;padding:5px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);color:var(--text)">
+        <option value="">Todos los costes</option>
+        <option value="sin">Sin precio (pendiente)</option>
+        <option value="con">Con precio</option>
+      </select>
       <button onclick="exportarHistorialExcel()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px"><i class="ti ti-file-spreadsheet"></i> Exportar Excel</button>
       <button onclick="descargarBackup()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px" title="Descargar una copia de seguridad de todos los datos"><i class="ti ti-database-export"></i> Copia de seguridad</button>
       <button onclick="triggerRestore()" class="btn-sec" style="font-size:11px;padding:6px 11px;display:flex;align-items:center;gap:5px;color:#9A2A1B" title="Restaurar datos desde una copia"><i class="ti ti-database-import"></i> Restaurar</button>
