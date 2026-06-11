@@ -1253,56 +1253,176 @@ function renderCal(){
 function calMove(d){if(d<0){if(calM===0){calM=11;calY--;}else calM--;}else{if(calM===11){calM=0;calY++;}else calM++;}renderCal();}
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
+// ── RESUMEN / DASHBOARD ───────────────────────────────────────────────────────
+let _dashCharts={};
+function _destroyDashCharts(){ for(const k in _dashCharts){ try{_dashCharts[k].destroy();}catch(e){} } _dashCharts={}; }
+function _mesYM(off){ const d=new Date(); d.setDate(1); if(off) d.setMonth(d.getMonth()+off); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function _enPeriodoDash(c, periodo){
+  if(periodo==='all') return true;
+  const m=c.fecha?String(c.fecha).substring(0,7):'';
+  if(periodo==='thismonth') return m===_mesYM(0);
+  if(periodo==='lastmonth') return m===_mesYM(-1);
+  return m===periodo; // YYYY-MM concreto
+}
+function _poblarPeriodoDash(){
+  const sel=document.getElementById('dash-periodo'); if(!sel) return;
+  const cur=sel.value;
+  const meses=[...new Set(cargas.filter(c=>c.status==='entregada').map(c=>c.fecha?String(c.fecha).substring(0,7):'').filter(Boolean))].sort().reverse();
+  sel.innerHTML='<option value="all">Todo</option><option value="thismonth">Este mes</option><option value="lastmonth">Mes anterior</option>'
+    + meses.map(m=>`<option value="${m}">${_nombreMes(m)}</option>`).join('');
+  if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+// Datos agregados del periodo (reutilizado por gráficos e informes)
+function _dashDatos(periodo){
+  const ent=cargas.filter(c=>c.status==='entregada'&&_enPeriodoDash(c,periodo));
+  const totPortes=ent.reduce((s,c)=>s+cargaPortes(c.id),0);
+  const totCoste=ent.filter(c=>c.coste!=null).reduce((s,c)=>s+(+c.coste),0);
+  const totKg=ent.reduce((s,c)=>s+cargaKg(c.id),0);
+  const sinPrecio=ent.filter(c=>c.coste==null).length;
+  const porMes={};
+  ent.forEach(c=>{ const m=c.fecha?String(c.fecha).substring(0,7):'(sin fecha)'; const d=porMes[m]||(porMes[m]={v:0,kg:0,p:0,co:0}); d.v++; d.kg+=cargaKg(c.id); d.p+=cargaPortes(c.id); if(c.coste!=null)d.co+=+c.coste; });
+  const porTrans=transportistas.map(t=>{ const cs=ent.filter(c=>String(c.truck_id)===String(t.id)); const p=cs.reduce((s,c)=>s+cargaPortes(c.id),0); const co=cs.filter(c=>c.coste!=null).reduce((s,c)=>s+(+c.coste),0); return{nombre:t.nombre,color:t.color,nC:cs.length,kg:cs.reduce((s,c)=>s+cargaKg(c.id),0),portes:p,costes:co,margen:p-co}; }).filter(t=>t.nC>0).sort((a,b)=>b.portes-a.portes);
+  return { ent, totPortes, totCoste, totMargen:totPortes-totCoste, totKg, sinPrecio, porMes, porTrans };
+}
+
 function renderDash(){
-  const asig=pedidos.filter(p=>p.carga_id);
-  const portesAsig=asig.reduce((s,p)=>s+(+p.porte||0),0);
-  const entregadas=cargas.filter(c=>c.status==='entregada');
-  const portesE=entregadas.reduce((s,c)=>s+cargaPortes(c.id),0);
-  const costesE=entregadas.filter(c=>c.coste!=null).reduce((s,c)=>s+(+c.coste),0);
-  const pendCoste=cargas.filter(c=>c.status!=='entregada'&&c.coste_modo==='pendiente').length;
+  _poblarPeriodoDash();
+  const periodo=document.getElementById('dash-periodo')?.value||'all';
+  const D=_dashDatos(periodo);
+  const cargasP=cargas.filter(c=>_enPeriodoDash(c,periodo));
+  const margenPct=D.totPortes>0?Math.round(D.totMargen/D.totPortes*100):0;
+  const nRuta=cargasP.filter(c=>c.status==='ruta').length;
+  const nAbiertas=cargasP.filter(c=>c.status!=='entregada').length;
   const prepTotal=pedidos.filter(p=>_esPrep(p)).length;
+  const pedAsig=pedidos.filter(p=>p.carga_id).length;
+  // KPIs (dinero + operativa)
   document.getElementById('dash-kpis').innerHTML=`
-    <div class="dash-card"><div class="dash-lbl">Total pedidos</div><div class="dash-val">${pedidos.length}</div><div class="dash-sub">${prepTotal} preparados · ${pedidos.length-prepTotal} sin preparar</div></div>
-    <div class="dash-card"><div class="dash-lbl">Cargas</div><div class="dash-val">${cargas.length}</div><div class="dash-sub">${entregadas.length} entregadas · ${cargas.filter(c=>c.status==='ruta').length} en ruta</div></div>
-    <div class="dash-card"><div class="dash-lbl">Portes cliente</div><div class="dash-val" style="color:var(--green)">${fmtN(portesAsig)} €</div><div class="dash-sub">pedidos asignados</div></div>
-    <div class="dash-card"><div class="dash-lbl">Margen entregado</div><div class="dash-val" style="color:${portesE-costesE>=0?'var(--green)':'var(--red)'}">${portesE-costesE>=0?'+':''}${fmtN(portesE-costesE)} €</div><div class="dash-sub">${pendCoste} cargas con coste pendiente</div></div>`;
-  const tData=transportistas.map(t=>{
-    const cs=cargas.filter(c=>String(c.truck_id)===String(t.id));
-    const portes=cs.reduce((s,c)=>s+cargaPortes(c.id),0);
-    const costes=cs.filter(c=>c.coste!=null).reduce((s,c)=>s+(+c.coste),0);
-    return{...t,nC:cs.length,portes,costes,margen:portes-costes};
-  }).sort((a,b)=>b.portes-a.portes);
-  const maxP=Math.max(...tData.map(t=>t.portes),1);
-  document.getElementById('dash-trucks').innerHTML=tData.length?tData.map(t=>`
+    <div class="dash-card"><div class="dash-lbl">Portes (cobramos)</div><div class="dash-val" style="color:var(--green)">${fmtN(D.totPortes)} €</div><div class="dash-sub">${D.ent.length} cargas entregadas</div></div>
+    <div class="dash-card"><div class="dash-lbl">Coste (nos cobran)</div><div class="dash-val" style="color:var(--amber)">${fmtN(D.totCoste)} €</div><div class="dash-sub">${D.sinPrecio?('⚠ '+D.sinPrecio+' sin precio'):'todas con precio'}</div></div>
+    <div class="dash-card"><div class="dash-lbl">Margen</div><div class="dash-val" style="color:${D.totMargen>=0?'var(--green)':'var(--red)'}">${D.totMargen>=0?'+':''}${fmtN(D.totMargen)} €</div><div class="dash-sub">${margenPct}% sobre portes</div></div>
+    <div class="dash-card"><div class="dash-lbl">Kg transportados</div><div class="dash-val">${fmtN(D.totKg)}</div><div class="dash-sub">en el periodo</div></div>
+    <div class="dash-card"><div class="dash-lbl">Cargas abiertas</div><div class="dash-val">${nAbiertas}</div><div class="dash-sub">${nRuta} en ruta</div></div>
+    <div class="dash-card"><div class="dash-lbl">Pedidos</div><div class="dash-val">${pedidos.length}</div><div class="dash-sub">${prepTotal} preparados · ${pedAsig} asignados</div></div>`;
+  // Detalle por transportista
+  const maxP=Math.max(...D.porTrans.map(t=>t.portes),1);
+  document.getElementById('dash-trucks').innerHTML=D.porTrans.length?D.porTrans.map(t=>`
     <div class="list-row">
       <div class="trans-avatar" style="width:30px;height:30px;font-size:11px;background:${t.color}20;color:${t.color};border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">${initials(t.nombre)}</div>
-      <div class="list-main"><div class="list-name">${t.nombre}</div><div class="list-meta">${t.nC} cargas</div>
+      <div class="list-main"><div class="list-name">${t.nombre}</div><div class="list-meta">${t.nC} cargas · ${fmtN(t.portes)} €</div>
         <div class="prog-bar"><div class="prog-fill" style="width:${Math.round(t.portes/maxP*100)}%;background:${t.color}"></div></div>
       </div>
-      <div style="text-align:right;flex-shrink:0"><div style="font-size:12px;font-weight:500;color:var(--green)">${fmtN(t.portes)} €</div>${t.costes>0?`<div style="font-size:10px;color:${t.margen>=0?'var(--green)':'var(--red)'}">${t.margen>=0?'+':''}${fmtN(t.margen)} € mg</div>`:''}</div>
-    </div>`).join(''):`<div style="padding:14px;font-size:11px;color:var(--text2);text-align:center">Sin transportistas aún</div>`;
-  document.getElementById('dash-cargas').innerHTML=cargas.slice(0,6).map(c=>{
-    const ps=cargaPs(c.id),sc=STATUS_CFG[c.status]||STATUS_CFG.pendiente,col=CCOLS[Math.min(c.color_idx||0,CCOLS.length-1)];
-    const margen=c.coste!=null?cargaPortes(c.id)-(+c.coste):null;
-    return`<div class="list-row">
-      <div style="width:8px;height:8px;border-radius:50%;background:${col.b};flex-shrink:0"></div>
-      <div class="list-main"><div class="list-name">${c.name}${c.codigo_orden?` <span style="font-size:10px;color:var(--text2);font-family:monospace">${c.codigo_orden}</span>`:''}</div><div class="list-meta">${fmtDate(c.fecha)} · ${ps.length} ped.</div></div>
-      <div style="text-align:right;flex-shrink:0">${margen!=null?`<div style="font-size:11px;font-weight:500;color:${margen>=0?'var(--green)':'var(--red)'}">${margen>=0?'+':''}${fmtN(margen)} €</div>`:'<div style="font-size:10px;color:var(--text2)">Pendiente</div>'}
-        <span class="badge ${sc.badge}">${sc.label}</span>
-      </div>
-    </div>`;
-  }).join('');
-  const ccc=cargas.filter(c=>c.coste!=null&&cargaPortes(c.id)>0).slice(0,6);
-  const maxM=Math.max(...ccc.map(c=>Math.abs(cargaPortes(c.id)-(+c.coste))),1);
-  document.getElementById('dash-margenes').innerHTML=ccc.length===0?`<div style="font-size:11px;color:var(--text2)">Sin cargas con coste definido aún</div>`:ccc.map(c=>{
-    const p=cargaPortes(c.id),m=p-(+c.coste),pctW=Math.round(Math.abs(m)/maxM*100);
-    const col=CCOLS[Math.min(c.color_idx||0,CCOLS.length-1)];
-    return`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <div style="font-size:11px;width:70px;flex-shrink:0;font-weight:500;color:${col.t}">${c.name}</div>
-      <div style="flex:1;background:var(--surface2);border-radius:3px;height:8px;overflow:hidden"><div style="width:${pctW}%;height:8px;background:${m>=0?'var(--green)':'var(--red)'};border-radius:3px;transition:width .3s"></div></div>
-      <div style="font-size:11px;font-weight:500;color:${m>=0?'var(--green)':'var(--red)'};width:65px;text-align:right;flex-shrink:0">${m>=0?'+':''}${fmtN(m)} €</div>
-    </div>`;
-  }).join('');
+      <div style="text-align:right;flex-shrink:0">${t.costes>0?`<div style="font-size:12px;font-weight:600;color:${t.margen>=0?'var(--green)':'var(--red)'}">${t.margen>=0?'+':''}${fmtN(t.margen)} €</div><div style="font-size:10px;color:var(--text2)">margen</div>`:'<div style="font-size:10px;color:var(--text2)">sin coste</div>'}</div>
+    </div>`).join(''):`<div style="padding:14px;font-size:11px;color:var(--text2);text-align:center">Sin cargas entregadas en el periodo</div>`;
+  // Gráficos (Chart.js bajo demanda)
+  _cargarScript('https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js')
+    .then(()=>{ if(typeof Chart!=='undefined') _renderDashCharts(D, cargasP); })
+    .catch(()=>{});
+}
+
+function _renderDashCharts(D, cargasP){
+  _destroyDashCharts();
+  const cs=getComputedStyle(document.documentElement);
+  const txt=(cs.getPropertyValue('--text2')||'#5b6b85').trim();
+  const surf=(cs.getPropertyValue('--surface')||'#fff').trim();
+  const grid='rgba(127,127,127,.15)';
+  const green='#3B6D11', amber='#BA7517', red='#A32D2D', blue='#185FA5';
+  Chart.defaults.color=txt; Chart.defaults.font.family="'DM Sans',sans-serif";
+  const eur=v=>fmtN(v)+' €';
+  // 1) Evolución mensual (todas las entregadas, últimos 8 meses)
+  const porMesAll={};
+  cargas.filter(c=>c.status==='entregada').forEach(c=>{ const m=c.fecha?String(c.fecha).substring(0,7):''; if(!m)return; const d=porMesAll[m]||(porMesAll[m]={p:0,co:0}); d.p+=cargaPortes(c.id); if(c.coste!=null)d.co+=+c.coste; });
+  const meses=Object.keys(porMesAll).sort().slice(-8);
+  const ev=document.getElementById('dash-chart-evol');
+  if(ev) _dashCharts.evol=new Chart(ev,{ data:{ labels:meses.map(m=>_nombreMes(m)), datasets:[
+      {type:'bar',label:'Portes',data:meses.map(m=>porMesAll[m].p),backgroundColor:green+'cc',borderRadius:4},
+      {type:'bar',label:'Coste',data:meses.map(m=>porMesAll[m].co),backgroundColor:amber+'cc',borderRadius:4},
+      {type:'line',label:'Margen',data:meses.map(m=>porMesAll[m].p-porMesAll[m].co),borderColor:blue,backgroundColor:blue,tension:.3,fill:false,pointRadius:3}
+    ]}, options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{boxWidth:12}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+eur(c.raw)}}},scales:{x:{grid:{display:false}},y:{grid:{color:grid},ticks:{callback:eur}}}} });
+  // 2) Estados de cargas (donut, periodo)
+  const estados=['pendiente','planificada','ruta','entregada'];
+  const labelE={pendiente:'Pendiente',planificada:'Planificada',ruta:'En ruta',entregada:'Entregada'};
+  const colE={pendiente:'#9ca3af',planificada:blue,ruta:amber,entregada:green};
+  const counts=estados.map(e=>cargasP.filter(c=>c.status===e).length);
+  const es=document.getElementById('dash-chart-estados');
+  if(es) _dashCharts.estados=new Chart(es,{ type:'doughnut', data:{labels:estados.map(e=>labelE[e]),datasets:[{data:counts,backgroundColor:estados.map(e=>colE[e]),borderWidth:2,borderColor:surf}]}, options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{position:'bottom',labels:{boxWidth:12}}}} });
+  // 3) Por transportista (barras: portes y margen)
+  const tr=document.getElementById('dash-chart-trans');
+  if(tr) _dashCharts.trans=new Chart(tr,{ type:'bar', data:{labels:D.porTrans.map(t=>t.nombre),datasets:[
+      {label:'Portes',data:D.porTrans.map(t=>t.portes),backgroundColor:green+'cc',borderRadius:4},
+      {label:'Margen',data:D.porTrans.map(t=>t.margen),backgroundColor:D.porTrans.map(t=>t.margen>=0?blue+'cc':red+'cc'),borderRadius:4}
+    ]}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+eur(c.raw)}}},scales:{x:{grid:{display:false}},y:{grid:{color:grid},ticks:{callback:eur}}}} });
+}
+
+// ── Informes del resumen ──────────────────────────────────────────────────────
+function _etiquetaPeriodo(periodo){
+  if(periodo==='all') return 'Todo el histórico';
+  if(periodo==='thismonth') return _nombreMes(_mesYM(0));
+  if(periodo==='lastmonth') return _nombreMes(_mesYM(-1));
+  return _nombreMes(periodo)||periodo;
+}
+async function informeDashExcel(){
+  const periodo=document.getElementById('dash-periodo')?.value||'all';
+  const D=_dashDatos(periodo);
+  if(!D.ent.length){ log('No hay cargas entregadas en el periodo','warn'); return; }
+  log('Generando informe Excel...');
+  try{
+    await _cargarScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js');
+    if(typeof ExcelJS==='undefined') throw new Error('ExcelJS');
+    const AZUL='FF185FA5', CLARO='FFEAF3FB', GRIS='FFD0D7DE', fmtEur='#,##0.00" €"', fmtKg='#,##0';
+    const borde=()=>({top:{style:'thin',color:{argb:GRIS}},left:{style:'thin',color:{argb:GRIS}},bottom:{style:'thin',color:{argb:GRIS}},right:{style:'thin',color:{argb:GRIS}}});
+    const cab=cell=>{cell.font={bold:true,color:{argb:'FFFFFFFF'}};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:AZUL}};cell.alignment={vertical:'middle',horizontal:'center'};cell.border=borde();};
+    const wb=new ExcelJS.Workbook(); wb.creator='Cargas Arisac';
+    // Resumen
+    const ws=wb.addWorksheet('Resumen'); ws.columns=[{width:26},{width:18}];
+    ws.mergeCells(1,1,1,2); const tt=ws.getCell(1,1); tt.value='Informe — '+_etiquetaPeriodo(periodo); tt.font={bold:true,size:14,color:{argb:AZUL}};
+    [['Cargas entregadas',D.ent.length],['Kg transportados',D.totKg],['Portes (cobramos)',D.totPortes],['Coste (nos cobran)',D.totCoste],['Margen',D.totMargen],['Sin precio (pendientes)',D.sinPrecio]].forEach((r,i)=>{
+      const row=ws.addRow(r); row.getCell(1).font={bold:true};
+      if(i>=1&&i<=4) row.getCell(2).numFmt=fmtEur; if(i===1) row.getCell(2).numFmt=fmtKg;
+    });
+    // Por mes
+    const wm=wb.addWorksheet('Por mes'); wm.columns=[{width:18},{width:10},{width:12},{width:12},{width:12},{width:12}];
+    const hm=wm.getRow(1); ['Mes','Cargas','Kg','Portes','Coste','Margen'].forEach((h,i)=>hm.getCell(i+1).value=h); hm.eachCell(cab);
+    Object.keys(D.porMes).sort().forEach(m=>{ const d=D.porMes[m]; const r=wm.addRow([_nombreMes(m)||m,d.v,d.kg,d.p,d.co,d.p-d.co]); r.getCell(3).numFmt=fmtKg; [4,5,6].forEach(i=>r.getCell(i).numFmt=fmtEur); r.eachCell(c=>c.border=borde()); });
+    // Por transportista
+    const wt=wb.addWorksheet('Por transportista'); wt.columns=[{width:24},{width:10},{width:12},{width:12},{width:12},{width:12}];
+    const ht=wt.getRow(1); ['Transportista','Cargas','Kg','Portes','Coste','Margen'].forEach((h,i)=>ht.getCell(i+1).value=h); ht.eachCell(cab);
+    D.porTrans.forEach(t=>{ const r=wt.addRow([t.nombre,t.nC,t.kg,t.portes,t.costes,t.margen]); r.getCell(3).numFmt=fmtKg; [4,5,6].forEach(i=>r.getCell(i).numFmt=fmtEur); r.eachCell(c=>c.border=borde()); });
+    const buf=await wb.xlsx.writeBuffer();
+    _descargarBlob(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'informe_resumen_'+(periodo==='all'?'todo':periodo)+'.xlsx');
+    log('Informe Excel generado','ok');
+  }catch(e){ log('No se pudo generar el Excel: '+e.message,'warn'); }
+}
+function informeDashPDF(){
+  const periodo=document.getElementById('dash-periodo')?.value||'all';
+  const D=_dashDatos(periodo);
+  if(!D.ent.length){ log('No hay cargas entregadas en el periodo','warn'); return; }
+  const eur=v=>fmtN(v)+' €';
+  const kpi=(l,v,c)=>`<div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;flex:1;min-width:120px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#6b7280">${l}</div><div style="font-size:20px;font-weight:700;margin-top:3px;color:${c||'#15233b'}">${v}</div></div>`;
+  const filaMes=Object.keys(D.porMes).sort().map(m=>{const d=D.porMes[m];return `<tr><td>${_nombreMes(m)||m}</td><td style="text-align:center">${d.v}</td><td style="text-align:right">${fmtN(d.kg)}</td><td style="text-align:right">${eur(d.p)}</td><td style="text-align:right">${eur(d.co)}</td><td style="text-align:right;font-weight:600;color:${d.p-d.co>=0?'#0F6E56':'#A32D2D'}">${eur(d.p-d.co)}</td></tr>`;}).join('');
+  const filaTr=D.porTrans.map(t=>`<tr><td>${t.nombre}</td><td style="text-align:center">${t.nC}</td><td style="text-align:right">${fmtN(t.kg)}</td><td style="text-align:right">${eur(t.portes)}</td><td style="text-align:right">${eur(t.costes)}</td><td style="text-align:right;font-weight:600;color:${t.margen>=0?'#0F6E56':'#A32D2D'}">${eur(t.margen)}</td></tr>`).join('');
+  const th='style="background:#185FA5;color:#fff;padding:7px 9px;text-align:left;font-size:11px"';
+  const tdcss='td{padding:6px 9px;border-bottom:1px solid #eee;font-size:12px}';
+  const html=`<div style="font-family:'DM Sans',sans-serif;color:#15233b">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0C447C;padding-bottom:12px;margin-bottom:18px">
+      <div><div style="font-size:22px;font-weight:700;color:#0C447C">Informe de cargas</div><div style="font-size:13px;color:#6b7280">${_etiquetaPeriodo(periodo)}</div></div>
+      <div style="font-size:11px;color:#9ca3af;text-align:right">ENVASADOS ARISAC<br>${new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'long',year:'numeric'})}</div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+      ${kpi('Cargas entregadas',D.ent.length)}
+      ${kpi('Kg transportados',fmtN(D.totKg))}
+      ${kpi('Portes (cobramos)',eur(D.totPortes),'#0F6E56')}
+      ${kpi('Coste (nos cobran)',eur(D.totCoste),'#854F0B')}
+      ${kpi('Margen',eur(D.totMargen),D.totMargen>=0?'#0F6E56':'#A32D2D')}
+    </div>
+    <style>${tdcss}</style>
+    <div style="font-size:14px;font-weight:600;margin:14px 0 6px">Por mes</div>
+    <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb"><thead><tr><th ${th}>Mes</th><th ${th}>Cargas</th><th ${th}>Kg</th><th ${th}>Portes</th><th ${th}>Coste</th><th ${th}>Margen</th></tr></thead><tbody>${filaMes}</tbody></table>
+    <div style="font-size:14px;font-weight:600;margin:18px 0 6px">Por transportista</div>
+    <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb"><thead><tr><th ${th}>Transportista</th><th ${th}>Cargas</th><th ${th}>Kg</th><th ${th}>Portes</th><th ${th}>Coste</th><th ${th}>Margen</th></tr></thead><tbody>${filaTr}</tbody></table>
+  </div>`;
+  document.getElementById('print-content').innerHTML=html;
+  document.getElementById('print-preview-title').textContent='Informe — '+_etiquetaPeriodo(periodo);
+  document.getElementById('print-preview').classList.add('open');
 }
 
 function updateStats(){
