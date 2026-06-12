@@ -54,12 +54,71 @@ function setSyncStatus(state){
   sub.textContent=state==='ok'?'Sincronizado':state==='err'?'Error de conexión':'Sincronizando...';
 }
 
+// ── Cola offline (outbox) ──────────────────────────────────────────────────────
+// Las acciones hechas sin cobertura se guardan en localStorage y se reenvían
+// solas al volver la señal (evento online, cada 30 s, o tocando el chip).
+const OUTBOX_KEY='arisac_outbox_v1';
+const _OUTBOX_EXCLUIR=['/importar-pdf','/copias'];   // pesados o no-reintetables
+function _outboxGet(){ try{ const q=JSON.parse(localStorage.getItem(OUTBOX_KEY)||'[]'); return Array.isArray(q)?q:[]; }catch(e){ return []; } }
+function _outboxSet(q){ try{ localStorage.setItem(OUTBOX_KEY,JSON.stringify(q)); }catch(e){} _renderOutboxChip(); }
+function _esFalloRed(e){ return (e instanceof TypeError) || /failed to fetch|networkerror|load failed|network request failed/i.test((e&&e.message)||''); }
+function _renderOutboxChip(){
+  const n=_outboxGet().length;
+  let chip=document.getElementById('outbox-chip');
+  if(!n){ if(chip) chip.remove(); return; }
+  if(!chip){
+    chip=document.createElement('button'); chip.id='outbox-chip';
+    chip.style.cssText='position:fixed;bottom:14px;left:14px;z-index:9999;display:flex;align-items:center;gap:6px;background:var(--amber-l);color:var(--amber);border:1px solid var(--amber);border-radius:20px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.18)';
+    chip.title='Cambios hechos sin conexión, pendientes de enviar. Toca para reintentar.';
+    chip.onclick=()=>flushOutbox();
+    document.body.appendChild(chip);
+  }
+  chip.innerHTML='<i class="ti ti-cloud-upload"></i> '+n+' pendiente'+(n>1?'s':'');
+}
+let _outboxFlushing=false;
+async function flushOutbox(){
+  if(_outboxFlushing) return;
+  let q=_outboxGet(); if(!q.length) return;
+  if(navigator.onLine===false) return;
+  _outboxFlushing=true;
+  let enviados=0, descartados=0;
+  try{
+    while(q.length){
+      const it=q[0];
+      try{
+        const r=await fetch('/api'+it.path,{method:it.method,headers:{'Content-Type':'application/json'},body:it.body!=null?JSON.stringify(it.body):undefined});
+        if(r.ok) enviados++;
+        else { descartados++; console.warn('Outbox: descartado',it.method,it.path,r.status); }
+        q.shift(); _outboxSet(q);
+      }catch(e){
+        if(_esFalloRed(e)) break;            // sigue sin red: conservar y parar
+        descartados++; q.shift(); _outboxSet(q);
+      }
+    }
+  }finally{ _outboxFlushing=false; }
+  if(enviados||descartados){
+    log(enviados?('Enviado'+(enviados>1?'s':'')+' '+enviados+' cambio'+(enviados>1?'s':'')+' pendiente'+(enviados>1?'s':'')+(descartados?(' · '+descartados+' descartado(s)'):'')):(descartados+' cambio(s) descartado(s) por error del servidor'), enviados?'ok':'warn');
+    try{ loadAll(); _runRenderer(_activeView); }catch(e){}
+  }
+}
+window.addEventListener('online',()=>setTimeout(flushOutbox,800));
+
 async function api(method,path,body){
   const opts={method,headers:{'Content-Type':'application/json'}};
   if(body)opts.body=JSON.stringify(body);
-  const r=await fetch('/api'+path,opts);
-  if(!r.ok)throw new Error(await r.text());
-  return r.json();
+  try{
+    const r=await fetch('/api'+path,opts);
+    if(!r.ok)throw new Error(await r.text());
+    return r.json();
+  }catch(e){
+    // sin red y es una acción (no lectura): a la cola y la app sigue
+    if(method!=='GET' && _esFalloRed(e) && !_OUTBOX_EXCLUIR.some(p=>path.startsWith(p))){
+      const q=_outboxGet(); q.push({method,path,body:body!=null?body:null,ts:Date.now()}); _outboxSet(q);
+      log('Sin conexión: guardado, se enviará al volver la señal','warn');
+      return {__offline:true, ok:true};
+    }
+    throw e;
+  }
 }
 
 async function loadAll(){
@@ -3422,7 +3481,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 44;
+const NEEDS_API = 45;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
@@ -5198,8 +5257,9 @@ function renderCalSync(){
 }
 async function copiarTexto(t){ try{ await navigator.clipboard.writeText(t); log('Copiado','ok'); }catch(e){ log('Selecciónalo y cópialo a mano','warn'); } }
 
-setInterval(loadAll,30000);
+setInterval(()=>{ flushOutbox(); loadAll(); },30000);
 loadAll();
+flushOutbox(); _renderOutboxChip();
 switchView('plan');
 comprobarServidor();
 comprobarRecordatorioCopia();
