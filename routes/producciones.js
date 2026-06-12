@@ -35,8 +35,8 @@ router.put('/api/producciones/:id', async (req, res) => {
   const kgt = (Number(b.unidades)||0) * (Number(b.kg_unidad)||0);
   try {
     const r = await pool.query(
-      `UPDATE producciones SET mp_id=$1, unidades=$2, kg_unidad=$3, kg_total=$4, notas=$5 WHERE id=$6 RETURNING *`,
-      [b.mp_id||null, Number(b.unidades)||0, Number(b.kg_unidad)||0, kgt, b.notas||null, req.params.id]);
+      `UPDATE producciones SET mp_id=$1, unidades=$2, kg_unidad=$3, kg_total=$4, notas=$5, cliente=$6 WHERE id=$7 RETURNING *`,
+      [b.mp_id||null, Number(b.unidades)||0, Number(b.kg_unidad)||0, kgt, b.notas||null, b.cliente||null, req.params.id]);
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({error:e.message}); }
 });

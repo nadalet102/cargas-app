@@ -79,9 +79,13 @@ const db = {
     { id: 6, numero: 5, nombre: 'Tolva 5', capacidad_kg: 25000, mp_id: null, kg_actual: 0, vaciando: false, producto: null },
   ],
   producciones: [
-    { id: 1, tipo: 'bb', mp_id: 1, unidades: 10, kg_unidad: 1000, kg_total: 10000, silo_id: 1, estado: 'pendiente', notas: 'Arena silícea', fecha: addDays(0), hecho_at: null, origen_linea_id: null, material: 'Arena silícea', silo_nombre: 'Tolva 0', cliente: 'Construcciones Vega S.L.', fabricante: null, orden: 2 },
+    { id: 1, tipo: 'bb', mp_id: 1, unidades: 10, kg_unidad: 1000, kg_total: 10000, silo_id: 1, estado: 'pendiente', notas: '', fecha: addDays(0), hecho_at: null, origen_linea_id: null, material: 'Arena silícea', silo_nombre: 'Tolva 0', cliente: 'Construcciones Vega S.L.', fabricante: null, orden: 3 },
+    { id: 4, tipo: 'bb', mp_id: 1, unidades: 8, kg_unidad: 1000, kg_total: 8000, silo_id: 1, estado: 'en_proceso', notas: '', fecha: addDays(0), hecho_at: null, origen_linea_id: null, material: 'Arena silícea', silo_nombre: 'Tolva 0', cliente: 'Hormigones del Sur', fabricante: null, orden: 5 },
+    { id: 5, tipo: 'bb', mp_id: 1, unidades: 12, kg_unidad: 1000, kg_total: 12000, silo_id: 1, estado: 'pendiente', notas: '', fecha: addDays(0), hecho_at: null, origen_linea_id: null, material: 'Arena silícea', silo_nombre: 'Tolva 0', cliente: null, fabricante: null, orden: 2 },
     { id: 2, tipo: 'saco', mp_id: 2, unidades: 200, kg_unidad: 25, kg_total: 5000, silo_id: 2, estado: 'pendiente', notas: '', fecha: addDays(0), hecho_at: null, origen_linea_id: null, material: 'Cemento gris', silo_nombre: 'Tolva 1', cliente: null, fabricante: 'PKT', orden: 1 },
-    { id: 3, tipo: 'bb', mp_id: 3, unidades: 6, kg_unidad: 1000, kg_total: 6000, silo_id: 3, estado: 'hecho', notas: '', fecha: addDays(-1), hecho_at: addDays(-1), origen_linea_id: null, material: 'Cal hidratada', silo_nombre: 'Tolva 2', cliente: null, fabricante: null, orden: 0 },
+    { id: 6, tipo: 'saco', mp_id: 2, unidades: 150, kg_unidad: 25, kg_total: 3750, silo_id: 2, estado: 'pendiente', notas: '', fecha: addDays(0), hecho_at: null, origen_linea_id: null, material: 'Cemento gris', silo_nombre: 'Tolva 1', cliente: 'Obras Levante S.A.', fabricante: 'PKT', orden: 4 },
+    { id: 7, tipo: 'bb', mp_id: 4, unidades: 6, kg_unidad: 1000, kg_total: 6000, silo_id: null, estado: 'pendiente', notas: '', fecha: addDays(0), hecho_at: null, origen_linea_id: null, material: 'Yeso', silo_nombre: null, cliente: 'Reformas Atlántico', fabricante: null, orden: 0 },
+    { id: 3, tipo: 'bb', mp_id: 3, unidades: 6, kg_unidad: 1000, kg_total: 6000, silo_id: 3, estado: 'hecho', notas: '', fecha: addDays(0), hecho_at: addDays(0), origen_linea_id: null, material: 'Cal hidratada', silo_nombre: 'Tolva 2', cliente: null, fabricante: null, orden: 0 },
   ],
   viajes: [
     { id: 1, mp_id: 1, kg: 25000, silo_id: null, fecha: addDays(0), estado: 'pendiente', destino_tipo: null, destino_silo_id: null, kg_final: null, acopio: null, origen: 'manual', notas: '', hora: '08:30', material: 'Arena silícea', silo_nombre: null, destino_silo_nombre: null },

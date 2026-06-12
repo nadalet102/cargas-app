@@ -85,11 +85,11 @@ const NAV_GROUPS = {
   reparto:     { subs:[['plan','Planificación'],['bc','Bandeja BC'],['cal','Calendario'],['hist','Historial']] },
   preparacion: { subs:[['prep','Por preparar'],['preparados','Preparados'],['carga','Carga'],['histped','Histórico'],['porart','Por artículo']] },
   compras:     { subs:[['compras','']] },
-  produccion:  { subs:[['silos','Silos'],['matprima','Materia prima'],['pedidoscli','Pedidos'],['prodbb','Prod. BB'],['prodsacos','Prod. Sacos'],['camion','Camión'],['prodcal','Calendario'],['prodfinal','Prod. Final']] },
+  produccion:  { subs:[['prodcola','Producción'],['silos','Silos'],['matprima','Materia prima'],['pedidoscli','Pedidos'],['camion','Camión'],['prodcal','Calendario'],['prodfinal','Prod. Final']] },
   resumen:     { subs:[['dash','']] },
   ajustes:     { subs:[['trans','Transportistas'],['cats','Categorías'],['clientesauto','Clientes auto'],['calsync','Calendario']] }
 };
-const VIEW_GROUP = {plan:'reparto',bc:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',carga:'preparacion',histped:'preparacion',porart:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',calsync:'ajustes',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
+const VIEW_GROUP = {plan:'reparto',bc:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',carga:'preparacion',histped:'preparacion',porart:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',calsync:'ajustes',prodcola:'produccion',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
 let _activeView='plan';
 function _runRenderer(t){
   if(t==='cal')renderCal();
@@ -113,6 +113,7 @@ function _runRenderer(t){
   else if(t==='camion')cargarViajes();
   else if(t==='prodcal')cargarProdCal();
   else if(t==='pedidoscli')cargarPedidosCli();
+  else if(t==='prodcola')cargarProduccionCola();
   else if(t==='bc'){ loadBCConfig(); loadBCPedidos(); }
 }
 function renderSubtabBar(g, activeView){
@@ -124,7 +125,7 @@ function renderSubtabBar(g, activeView){
 }
 function switchView(t){
   _activeView=t;
-  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','carga','histped','porart','compras','silos','matprima','prodbb','prodsacos','prodfinal','camion','prodcal','pedidoscli','clientesauto','calsync'].forEach(id=>{
+  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','carga','histped','porart','compras','silos','matprima','prodcola','prodbb','prodsacos','prodfinal','camion','prodcal','pedidoscli','clientesauto','calsync'].forEach(id=>{
     const v=document.getElementById('view-'+id); if(v) v.classList.toggle('active',id===t);
   });
   const g=VIEW_GROUP[t]||'reparto';
@@ -3906,7 +3907,121 @@ async function cargarProd(tipo){
   if(!matPrimas.length) await cargarMatPrimas(false);
   try{ silosData=await api('GET','/silos'); }catch(e){}
   try{ prodData=await api('GET','/producciones'); }catch(e){ prodData=[]; }
-  renderProd(tipo);
+  // refresca la vista de producción que esté activa (cola unificada o BB/Sacos)
+  if(_activeView==='prodcola') renderProduccionCola(); else renderProd(tipo);
+}
+// ── PRODUCCIÓN · Cola única agrupada por material (Fase A) ─────────────────────
+async function cargarProduccionCola(){
+  if(!matPrimas.length) await cargarMatPrimas(false);
+  if(!clientesAuto.length){ try{ clientesAuto=await api('GET','/clientes-auto'); }catch(e){} }
+  try{ silosData=await api('GET','/silos'); }catch(e){}
+  try{ prodData=await api('GET','/producciones'); }catch(e){ prodData=[]; }
+  renderProduccionCola();
+}
+let _prodColaFiltro='todos';
+function setProdColaFiltro(v){ _prodColaFiltro=v; renderProduccionCola(); }
+function renderProduccionCola(){
+  const el=document.getElementById('produccion-content'); if(!el) return;
+  const esc=s=>(''+(s||'')).replace(/</g,'&lt;');
+  let base=prodData.slice();
+  if(_prodColaFiltro!=='todos') base=base.filter(p=>p.tipo===_prodColaFiltro);
+  const activas=base.filter(p=>p.estado!=='hecho');
+  const hechasHoy=base.filter(p=>p.estado==='hecho' && p.hecho_at && _fechaISO(p.hecho_at)===_hoyISO());
+  // KPIs
+  const uPend=activas.reduce((s,p)=>s+Number(p.unidades||0),0);
+  const enProc=activas.filter(p=>p.estado==='en_proceso').length;
+  const uHoy=hechasHoy.reduce((s,p)=>s+Number(p.unidades||0),0);
+  // Agrupar por material
+  const grupos={};
+  activas.forEach(p=>{ const k=p.material||'(sin material asignado)'; (grupos[k]=grupos[k]||[]).push(p); });
+  // Ordenar tareas dentro de cada grupo: en proceso primero, luego por prioridad (orden desc)
+  Object.values(grupos).forEach(g=>g.sort((a,b)=>({en_proceso:0,pendiente:1}[a.estado]-{en_proceso:0,pendiente:1}[b.estado]) || (Number(b.orden||0)-Number(a.orden||0))));
+  // Ordenar materiales: los que están en silo (listos) primero, luego por unidades pendientes desc
+  const keys=Object.keys(grupos).sort((a,b)=>{
+    const sa=grupos[a][0].mp_id?siloDeMaterial(grupos[a][0].mp_id):null;
+    const sb=grupos[b][0].mp_id?siloDeMaterial(grupos[b][0].mp_id):null;
+    if((!!sb)!==(!!sa)) return (sb?1:0)-(sa?1:0);
+    return grupos[b].reduce((s,p)=>s+Number(p.unidades||0),0)-grupos[a].reduce((s,p)=>s+Number(p.unidades||0),0);
+  });
+  const fb=(v,l)=>`<button onclick="setProdColaFiltro('${v}')" style="font-size:11px;padding:6px 12px;border-radius:20px;border:1px solid var(--border2);cursor:pointer;${_prodColaFiltro===v?'background:var(--blue);color:#fff;border-color:var(--blue)':'background:var(--surface);color:var(--text2)'}">${l}</button>`;
+  let html=`<div class="cargas-hdr">
+      <span class="cargas-title"><i class="ti ti-cube"></i> Cola de producción</span>
+      <button class="btn-primary" onclick="abrirFormProd('bb')" style="font-size:12px;padding:7px 12px"><i class="ti ti-plus"></i> Nueva tarea</button></div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">${fb('todos','Todo')}${fb('bb','Big Bags')}${fb('saco','Sacos')}</div>
+    <div class="dash-kpis" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
+      <div class="dash-card"><div class="dash-lbl">Pendiente</div><div class="dash-val">${fmtN(uPend)}</div><div class="dash-sub">unidades por producir</div></div>
+      <div class="dash-card"><div class="dash-lbl">En proceso</div><div class="dash-val" style="color:var(--blue)">${enProc}</div><div class="dash-sub">tareas en marcha</div></div>
+      <div class="dash-card"><div class="dash-lbl">Hecho hoy</div><div class="dash-val" style="color:var(--green)">${fmtN(uHoy)}</div><div class="dash-sub">unidades</div></div>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px"><i class="ti ti-info-circle"></i> Agrupado por material para hacer los menos cambios posibles. El mismo material, distintos clientes/envases, va junto.</div>`;
+  if(!keys.length){ html+='<div class="empty-state"><i class="ti ti-cube"></i>Sin tareas pendientes</div>'; }
+  keys.forEach(mat=>{
+    const g=grupos[mat];
+    const mpid=g[0].mp_id;
+    const silo=mpid?siloDeMaterial(mpid):null;
+    const totU=g.reduce((s,p)=>s+Number(p.unidades||0),0);
+    const siloHtml=silo
+      ? `<span class="badge b-green"><i class="ti ti-package" style="font-size:10px"></i> ${silo.nombre} · ${fmtN(silo.kg_actual)} kg</span>`
+      : `<span class="badge b-amber"><i class="ti ti-alert-triangle" style="font-size:10px"></i> sin material en silo</span>`;
+    html+=`<div class="list-card" style="margin-bottom:14px;border-left:4px solid var(--blue)">
+      <div class="lc-hdr" style="background:var(--blue-l)">
+        <span style="display:flex;align-items:center;gap:8px"><i class="ti ti-cube" style="font-size:16px;color:var(--blue-d)"></i><b style="font-size:15px;color:var(--blue-d)">${esc(mat)}</b><span style="font-size:11px;color:var(--text2)">· ${g.length} tarea${g.length>1?'s':''} · ${fmtN(totU)} ud</span></span>
+        ${siloHtml}
+      </div>
+      ${g.map(p=>prodColaCard(p)).join('')}
+    </div>`;
+  });
+  // Hechas hoy (plegable simple)
+  if(hechasHoy.length){
+    html+=`<div class="list-card" style="margin-bottom:14px"><div class="lc-hdr"><span><i class="ti ti-check" style="color:var(--green)"></i> Hechas hoy (${hechasHoy.length})</span></div>
+      ${hechasHoy.map(p=>`<div class="list-row"><div class="list-main"><div class="list-name">${esc(p.material||'')}${p.cliente?` · ${esc(p.cliente)}`:''}</div><div class="list-meta">${fmtN(p.unidades)} ${p.tipo==='bb'?'BB':'sacos'}</div></div><button onclick="cambiarEstadoProd('${p.id}','en_proceso')" class="btn-sec" style="font-size:10px;padding:4px 8px">↺ Reabrir</button></div>`).join('')}
+    </div>`;
+  }
+  el.innerHTML=html;
+}
+function prodColaCard(p){
+  const esc=s=>(''+(s||'')).replace(/</g,'&lt;');
+  const sinSilo=p.mp_id && !siloDeMaterial(p.mp_id);
+  const sinMat=!p.mp_id;
+  // estado mostrado (deriva "esperando material")
+  let est=['var(--amber-l)','var(--amber)','En cola'];
+  if(p.estado==='en_proceso') est=['var(--blue-l)','var(--blue-d)','En proceso'];
+  else if(sinMat||sinSilo) est=['var(--red-l)','var(--red)','Esperando material'];
+  const envase=p.cliente
+    ? `<span style="font-size:12px;font-weight:700;color:var(--blue-d)"><i class="ti ti-user" style="font-size:11px"></i> ${esc(p.cliente)}</span>`
+    : `<span style="font-size:10px;font-weight:700;color:var(--teal);background:var(--teal-l);padding:2px 8px;border-radius:8px"><i class="ti ti-package" style="font-size:10px"></i> PARA STOCK</span>`;
+  const tam=`${fmtN(p.unidades)} ${p.tipo==='bb'?'BB':'sacos'}${Number(p.kg_unidad)?` × ${fmtN(p.kg_unidad)} kg`:''}`;
+  const acc=`
+    ${p.estado==='pendiente'?`<button onclick="cambiarEstadoProd('${p.id}','en_proceso')" class="btn-sec" style="font-size:11px;padding:5px 10px">Empezar</button>`:''}
+    <button onclick="marcarHechoProd('${p.id}')" class="btn-primary" style="font-size:11px;padding:5px 10px;background:var(--green)"><i class="ti ti-check"></i> Hecho</button>
+    ${sinMat?`<button onclick="asignarMaterialProd('${p.id}')" class="btn-sec" style="font-size:11px;padding:5px 9px;color:var(--blue-d)"><i class="ti ti-tag"></i> Material</button>`:''}
+    ${(sinMat||sinSilo)?`<button onclick="solicitarMaterialProd('${p.id}')" class="btn-sec" style="font-size:11px;padding:5px 9px"><i class="ti ti-truck-delivery"></i> Pedir</button>`:''}
+    <button onclick="abrirFormProd('${p.tipo}','${p.id}')" class="btn-sec" style="font-size:11px;padding:5px 8px"><i class="ti ti-edit"></i></button>`;
+  return `<div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:0;flex-shrink:0">
+      <button onclick="moverPrioridadProd('${p.id}',-1)" title="Subir prioridad" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:0 4px;font-size:13px;line-height:1"><i class="ti ti-chevron-up"></i></button>
+      <button onclick="moverPrioridadProd('${p.id}',1)" title="Bajar prioridad" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:0 4px;font-size:13px;line-height:1"><i class="ti ti-chevron-down"></i></button>
+    </div>
+    <div style="flex:1;min-width:160px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px">${envase}<span style="font-size:9px;font-weight:700;background:${est[0]};color:${est[1]};border-radius:8px;padding:2px 8px">${est[2]}</span>${p.fabricante?`<span style="font-size:9px;color:var(--text3)">${esc(p.fabricante)}</span>`:''}</div>
+      <div style="font-size:14px;font-weight:700">${tam}</div>
+      ${p.notas?`<div style="font-size:11px;color:var(--text2);margin-top:1px"><i class="ti ti-message" style="font-size:10px"></i> ${esc(p.notas)}</div>`:''}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${acc}</div>
+  </div>`;
+}
+// Sube/baja la prioridad de una tarea DENTRO de su grupo de material (1 posición)
+function moverPrioridadProd(id, dir){
+  const p=prodData.find(x=>String(x.id)===String(id)); if(!p) return;
+  const mat=p.material||'(sin material asignado)';
+  const grupo=prodData.filter(x=>x.estado!=='hecho' && (x.material||'(sin material asignado)')===mat)
+    .sort((a,b)=>({en_proceso:0,pendiente:1}[a.estado]-{en_proceso:0,pendiente:1}[b.estado]) || (Number(b.orden||0)-Number(a.orden||0)));
+  const idx=grupo.findIndex(x=>String(x.id)===String(id));
+  const j=dir<0?idx-1:idx+1;
+  if(j<0||j>=grupo.length) return;
+  const ids=grupo.map(x=>String(x.id));
+  const t=ids[idx]; ids[idx]=ids[j]; ids[j]=t;
+  api('POST','/producciones/reordenar',{ids}).then(()=>cargarProduccionCola()).catch(()=>log('Error al reordenar','warn'));
 }
 function setProdFiltro(tipo,v){ prodFiltro[tipo]=v; renderProd(tipo); }
 let prodVista={bb:'tablero',saco:'tablero'};
@@ -4086,6 +4201,9 @@ function abrirFormProd(tipo,id){
       <label style="font-size:12px;color:var(--text2);flex:1">Nº de ${envase}s<input id="pf-uni" type="number" min="0" value="${p.unidades!=null?p.unidades:''}" style="${inp}" oninput="prodKgHint()"></label>
       <label style="font-size:12px;color:var(--text2);flex:1">Kg por ${envase}<input id="pf-kgu" type="number" min="0" value="${p.kg_unidad!=null?p.kg_unidad:(!id&&_lastKgU[tipo]!=null?_lastKgU[tipo]:'')}" style="${inp}" oninput="prodKgHint()"></label></div>
     <div id="pf-kghint" style="font-size:12px;color:var(--text2);margin-top:6px"></div>
+    <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Para <span style="color:var(--text3)">(cliente automático · vacío = Stock)</span>
+      <input id="pf-cliente" list="pf-cli-list" placeholder="📦 Stock (estándar)" value="${p.cliente?(''+p.cliente).replace(/"/g,'&quot;'):''}" style="${inp}">
+      <datalist id="pf-cli-list">${clientesAuto.map(c=>`<option value="${(c.nombre||'').replace(/"/g,'&quot;')}">`).join('')}</datalist></label>
     <label style="font-size:12px;color:var(--text2);display:block;margin-top:10px">Notas<input id="pf-notas" value="${p.notas?(''+p.notas).replace(/"/g,'&quot;'):''}" style="${inp}"></label>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
       <button class="btn-sec" onclick="document.getElementById('prod-form-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
@@ -4109,7 +4227,7 @@ async function guardarProd(){
   const nombre=(document.getElementById('pf-mat').value||'').trim();
   let mp=matPrimas.find(m=>(m.nombre||'').toLowerCase()===nombre.toLowerCase());
   if(!mp && nombre){ try{ mp=await api('POST','/materias-primas',{nombre}); await cargarMatPrimas(false); }catch(e){} }
-  const body={ tipo, mp_id:mp?mp.id:null, unidades:Number(document.getElementById('pf-uni').value)||0, kg_unidad:Number(document.getElementById('pf-kgu').value)||0, notas:(document.getElementById('pf-notas').value||'').trim()||null };
+  const body={ tipo, mp_id:mp?mp.id:null, unidades:Number(document.getElementById('pf-uni').value)||0, kg_unidad:Number(document.getElementById('pf-kgu').value)||0, notas:(document.getElementById('pf-notas').value||'').trim()||null, cliente:(document.getElementById('pf-cliente')?.value||'').trim()||null };
   if(body.kg_unidad) _lastKgU[tipo]=body.kg_unidad;
   try{ if(id) await api('PUT','/producciones/'+id,body); else await api('POST','/producciones',body); document.getElementById('prod-form-ov')?.remove(); await cargarProd(tipo); }
   catch(e){ log('Error guardando','warn'); }
