@@ -123,6 +123,8 @@ async function initDB() {
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS fabricante TEXT`,
     `UPDATE viajes SET estado='pendiente' WHERE estado IS NULL`,
     `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS orden INTEGER DEFAULT 0`,
+    `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS servido BOOLEAN DEFAULT false`,
+    `ALTER TABLE producciones ADD COLUMN IF NOT EXISTS servido_at TIMESTAMPTZ`,
     `ALTER TABLE compras ADD COLUMN IF NOT EXISTS tipo_produccion TEXT`,
     `ALTER TABLE compras ADD COLUMN IF NOT EXISTS kg_bb NUMERIC`,
     `ALTER TABLE compras ADD COLUMN IF NOT EXISTS kg_saco NUMERIC`,

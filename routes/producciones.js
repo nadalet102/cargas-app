@@ -67,6 +67,15 @@ router.patch('/api/producciones/:id/estado', async (req, res) => {
   } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
   finally { client.release(); }
 });
+// marcar/desmarcar como SERVIDO (stock terminado consumido / cargado)
+router.patch('/api/producciones/:id/servido', async (req, res) => {
+  const servido = !!(req.body && req.body.servido);
+  try {
+    const r = await pool.query('UPDATE producciones SET servido=$1, servido_at=$2 WHERE id=$3 RETURNING *',
+      [servido, servido ? new Date() : null, req.params.id]);
+    res.json(r.rows[0] || {ok:true});
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
 router.delete('/api/producciones/:id', async (req, res) => {
   try { await pool.query('DELETE FROM producciones WHERE id=$1', [req.params.id]); res.json({ok:true}); }
   catch(e) { res.status(500).json({error:e.message}); }
