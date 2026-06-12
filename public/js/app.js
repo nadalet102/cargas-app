@@ -69,6 +69,9 @@ async function loadAll(){
     cargaN=cargas.length;
     setSyncStatus('ok');
     renderAll();
+    // si el jefe está mirando la cola de producción, refrescarla también
+    // para que vea entrar pedidos/tareas nuevas sin cambiar de pestaña
+    if(_activeView==='prodcola') cargarProduccionCola();
   }catch(e){setSyncStatus('err');log('Error al cargar: '+e.message,'warn');}
 }
 
@@ -3969,23 +3972,39 @@ function renderProduccionCola(){
     </div>
     <div style="font-size:11px;color:var(--text3);margin-bottom:10px"><i class="ti ti-info-circle"></i> Agrupado por material para hacer los menos cambios posibles. El mismo material, distintos clientes/envases, va junto.</div>`;
   if(!keys.length){ html+='<div class="empty-state"><i class="ti ti-cube"></i>Sin tareas pendientes</div>'; }
-  keys.forEach(mat=>{
+  const grupoSilo=k=>{ const mp=grupos[k][0].mp_id||grupos[k][0]._mpDerivado; return mp?siloDeMaterial(mp):null; };
+  const renderGrupo=(mat)=>{
     const g=grupos[mat];
     const mpid=g[0].mp_id||g[0]._mpDerivado;
     const silo=mpid?siloDeMaterial(mpid):null;
+    const ready=!!silo;
     const derivado=g.some(p=>p._matDerivado);
     const totU=g.reduce((s,p)=>s+Number(p.unidades||0),0);
     const siloHtml=silo
       ? `<span class="badge b-green"><i class="ti ti-package" style="font-size:10px"></i> ${silo.nombre} · ${fmtN(silo.kg_actual)} kg</span>`
       : `<span class="badge b-amber"><i class="ti ti-alert-triangle" style="font-size:10px"></i> sin material en silo</span>`;
-    html+=`<div class="list-card" style="margin-bottom:14px;border-left:4px solid var(--blue)">
-      <div class="lc-hdr" style="background:var(--blue-l)">
-        <span style="display:flex;align-items:center;gap:8px"><i class="ti ti-cube" style="font-size:16px;color:var(--blue-d)"></i><b style="font-size:15px;color:var(--blue-d)">${esc(mat)}</b><span style="font-size:11px;color:var(--text2)">· ${g.length} tarea${g.length>1?'s':''} · ${fmtN(totU)} ud</span>${derivado?'<span style="font-size:9px;font-weight:700;background:var(--blue-l);color:var(--blue-d);border-radius:8px;padding:2px 7px" title="Material detectado a partir de la descripción">auto-detectado</span>':''}</span>
+    const accent=ready?'var(--green)':'var(--blue)';
+    const hdrBg=ready?'var(--green-l)':'var(--blue-l)';
+    const titleCol=ready?'var(--green)':'var(--blue-d)';
+    const ico=ready?'<i class="ti ti-bolt-filled" style="font-size:16px;color:var(--green)"></i>':'<i class="ti ti-cube" style="font-size:16px;color:var(--blue-d)"></i>';
+    return `<div class="list-card" style="margin-bottom:14px;border-left:5px solid ${accent}${ready?';box-shadow:0 0 0 1.5px var(--green)':''}">
+      <div class="lc-hdr" style="background:${hdrBg}">
+        <span style="display:flex;align-items:center;gap:8px">${ico}<b style="font-size:15px;color:${titleCol}">${esc(mat)}</b><span style="font-size:11px;color:var(--text2)">· ${g.length} tarea${g.length>1?'s':''} · ${fmtN(totU)} ud</span>${ready?'<span style="font-size:9px;font-weight:800;background:var(--green);color:#fff;border-radius:8px;padding:2px 8px;letter-spacing:.3px">PRODUCE YA</span>':''}${derivado?'<span style="font-size:9px;font-weight:700;background:var(--blue-l);color:var(--blue-d);border-radius:8px;padding:2px 7px" title="Material detectado a partir de la descripción">auto-detectado</span>':''}</span>
         ${siloHtml}
       </div>
       ${g.map(p=>prodColaCard(p)).join('')}
     </div>`;
-  });
+  };
+  const listos=keys.filter(grupoSilo), espera=keys.filter(k=>!grupoSilo(k));
+  if(listos.length){
+    const udL=listos.reduce((s,k)=>s+grupos[k].reduce((a,p)=>a+Number(p.unidades||0),0),0);
+    html+=`<div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px;font-size:12px;font-weight:800;color:var(--green)"><i class="ti ti-bolt-filled"></i> LISTO PARA PRODUCIR YA · material en silo <span style="background:var(--green);color:#fff;border-radius:10px;padding:1px 8px;font-size:11px">${listos.length} mat · ${fmtN(udL)} ud</span></div>`;
+    listos.forEach(m=>html+=renderGrupo(m));
+  }
+  if(espera.length){
+    html+=`<div style="display:flex;align-items:center;gap:8px;margin:${listos.length?'18px':'4px'} 0 10px;font-size:12px;font-weight:700;color:var(--amber)"><i class="ti ti-clock"></i> Falta material — pedir al camión</div>`;
+    espera.forEach(m=>html+=renderGrupo(m));
+  }
   // Hechas hoy (plegable simple)
   if(hechasHoy.length){
     html+=`<div class="list-card" style="margin-bottom:14px"><div class="lc-hdr"><span><i class="ti ti-check" style="color:var(--green)"></i> Hechas hoy (${hechasHoy.length})</span></div>
