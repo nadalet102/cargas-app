@@ -3929,8 +3929,11 @@ function setProdColaFiltro(v){ _prodColaFiltro=v; renderProduccionCola(); }
 // "Arena blanca" por "blanca"; "Gr Forna" → "Gravilla forna" por "forna").
 const _matStop=new Set(['bb','big','bag','saco','sacos','palet','pallet','paleta','cliente','kg','kgs','mm','cm','ud','uds','de','del','la','el','y','con','para','x','granel']);
 function _matToks(s){ return (''+(s||'')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').split(/[^a-z0-9]+/).filter(Boolean); }
+// granulometrías de un texto: 0-4, 12-20, 0/2 → "0-4","12-20","0-2"
+function _matGranos(s){ const n=(''+(s||'')).toLowerCase(); const o=[]; let m; const re=/(\d+)\s*[-/]\s*(\d+)/g; while((m=re.exec(n))) o.push(m[1]+'-'+m[2]); return o; }
 function matchMaterialDesc(desc){
   const d=_matToks(desc); if(!d.length) return null;
+  const dG=_matGranos(desc);
   const isNum=t=>/[0-9]/.test(t);
   const has=t=>d.some(w=>w===t || (!isNum(w)&&w.length>=3&&(w.startsWith(t)||t.startsWith(w))));
   let best=null,bestScore=-1;
@@ -3941,7 +3944,11 @@ function matchMaterialDesc(desc){
     for(const t of st){ if(has(t)){ matched++; sum+=t.length; if(t.length>=4) strong++; } }
     // vale si casan TODAS las palabras del material, o al menos una distintiva (≥4 letras)
     if(!((matched===st.length)||(strong>=1&&matched>=1))) continue;
-    const score=matched*1000+sum;
+    // granulometría: si el material la lleva y la descripción también, deben
+    // coincidir (0-4 ≠ 0-2 = otro producto). Si chocan, descartar este material.
+    const mG=_matGranos(m.nombre); let gScore=0;
+    if(mG.length && dG.length){ if(!mG.some(g=>dG.includes(g))) continue; gScore=500; }
+    const score=matched*1000+gScore+sum;
     if(score>bestScore){ best=m; bestScore=score; }
   }
   return best;

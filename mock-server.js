@@ -69,8 +69,9 @@ const db = {
     { id: 2, nombre: 'Cemento gris', activo: true },
     { id: 3, nombre: 'Cal hidratada', activo: true },
     { id: 4, nombre: 'Yeso', activo: true },
-    { id: 5, nombre: 'Arena blanca', activo: true },
-    { id: 6, nombre: 'Gravilla forna', activo: true },
+    { id: 5, nombre: 'Arena blanca 0-4', activo: true },
+    { id: 6, nombre: 'Gravilla forna 12-20', activo: true },
+    { id: 7, nombre: 'Arena blanca 0-2', activo: true },
   ],
   silos: [
     { id: 1, numero: 0, nombre: 'Tolva 0', capacidad_kg: 25000, mp_id: 1, kg_actual: 18000, vaciando: false, producto: 'Arena silícea' },

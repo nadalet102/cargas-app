@@ -8,8 +8,10 @@ const { _recalcEstadoCli } = require('../services/produccion');
 // granulometría ("A Blanca 0-4mm" → "Arena blanca"; "Gr Forna" → "Gravilla forna").
 const _MAT_STOP = new Set(['bb','big','bag','saco','sacos','palet','pallet','paleta','cliente','kg','kgs','mm','cm','ud','uds','de','del','la','el','y','con','para','x','granel']);
 const _matToks = s => (''+(s||'')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').split(/[^a-z0-9]+/).filter(Boolean);
+const _matGranos = s => { const n=(''+(s||'')).toLowerCase(); const o=[]; let m; const re=/(\d+)\s*[-/]\s*(\d+)/g; while((m=re.exec(n))) o.push(m[1]+'-'+m[2]); return o; };
 function matchMaterialId(desc, materias){
   const d = _matToks(desc); if(!d.length) return null;
+  const dG = _matGranos(desc);
   const isNum = t => /[0-9]/.test(t);
   const has = t => d.some(w => w===t || (!isNum(w) && w.length>=3 && (w.startsWith(t)||t.startsWith(w))));
   let best=null, bestScore=-1;
@@ -19,7 +21,10 @@ function matchMaterialId(desc, materias){
     let matched=0, strong=0, sum=0;
     for(const t of st){ if(has(t)){ matched++; sum+=t.length; if(t.length>=4) strong++; } }
     if(!((matched===st.length)||(strong>=1&&matched>=1))) continue;
-    const score = matched*1000+sum;
+    // la granulometría debe coincidir si ambos la llevan (0-4 ≠ 0-2)
+    const mG = _matGranos(m.nombre); let gScore=0;
+    if(mG.length && dG.length){ if(!mG.some(g=>dG.includes(g))) continue; gScore=500; }
+    const score = matched*1000+gScore+sum;
     if(score>bestScore){ best=m; bestScore=score; }
   }
   return best ? best.id : null;
