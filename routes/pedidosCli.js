@@ -91,14 +91,27 @@ router.put('/api/pedidos-cli/:id', async (req, res) => {
   try {
     await client.query('BEGIN');
     await client.query('UPDATE pedidos_cli SET cliente=$1, notas=$2 WHERE id=$3', [b.cliente||null, b.notas||null, req.params.id]);
-    // conservar estados existentes por id; reemplazar el conjunto de líneas
+    // editar las líneas IN SITU conservando su id: producciones.origen_linea_id apunta
+    // a ellas, y recrearlas (delete+insert) rompía ese vínculo y perdía estado/preparado/cargada
     const prev = (await client.query('SELECT * FROM pedidos_cli_lineas WHERE pedido_id=$1', [req.params.id])).rows;
-    await client.query('DELETE FROM pedidos_cli_lineas WHERE pedido_id=$1', [req.params.id]);
+    const keep = [];
     for (const l of (b.lineas||[])) {
-      const pr = (l.id && prev.find(x => x.id === l.id)) ? prev.find(x => x.id === l.id) : null;
-      const est = pr ? pr.estado : 'pendiente';
-      await client.query('INSERT INTO pedidos_cli_lineas(pedido_id,descripcion,cantidad,unidad,estado,preparado) VALUES($1,$2,$3,$4,$5,$6)',
-        [req.params.id, l.descripcion||null, Number(l.cantidad)||0, l.unidad||null, est, pr ? pr.preparado : false]);
+      const pr = (l.id != null && prev.find(x => String(x.id) === String(l.id))) || null;
+      if (pr) {
+        await client.query('UPDATE pedidos_cli_lineas SET descripcion=$1, cantidad=$2, unidad=$3 WHERE id=$4',
+          [l.descripcion||null, Number(l.cantidad)||0, l.unidad||null, pr.id]);
+        keep.push(pr.id);
+      } else {
+        const nw = (await client.query('INSERT INTO pedidos_cli_lineas(pedido_id,descripcion,cantidad,unidad) VALUES($1,$2,$3,$4) RETURNING id',
+          [req.params.id, l.descripcion||null, Number(l.cantidad)||0, l.unidad||null])).rows[0];
+        keep.push(nw.id);
+      }
+    }
+    // líneas quitadas: fuera, junto con sus tareas de producción aún sin empezar
+    const gone = prev.filter(x => !keep.includes(x.id)).map(x => x.id);
+    if (gone.length) {
+      await client.query(`DELETE FROM producciones WHERE origen_linea_id = ANY($1::int[]) AND estado='pendiente'`, [gone]);
+      await client.query('DELETE FROM pedidos_cli_lineas WHERE id = ANY($1::int[])', [gone]);
     }
     await client.query('COMMIT');
     res.json({ ok:true });
@@ -106,8 +119,19 @@ router.put('/api/pedidos-cli/:id', async (req, res) => {
   finally { client.release(); }
 });
 router.delete('/api/pedidos-cli/:id', async (req, res) => {
-  try { await pool.query('DELETE FROM pedidos_cli WHERE id=$1', [req.params.id]); res.json({ok:true}); }
-  catch(e) { res.status(500).json({error:e.message}); }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // las tareas de producción sin empezar de este pedido se van con él
+    // (las en proceso/hechas se conservan: pasan a "para stock" al perder el cliente)
+    await client.query(
+      `DELETE FROM producciones WHERE estado='pendiente'
+       AND origen_linea_id IN (SELECT id FROM pedidos_cli_lineas WHERE pedido_id=$1)`, [req.params.id]);
+    await client.query('DELETE FROM pedidos_cli WHERE id=$1', [req.params.id]);
+    await client.query('COMMIT');
+    res.json({ok:true});
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
 });
 // marcar una línea como preparada / no preparada
 router.patch('/api/pedidos-cli/lineas/:id/preparado', async (req, res) => {

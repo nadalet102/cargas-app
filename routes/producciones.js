@@ -77,8 +77,21 @@ router.patch('/api/producciones/:id/servido', async (req, res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 router.delete('/api/producciones/:id', async (req, res) => {
-  try { await pool.query('DELETE FROM producciones WHERE id=$1', [req.params.id]); res.json({ok:true}); }
-  catch(e) { res.status(500).json({error:e.message}); }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const p = (await client.query('SELECT origen_linea_id FROM producciones WHERE id=$1', [req.params.id])).rows[0];
+    await client.query('DELETE FROM producciones WHERE id=$1', [req.params.id]);
+    // la línea del pedido vuelve a "pendiente" (si seguía esperando esta producción)
+    if (p && p.origen_linea_id) {
+      await client.query(
+        `UPDATE pedidos_cli_lineas SET estado='pendiente' WHERE id=$1 AND estado='en_produccion'`,
+        [p.origen_linea_id]);
+    }
+    await client.query('COMMIT');
+    res.json({ok:true});
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
 });
 // reordenar prioridad: recibe ids en el orden deseado (el primero = más prioridad)
 router.post('/api/producciones/reordenar', async (req, res) => {

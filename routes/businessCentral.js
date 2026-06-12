@@ -53,7 +53,7 @@ router.post('/api/bc/sync', async (req, res) => {
       // kg total: suma de pesos de líneas si existe
       const kg = lns.reduce((s,l)=>s+(l.peso||0)*(l.cantidad||0),0) || null;
       // porte: línea cuyo ref empiece por PORT
-      const porteLn = lns.find(l=>(l.ref_bc||'').toUpperCase().startsWith('PORT'));
+      const porteLn = lns.find(l=>(l.ref_bc||'').trim().toUpperCase().startsWith('PORT'));
       const porte = porteLn ? (porteLn.precio_unidad*porteLn.cantidad) : null;
 
       const r = await pool.query(

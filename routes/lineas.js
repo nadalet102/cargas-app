@@ -13,7 +13,7 @@ router.patch('/api/lineas/:id/cargada', async (req, res) => {
 // PATCH marcar línea como preparada/no preparada
 router.patch('/api/lineas/:id/prep', async (req, res) => {
   try {
-    const r = await pool.query('UPDATE pedido_lineas SET preparada=$1 WHERE id=$2 RETURNING *',[req.body.preparada,req.params.id]);
+    const r = await pool.query('UPDATE pedido_lineas SET preparada=$1 WHERE id=$2 RETURNING *',[!!req.body.preparada,req.params.id]);
     res.json(r.rows[0]);
   } catch(e) { res.status(500).json({error:e.message}); }
 });

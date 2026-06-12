@@ -283,6 +283,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(-
 .b-amber{background:var(--amber-l);color:var(--amber)}
 .b-red{background:var(--red-l);color:var(--red)}
 .b-gray{background:var(--badge-gray-bg);color:var(--badge-gray-t)}
+.mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 
 /* ── Calendario ──────────────────────────────────────────────────────────── */
 .cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}

@@ -227,7 +227,7 @@ function renderCargas(){
     const margen=costeVal!=null?portes-costeVal:null;
     const isPend=c.coste_modo==='pendiente';
     const nPrep=ps.filter(p=>_esPrep(p)).length;
-    const nNoPre=ps.filter(p=>p.estado_prep!=='preparado').length;
+    const nNoPre=ps.filter(p=>!_esPrep(p)).length;
     const plegada=cargasColapsadas.has(String(c.id));
     return `<div class="cc${plegada?' cc-collapsed':''}" id="col-${c.id}"
       ondragover="onDragOver(event,'${c.id}')"
@@ -3414,8 +3414,8 @@ function renderClientesExcluidos(){
   el.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px">'+
     bcClientesExcluidos.map(c=>
       `<div style="display:flex;align-items:center;gap:5px;background:var(--red-l);color:var(--red);border:1px solid var(--red);padding:3px 8px;border-radius:20px;font-size:11px;font-weight:500">
-        <span>${c}</span>
-        <button onclick="quitarClienteExcluido('${c.replace(/'/g,"\'")}'')" style="background:none;border:none;cursor:pointer;color:var(--red);padding:0;line-height:1;font-size:13px">×</button>
+        <span>${(''+c).replace(/</g,'&lt;')}</span>
+        <button onclick="quitarClienteExcluido('${(''+c).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" style="background:none;border:none;cursor:pointer;color:var(--red);padding:0;line-height:1;font-size:13px">×</button>
       </div>`
     ).join('')+'</div>';
 }
@@ -4073,11 +4073,18 @@ function prodColaCard(p){
     <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${acc}</div>
   </div>`;
 }
-// Sube/baja la prioridad de una tarea DENTRO de su grupo de material (1 posición)
+// Sube/baja la prioridad de una tarea DENTRO de su grupo de material (1 posición).
+// OJO: la clave de grupo debe calcularse IGUAL que en renderProduccionCola (incluyendo
+// el material auto-detectado de la descripción), o las flechas mueven en el grupo equivocado.
+function _matKeyProd(p){
+  if(p.material) return p.material;
+  const m=matchMaterialDesc(p.notas||p.cliente);
+  return (m&&m.nombre)||'(sin material asignado)';
+}
 function moverPrioridadProd(id, dir){
   const p=prodData.find(x=>String(x.id)===String(id)); if(!p) return;
-  const mat=p.material||'(sin material asignado)';
-  const grupo=prodData.filter(x=>x.estado!=='hecho' && (x.material||'(sin material asignado)')===mat)
+  const mat=_matKeyProd(p);
+  const grupo=prodData.filter(x=>x.estado!=='hecho' && _matKeyProd(x)===mat)
     .sort((a,b)=>({en_proceso:0,pendiente:1}[a.estado]-{en_proceso:0,pendiente:1}[b.estado]) || (Number(b.orden||0)-Number(a.orden||0)));
   const idx=grupo.findIndex(x=>String(x.id)===String(id));
   const j=dir<0?idx-1:idx+1;
