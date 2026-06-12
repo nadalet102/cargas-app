@@ -36,10 +36,14 @@ router.post('/api/pedidos-cli', async (req, res) => {
       const esPalet = /\b(palet|pallet|paleta)\b/i.test(l.descripcion||'');
       const esSaco = /\bsacos?\b/i.test((l.descripcion||'')+' '+(l.unidad||''));
       if (auto && !esPalet && !esSaco && (Number(l.cantidad)||0) >= minBB) {
-        // intentar emparejar material por nombre; si no, queda sin material
+        // detectar el material DENTRO de la descripción (el nombre de materia prima
+        // que aparezca en el texto; gana el más largo/específico). Si no, sin material.
         let mp_id = null;
         if (l.descripcion) {
-          const m = (await client.query("SELECT id FROM materias_primas WHERE lower(nombre)=lower($1) LIMIT 1", [l.descripcion])).rows[0];
+          const m = (await client.query(
+            `SELECT id FROM materias_primas
+             WHERE nombre <> '' AND position(lower(nombre) in lower($1)) > 0 AND activo IS DISTINCT FROM false
+             ORDER BY length(nombre) DESC LIMIT 1`, [l.descripcion])).rows[0];
           mp_id = m ? m.id : null;
         }
         // kg por big bag = kg de la línea / nº de unidades (lo que pone el pedido)

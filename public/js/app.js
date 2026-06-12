@@ -3920,6 +3920,15 @@ async function cargarProduccionCola(){
 }
 let _prodColaFiltro='todos';
 function setProdColaFiltro(v){ _prodColaFiltro=v; renderProduccionCola(); }
+// Detecta el material a partir de una descripción libre (el nombre de materia
+// prima que aparezca dentro del texto; gana el más largo/específico).
+function matchMaterialDesc(desc){
+  const norm=s=>(''+(s||'')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const d=norm(desc); if(!d) return null;
+  let best=null,bestLen=0;
+  for(const m of matPrimas){ if(m.activo===false) continue; const n=norm(m.nombre); if(n && d.includes(n) && n.length>bestLen){ best=m; bestLen=n.length; } }
+  return best;
+}
 function renderProduccionCola(){
   const el=document.getElementById('produccion-content'); if(!el) return;
   const esc=s=>(''+(s||'')).replace(/</g,'&lt;');
@@ -3933,7 +3942,12 @@ function renderProduccionCola(){
   const uHoy=hechasHoy.reduce((s,p)=>s+Number(p.unidades||0),0);
   // Agrupar por material
   const grupos={};
-  activas.forEach(p=>{ const k=p.material||'(sin material asignado)'; (grupos[k]=grupos[k]||[]).push(p); });
+  activas.forEach(p=>{
+    let mat=p.material;
+    if(!mat){ const m=matchMaterialDesc(p.notas||p.cliente); if(m){ mat=m.nombre; p._matDerivado=true; p._mpDerivado=m.id; } }
+    const k=mat||'(sin material asignado)';
+    (grupos[k]=grupos[k]||[]).push(p);
+  });
   // Ordenar tareas dentro de cada grupo: en proceso primero, luego por prioridad (orden desc)
   Object.values(grupos).forEach(g=>g.sort((a,b)=>({en_proceso:0,pendiente:1}[a.estado]-{en_proceso:0,pendiente:1}[b.estado]) || (Number(b.orden||0)-Number(a.orden||0))));
   // Ordenar materiales: los que están en silo (listos) primero, luego por unidades pendientes desc
@@ -3957,15 +3971,16 @@ function renderProduccionCola(){
   if(!keys.length){ html+='<div class="empty-state"><i class="ti ti-cube"></i>Sin tareas pendientes</div>'; }
   keys.forEach(mat=>{
     const g=grupos[mat];
-    const mpid=g[0].mp_id;
+    const mpid=g[0].mp_id||g[0]._mpDerivado;
     const silo=mpid?siloDeMaterial(mpid):null;
+    const derivado=g.some(p=>p._matDerivado);
     const totU=g.reduce((s,p)=>s+Number(p.unidades||0),0);
     const siloHtml=silo
       ? `<span class="badge b-green"><i class="ti ti-package" style="font-size:10px"></i> ${silo.nombre} · ${fmtN(silo.kg_actual)} kg</span>`
       : `<span class="badge b-amber"><i class="ti ti-alert-triangle" style="font-size:10px"></i> sin material en silo</span>`;
     html+=`<div class="list-card" style="margin-bottom:14px;border-left:4px solid var(--blue)">
       <div class="lc-hdr" style="background:var(--blue-l)">
-        <span style="display:flex;align-items:center;gap:8px"><i class="ti ti-cube" style="font-size:16px;color:var(--blue-d)"></i><b style="font-size:15px;color:var(--blue-d)">${esc(mat)}</b><span style="font-size:11px;color:var(--text2)">· ${g.length} tarea${g.length>1?'s':''} · ${fmtN(totU)} ud</span></span>
+        <span style="display:flex;align-items:center;gap:8px"><i class="ti ti-cube" style="font-size:16px;color:var(--blue-d)"></i><b style="font-size:15px;color:var(--blue-d)">${esc(mat)}</b><span style="font-size:11px;color:var(--text2)">· ${g.length} tarea${g.length>1?'s':''} · ${fmtN(totU)} ud</span>${derivado?'<span style="font-size:9px;font-weight:700;background:var(--blue-l);color:var(--blue-d);border-radius:8px;padding:2px 7px" title="Material detectado a partir de la descripción">auto-detectado</span>':''}</span>
         ${siloHtml}
       </div>
       ${g.map(p=>prodColaCard(p)).join('')}
@@ -3981,12 +3996,14 @@ function renderProduccionCola(){
 }
 function prodColaCard(p){
   const esc=s=>(''+(s||'')).replace(/</g,'&lt;');
-  const sinSilo=p.mp_id && !siloDeMaterial(p.mp_id);
-  const sinMat=!p.mp_id;
+  const mpEff=p.mp_id||p._mpDerivado;      // material asignado o detectado de la descripción
+  const sinSilo=mpEff && !siloDeMaterial(mpEff);
+  const sinMat=!p.mp_id;                    // sin material asignado de verdad (botón "Material")
+  const sinMatEff=!mpEff;                   // ni siquiera detectado
   // estado mostrado (deriva "esperando material")
   let est=['var(--amber-l)','var(--amber)','En cola'];
   if(p.estado==='en_proceso') est=['var(--blue-l)','var(--blue-d)','En proceso'];
-  else if(sinMat||sinSilo) est=['var(--red-l)','var(--red)','Esperando material'];
+  else if(sinMatEff||sinSilo) est=['var(--red-l)','var(--red)','Esperando material'];
   const envase=p.cliente
     ? `<span style="font-size:12px;font-weight:700;color:var(--blue-d)"><i class="ti ti-user" style="font-size:11px"></i> ${esc(p.cliente)}</span>`
     : `<span style="font-size:10px;font-weight:700;color:var(--teal);background:var(--teal-l);padding:2px 8px;border-radius:8px"><i class="ti ti-package" style="font-size:10px"></i> PARA STOCK</span>`;
@@ -3995,7 +4012,7 @@ function prodColaCard(p){
     ${p.estado==='pendiente'?`<button onclick="cambiarEstadoProd('${p.id}','en_proceso')" class="btn-sec" style="font-size:11px;padding:5px 10px">Empezar</button>`:''}
     <button onclick="marcarHechoProd('${p.id}')" class="btn-primary" style="font-size:11px;padding:5px 10px;background:var(--green)"><i class="ti ti-check"></i> Hecho</button>
     ${sinMat?`<button onclick="asignarMaterialProd('${p.id}')" class="btn-sec" style="font-size:11px;padding:5px 9px;color:var(--blue-d)"><i class="ti ti-tag"></i> Material</button>`:''}
-    ${(sinMat||sinSilo)?`<button onclick="solicitarMaterialProd('${p.id}')" class="btn-sec" style="font-size:11px;padding:5px 9px"><i class="ti ti-truck-delivery"></i> Pedir</button>`:''}
+    ${(sinMatEff||sinSilo)?`<button onclick="solicitarMaterialProd('${p.id}')" class="btn-sec" style="font-size:11px;padding:5px 9px"><i class="ti ti-truck-delivery"></i> Pedir</button>`:''}
     <button onclick="abrirFormProd('${p.tipo}','${p.id}')" class="btn-sec" style="font-size:11px;padding:5px 8px"><i class="ti ti-edit"></i></button>`;
   return `<div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <div style="display:flex;flex-direction:column;gap:0;flex-shrink:0">
