@@ -88,11 +88,11 @@ const NAV_GROUPS = {
   reparto:     { subs:[['plan','Planificación'],['bc','Bandeja BC'],['cal','Calendario'],['hist','Historial']] },
   preparacion: { subs:[['prep','Por preparar'],['preparados','Preparados'],['carga','Carga'],['histped','Histórico'],['porart','Por artículo']] },
   compras:     { subs:[['compras','']] },
-  produccion:  { subs:[['prodcola','Producción'],['silos','Silos'],['matprima','Materia prima'],['pedidoscli','Pedidos'],['camion','Camión'],['prodcal','Calendario'],['prodfinal','Prod. Final']] },
+  produccion:  { subs:[['prodcola','Producción'],['pormaterial','Por material'],['silos','Silos'],['matprima','Materia prima'],['pedidoscli','Pedidos'],['camion','Camión'],['prodcal','Calendario'],['prodfinal','Prod. Final']] },
   resumen:     { subs:[['dash','']] },
   ajustes:     { subs:[['trans','Transportistas'],['cats','Categorías'],['clientesauto','Clientes auto'],['calsync','Calendario']] }
 };
-const VIEW_GROUP = {plan:'reparto',bc:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',carga:'preparacion',histped:'preparacion',porart:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',calsync:'ajustes',prodcola:'produccion',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
+const VIEW_GROUP = {plan:'reparto',bc:'reparto',cal:'reparto',hist:'reparto',prep:'preparacion',preparados:'preparacion',carga:'preparacion',histped:'preparacion',porart:'preparacion',compras:'compras',dash:'resumen',trans:'ajustes',cats:'ajustes',clientesauto:'ajustes',calsync:'ajustes',prodcola:'produccion',pormaterial:'produccion',silos:'produccion',matprima:'produccion',prodbb:'produccion',prodsacos:'produccion',prodfinal:'produccion',camion:'produccion',prodcal:'produccion',pedidoscli:'produccion'};
 let _activeView='plan';
 function _runRenderer(t){
   if(t==='cal')renderCal();
@@ -117,6 +117,7 @@ function _runRenderer(t){
   else if(t==='prodcal')cargarProdCal();
   else if(t==='pedidoscli')cargarPedidosCli();
   else if(t==='prodcola')cargarProduccionCola();
+  else if(t==='pormaterial')cargarPorMaterial();
   else if(t==='bc'){ loadBCConfig(); loadBCPedidos(); }
 }
 function renderSubtabBar(g, activeView){
@@ -128,7 +129,7 @@ function renderSubtabBar(g, activeView){
 }
 function switchView(t){
   _activeView=t;
-  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','carga','histped','porart','compras','silos','matprima','prodcola','prodbb','prodsacos','prodfinal','camion','prodcal','pedidoscli','clientesauto','calsync'].forEach(id=>{
+  ['plan','cal','trans','cats','hist','dash','bc','prep','preparados','carga','histped','porart','compras','silos','matprima','prodcola','pormaterial','prodbb','prodsacos','prodfinal','camion','prodcal','pedidoscli','clientesauto','calsync'].forEach(id=>{
     const v=document.getElementById('view-'+id); if(v) v.classList.toggle('active',id===t);
   });
   const g=VIEW_GROUP[t]||'reparto';
@@ -4079,6 +4080,84 @@ function moverPrioridadProd(id, dir){
   const ids=grupo.map(x=>String(x.id));
   const t=ids[idx]; ids[idx]=ids[j]; ids[j]=t;
   api('POST','/producciones/reordenar',{ids}).then(()=>cargarProduccionCola()).catch(()=>log('Error al reordenar','warn'));
+}
+// ── PRODUCCIÓN · Vista "Por material" (Fase C: demanda vs producción) ──────────
+// Resumen agregado por material: cuánto se produce, cuánto hay en cola, qué
+// clientes esperan y si el silo cubre. Sirve para NO duplicar producción: si un
+// material ya está en marcha, se engancha el pedido nuevo a la tanda.
+async function cargarPorMaterial(){
+  if(!matPrimas.length) await cargarMatPrimas(false);
+  if(!clientesAuto.length){ try{ clientesAuto=await api('GET','/clientes-auto'); }catch(e){} }
+  try{ silosData=await api('GET','/silos'); }catch(e){}
+  try{ prodData=await api('GET','/producciones'); }catch(e){ prodData=[]; }
+  renderPorMaterial();
+}
+function renderPorMaterial(){
+  const el=document.getElementById('pormaterial-content'); if(!el) return;
+  const esc=s=>(''+(s||'')).replace(/</g,'&lt;');
+  const U=arr=>arr.reduce((s,p)=>s+Number(p.unidades||0),0);
+  const KG=arr=>arr.reduce((s,p)=>s+Number(p.kg_total||0),0);
+  const activas=prodData.filter(p=>p.estado!=='hecho');
+  const hechasHoy=prodData.filter(p=>p.estado==='hecho'&&p.hecho_at&&_fechaISO(p.hecho_at)===_hoyISO());
+  const G={};
+  const add=(key,mpid)=>{ if(!G[key]) G[key]={mat:key,mpid:mpid||null,proc:[],cola:[],hoy:[]}; if(!G[key].mpid&&mpid) G[key].mpid=mpid; return G[key]; };
+  const matDe=p=>{ let mat=p.material,mpid=p.mp_id; if(!mat){ const m=matchMaterialDesc(p.notas||p.cliente); if(m){ mat=m.nombre; mpid=m.id; } } return {mat,mpid}; };
+  activas.forEach(p=>{ const {mat,mpid}=matDe(p); const g=add(mat||'(sin material asignado)',mpid); (p.estado==='en_proceso'?g.proc:g.cola).push(p); });
+  hechasHoy.forEach(p=>{ const {mat,mpid}=matDe(p); if(mat) add(mat,mpid).hoy.push(p); });
+  // materiales con silo pero sin demanda → capacidad disponible
+  silosData.forEach(s=>{ if(s.mp_id&&Number(s.kg_actual)>0){ const mp=matPrimas.find(m=>String(m.id)===String(s.mp_id)); if(mp&&!Object.values(G).some(g=>String(g.mpid)===String(mp.id))) add(mp.nombre,mp.id); } });
+  const list=Object.values(G).map(g=>{
+    const dem=U(g.proc)+U(g.cola), demKg=KG(g.proc)+KG(g.cola);
+    const silo=g.mpid?siloDeMaterial(g.mpid):null;
+    const clientes=[...new Set([...g.proc,...g.cola].filter(p=>p.cliente).map(p=>p.cliente))];
+    const stockCount=[...g.proc,...g.cola].filter(p=>!p.cliente).length;
+    return {...g, dem, demKg, silo, siloKg:silo?Number(silo.kg_actual):0, clientes, stockCount};
+  });
+  list.sort((a,b)=> (b.proc.length>0)-(a.proc.length>0) || b.dem-a.dem || b.siloKg-a.siloKg );
+  const conDemanda=list.filter(g=>g.dem>0);
+  const enMarcha=list.filter(g=>g.proc.length>0);
+  const duplicaRiesgo=list.filter(g=>g.proc.length>0 && g.cola.length>0).length;
+  let html=`<div class="cargas-hdr">
+      <span class="cargas-title"><i class="ti ti-layers-subtract"></i> Por material</span>
+      <button class="btn-sec" onclick="switchView('prodcola')" style="font-size:12px;padding:7px 12px"><i class="ti ti-list-check"></i> Ir a la cola</button></div>
+    <div class="dash-kpis" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
+      <div class="dash-card"><div class="dash-lbl">Materiales con pedidos</div><div class="dash-val">${conDemanda.length}</div><div class="dash-sub">distintos por producir</div></div>
+      <div class="dash-card"><div class="dash-lbl">En marcha</div><div class="dash-val" style="color:var(--blue)">${enMarcha.length}</div><div class="dash-sub">materiales en proceso</div></div>
+      <div class="dash-card"><div class="dash-lbl">Consolidables</div><div class="dash-val" style="color:${duplicaRiesgo?'var(--amber)':'var(--green)'}">${duplicaRiesgo}</div><div class="dash-sub">en marcha + con cola</div></div>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px"><i class="ti ti-info-circle"></i> Antes de lanzar una producción, mira aquí: si el material ya está en marcha, añade el pedido a esa tanda en vez de duplicar.</div>`;
+  if(!list.length){ html+='<div class="empty-state"><i class="ti ti-layers-subtract"></i>Sin materiales con actividad</div>'; }
+  list.forEach(g=>{
+    const enMarcha=g.proc.length>0, hayCola=g.cola.length>0;
+    // cobertura de silo
+    let cov;
+    if(g.dem<=0 && g.silo) cov=['var(--teal-l)','var(--teal)','<i class="ti ti-package"></i> Disponible en silo, sin pedidos'];
+    else if(!g.silo) cov=['var(--red-l)','var(--red)','<i class="ti ti-truck-delivery"></i> Sin material en silo — pedir al camión'];
+    else if(g.demKg>0 && g.siloKg>=g.demKg) cov=['var(--green-l)','var(--green)','<i class="ti ti-circle-check"></i> El silo cubre la demanda'];
+    else cov=['var(--amber-l)','var(--amber)',`<i class="ti ti-alert-triangle"></i> Silo ${fmtN(g.siloKg)} kg · puede no llegar`];
+    const accent=enMarcha?'var(--blue)':(g.dem>0?(g.silo?'var(--green)':'var(--amber)'):'var(--border2)');
+    const chips=[...g.clientes.map(c=>`<span style="font-size:10px;font-weight:700;color:var(--blue-d);background:var(--blue-l);padding:2px 8px;border-radius:8px"><i class="ti ti-user" style="font-size:9px"></i> ${esc(c)}</span>`),
+      ...(g.stockCount?[`<span style="font-size:10px;font-weight:700;color:var(--teal);background:var(--teal-l);padding:2px 8px;border-radius:8px"><i class="ti ti-package" style="font-size:9px"></i> PARA STOCK ×${g.stockCount}</span>`]:[])].join(' ');
+    const kpi=(lbl,val,sub,col)=>`<div style="flex:1;min-width:74px"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.3px">${lbl}</div><div style="font-size:18px;font-weight:800;line-height:1.1${col?`;color:${col}`:''}">${val}</div><div style="font-size:9px;color:var(--text3)">${sub}</div></div>`;
+    html+=`<div class="list-card" style="margin-bottom:14px;border-left:5px solid ${accent}">
+      <div class="lc-hdr" style="background:var(--surface2)">
+        <span style="display:flex;align-items:center;gap:8px"><i class="ti ti-cube" style="font-size:16px;color:var(--text2)"></i><b style="font-size:15px">${esc(g.mat)}</b>${enMarcha?'<span style="font-size:9px;font-weight:800;background:var(--blue);color:#fff;border-radius:8px;padding:2px 8px">EN MARCHA</span>':''}</span>
+        <span class="badge" style="background:${cov[0]};color:${cov[1]};font-size:10px">${cov[2]}</span>
+      </div>
+      <div style="padding:12px 14px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:${chips?'10px':'0'}">
+          ${kpi('Demanda',fmtN(g.dem)+' ud',g.demKg>0?fmtN(g.demKg)+' kg':'&nbsp;')}
+          ${kpi('En proceso',fmtN(U(g.proc))+' ud',g.proc.length+' tarea'+(g.proc.length===1?'':'s'),'var(--blue)')}
+          ${kpi('En cola',g.cola.length,'tareas','var(--amber)')}
+          ${kpi('Silo',g.siloKg?fmtN(g.siloKg)+' kg':'—',g.silo?g.silo.nombre:'sin silo','var(--green)')}
+          ${kpi('Hecho hoy',fmtN(U(g.hoy))+' ud','&nbsp;','var(--text2)')}
+        </div>
+        ${enMarcha&&hayCola?`<div style="font-size:11px;font-weight:700;color:var(--amber);background:var(--amber-l);border-radius:8px;padding:7px 10px;margin-bottom:8px"><i class="ti ti-arrows-join"></i> Ya hay ${U(g.proc)} ud en marcha y ${g.cola.length} tarea${g.cola.length===1?'':'s'} en cola del mismo material — prodúcelas juntas, sin cambiar de material.</div>`:''}
+        ${chips?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span style="font-size:10px;color:var(--text3)">Esperan:</span> ${chips}</div>`:''}
+      </div>
+    </div>`;
+  });
+  el.innerHTML=html;
 }
 function setProdFiltro(tipo,v){ prodFiltro[tipo]=v; renderProd(tipo); }
 let prodVista={bb:'tablero',saco:'tablero'};
