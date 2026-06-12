@@ -3,6 +3,28 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { _recalcEstadoCli } = require('../services/produccion');
 
+// Detección de material a partir de la descripción libre del pedido. No exige
+// el nombre completo: casa por palabras distintivas, tolerando abreviaturas y
+// granulometría ("A Blanca 0-4mm" → "Arena blanca"; "Gr Forna" → "Gravilla forna").
+const _MAT_STOP = new Set(['bb','big','bag','saco','sacos','palet','pallet','paleta','cliente','kg','kgs','mm','cm','ud','uds','de','del','la','el','y','con','para','x','granel']);
+const _matToks = s => (''+(s||'')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').split(/[^a-z0-9]+/).filter(Boolean);
+function matchMaterialId(desc, materias){
+  const d = _matToks(desc); if(!d.length) return null;
+  const isNum = t => /[0-9]/.test(t);
+  const has = t => d.some(w => w===t || (!isNum(w) && w.length>=3 && (w.startsWith(t)||t.startsWith(w))));
+  let best=null, bestScore=-1;
+  for(const m of materias){ if(m.activo===false) continue;
+    const st = _matToks(m.nombre).filter(t => t.length>=2 && !isNum(t) && !_MAT_STOP.has(t));
+    if(!st.length) continue;
+    let matched=0, strong=0, sum=0;
+    for(const t of st){ if(has(t)){ matched++; sum+=t.length; if(t.length>=4) strong++; } }
+    if(!((matched===st.length)||(strong>=1&&matched>=1))) continue;
+    const score = matched*1000+sum;
+    if(score>bestScore){ best=m; bestScore=score; }
+  }
+  return best ? best.id : null;
+}
+
 router.get('/api/pedidos-cli', async (req, res) => {
   try {
     const ped = (await pool.query('SELECT * FROM pedidos_cli ORDER BY creado DESC')).rows;
@@ -29,6 +51,7 @@ router.post('/api/pedidos-cli', async (req, res) => {
     }
     const auto = !!autoCli;
     const minBB = autoCli ? (Number(autoCli.min_bb)||1) : 1;
+    const materias = auto ? (await client.query('SELECT id,nombre,activo FROM materias_primas')).rows : [];
     let autoTareas = 0;
     for (const l of (b.lineas||[])) {
       const lin = (await client.query('INSERT INTO pedidos_cli_lineas(pedido_id,descripcion,cantidad,unidad) VALUES($1,$2,$3,$4) RETURNING *',
@@ -36,16 +59,9 @@ router.post('/api/pedidos-cli', async (req, res) => {
       const esPalet = /\b(palet|pallet|paleta)\b/i.test(l.descripcion||'');
       const esSaco = /\bsacos?\b/i.test((l.descripcion||'')+' '+(l.unidad||''));
       if (auto && !esPalet && !esSaco && (Number(l.cantidad)||0) >= minBB) {
-        // detectar el material DENTRO de la descripción (el nombre de materia prima
-        // que aparezca en el texto; gana el más largo/específico). Si no, sin material.
-        let mp_id = null;
-        if (l.descripcion) {
-          const m = (await client.query(
-            `SELECT id FROM materias_primas
-             WHERE nombre <> '' AND position(lower(nombre) in lower($1)) > 0 AND activo IS DISTINCT FROM false
-             ORDER BY length(nombre) DESC LIMIT 1`, [l.descripcion])).rows[0];
-          mp_id = m ? m.id : null;
-        }
+        // detectar el material por palabras distintivas de la descripción
+        // (tolera abreviaturas/granulometría). Si no casa, sin material.
+        const mp_id = l.descripcion ? matchMaterialId(l.descripcion, materias) : null;
         // kg por big bag = kg de la línea / nº de unidades (lo que pone el pedido)
         const uni = Number(l.cantidad) || 0;
         const kgsLinea = Number(l.kgs) || 0;

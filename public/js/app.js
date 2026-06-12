@@ -3923,13 +3923,27 @@ async function cargarProduccionCola(){
 }
 let _prodColaFiltro='todos';
 function setProdColaFiltro(v){ _prodColaFiltro=v; renderProduccionCola(); }
-// Detecta el material a partir de una descripción libre (el nombre de materia
-// prima que aparezca dentro del texto; gana el más largo/específico).
+// Detecta el material a partir de una descripción libre. No exige el nombre
+// completo: trocea en palabras, descarta ruido (bb, saco, kg, granulometría…)
+// y casa por las palabras DISTINTIVAS del material (p.ej. "A Blanca 0-4mm" →
+// "Arena blanca" por "blanca"; "Gr Forna" → "Gravilla forna" por "forna").
+const _matStop=new Set(['bb','big','bag','saco','sacos','palet','pallet','paleta','cliente','kg','kgs','mm','cm','ud','uds','de','del','la','el','y','con','para','x','granel']);
+function _matToks(s){ return (''+(s||'')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').split(/[^a-z0-9]+/).filter(Boolean); }
 function matchMaterialDesc(desc){
-  const norm=s=>(''+(s||'')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-  const d=norm(desc); if(!d) return null;
-  let best=null,bestLen=0;
-  for(const m of matPrimas){ if(m.activo===false) continue; const n=norm(m.nombre); if(n && d.includes(n) && n.length>bestLen){ best=m; bestLen=n.length; } }
+  const d=_matToks(desc); if(!d.length) return null;
+  const isNum=t=>/[0-9]/.test(t);
+  const has=t=>d.some(w=>w===t || (!isNum(w)&&w.length>=3&&(w.startsWith(t)||t.startsWith(w))));
+  let best=null,bestScore=-1;
+  for(const m of matPrimas){ if(m.activo===false) continue;
+    const st=_matToks(m.nombre).filter(t=>t.length>=2 && !isNum(t) && !_matStop.has(t));
+    if(!st.length) continue;
+    let matched=0,strong=0,sum=0;
+    for(const t of st){ if(has(t)){ matched++; sum+=t.length; if(t.length>=4) strong++; } }
+    // vale si casan TODAS las palabras del material, o al menos una distintiva (≥4 letras)
+    if(!((matched===st.length)||(strong>=1&&matched>=1))) continue;
+    const score=matched*1000+sum;
+    if(score>bestScore){ best=m; bestScore=score; }
+  }
   return best;
 }
 function renderProduccionCola(){

@@ -69,6 +69,8 @@ const db = {
     { id: 2, nombre: 'Cemento gris', activo: true },
     { id: 3, nombre: 'Cal hidratada', activo: true },
     { id: 4, nombre: 'Yeso', activo: true },
+    { id: 5, nombre: 'Arena blanca', activo: true },
+    { id: 6, nombre: 'Gravilla forna', activo: true },
   ],
   silos: [
     { id: 1, numero: 0, nombre: 'Tolva 0', capacidad_kg: 25000, mp_id: 1, kg_actual: 18000, vaciando: false, producto: 'Arena silícea' },
@@ -87,6 +89,8 @@ const db = {
     { id: 7, tipo: 'bb', mp_id: 4, unidades: 6, kg_unidad: 1000, kg_total: 6000, silo_id: null, estado: 'pendiente', notas: '', fecha: addDays(0), hecho_at: null, origen_linea_id: null, material: 'Yeso', silo_nombre: null, cliente: 'Reformas Atlántico', fabricante: null, orden: 0 },
     { id: 8, tipo: 'bb', mp_id: null, unidades: 5, kg_unidad: 1000, kg_total: 5000, silo_id: null, estado: 'pendiente', notas: 'Big Bag Arena Silícea 0-2 1000kg', fecha: addDays(0), hecho_at: null, origen_linea_id: null, material: null, silo_nombre: null, cliente: 'Áridos del Norte SL', fabricante: null, orden: 1 },
     { id: 3, tipo: 'bb', mp_id: 3, unidades: 6, kg_unidad: 1000, kg_total: 6000, silo_id: 3, estado: 'hecho', notas: '', fecha: addDays(0), hecho_at: addDays(0), origen_linea_id: null, material: 'Cal hidratada', silo_nombre: 'Tolva 2', cliente: null, fabricante: null, orden: 0 },
+    { id: 9, tipo: 'bb', mp_id: null, unidades: 18, kg_unidad: 900, kg_total: 16200, silo_id: null, estado: 'pendiente', notas: 'A Blanca 0-4mm bb cliente 900kg', fecha: addDays(0), hecho_at: null, origen_linea_id: null, material: null, silo_nombre: null, cliente: 'AC Materiales de la Construcción', fabricante: null, orden: 1 },
+    { id: 10, tipo: 'bb', mp_id: null, unidades: 12, kg_unidad: 900, kg_total: 10800, silo_id: null, estado: 'pendiente', notas: 'Gr Forna 12-20mm bb cliente 900kg', fecha: addDays(0), hecho_at: null, origen_linea_id: null, material: null, silo_nombre: null, cliente: 'AC Materiales de la Construcción', fabricante: null, orden: 1 },
   ],
   viajes: [
     { id: 1, mp_id: 1, kg: 25000, silo_id: null, fecha: addDays(0), estado: 'pendiente', destino_tipo: null, destino_silo_id: null, kg_final: null, acopio: null, origen: 'manual', notas: '', hora: '08:30', material: 'Arena silícea', silo_nombre: null, destino_silo_nombre: null },
