@@ -200,6 +200,56 @@ router.post('/api/pedidos/:id/partir', async (req, res) => {
   finally { client.release(); }
 });
 
+// VOLVER A JUNTAR un pedido partido (deshacer la partición). El :id es la parte
+// que SOBREVIVE (se queda en su carga); las demás partes de la familia se funden
+// en ella: se resuman líneas (por ref+descr+embalaje), kg y porte, se restaura el
+// num base y se borran las otras. Se BLOQUEA si alguna parte ya está entregada.
+router.post('/api/pedidos/:id/juntar', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const surv = (await client.query('SELECT * FROM pedidos WHERE id=$1',[req.params.id])).rows[0];
+    if (!surv) { await client.query('ROLLBACK'); return res.status(404).json({error:'No existe el pedido'}); }
+    const base = (surv.num||'').replace(/-\d+$/,'');
+    const fam = (await client.query(
+      `SELECT * FROM pedidos WHERE (num=$1 OR num LIKE $1||'-%') AND cliente IS NOT DISTINCT FROM $2`,
+      [base, surv.cliente])).rows;
+    if (fam.length < 2) { await client.query('ROLLBACK'); return res.status(400).json({error:'Este pedido no está partido'}); }
+    if (fam.some(f => f.estado_prep === 'entregado')) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({error:'Hay una parte ya entregada; no se puede juntar'});
+    }
+    const ids = fam.map(f => f.id);
+    // reagregar las líneas de toda la familia (la partición dividió filas iguales)
+    const allLines = (await client.query('SELECT * FROM pedido_lineas WHERE pedido_id = ANY($1::int[]) ORDER BY orden,id',[ids])).rows;
+    const agg = {}, order = [];
+    for (const l of allLines) {
+      const k = (l.referencia||'')+'|'+(l.descripcion||'')+'|'+(l.embalaje||'');
+      if (!agg[k]) { agg[k] = { referencia:l.referencia, descripcion:l.descripcion, embalaje:l.embalaje, observaciones:l.observaciones, cantidad:0, kgs:null }; order.push(k); }
+      agg[k].cantidad += Number(l.cantidad)||0;
+      if (l.kgs != null) agg[k].kgs = (agg[k].kgs||0) + Number(l.kgs);
+    }
+    await client.query('DELETE FROM pedido_lineas WHERE pedido_id = ANY($1::int[])',[ids]);
+    let ord = 0;
+    for (const k of order) {
+      const a = agg[k];
+      await client.query(
+        `INSERT INTO pedido_lineas(pedido_id,referencia,descripcion,cantidad,preparada,observaciones,orden,embalaje,kgs,falta)
+         VALUES($1,$2,$3,$4,false,$5,$6,$7,$8,0)`,
+        [surv.id, a.referencia, a.descripcion, a.cantidad, a.observaciones, ord++, a.embalaje, a.kgs]);
+    }
+    // sumar kg/porte de todas las partes y restaurar el num base en el superviviente
+    const kgTot = fam.reduce((s,f)=>s+(Number(f.kg)||0),0);
+    const porteTot = fam.reduce((s,f)=>s+(Number(f.porte)||0),0);
+    await client.query('UPDATE pedidos SET kg=$1, porte=$2, num=$3, partido_de=NULL WHERE id=$4',[kgTot, porteTot, base, surv.id]);
+    const otras = ids.filter(id => id !== surv.id);
+    if (otras.length) await client.query('DELETE FROM pedidos WHERE id = ANY($1::int[])',[otras]);
+    await client.query('COMMIT');
+    res.json({ ok:true, id:surv.id, partes_unidas:fam.length });
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
+});
+
 // ── LÍNEAS DE PEDIDO (preparación) ────────────────────────────────────────────
 
 // GET líneas de un pedido

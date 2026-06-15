@@ -117,7 +117,7 @@ async function api(method,path,body){
     return r.json();
   }catch(e){
     // sin red y es una acción (no lectura): a la cola y la app sigue
-    if(method!=='GET' && _esFalloRed(e) && !path.endsWith('/partir') && !_OUTBOX_EXCLUIR.some(p=>path.startsWith(p))){
+    if(method!=='GET' && _esFalloRed(e) && !path.endsWith('/partir') && !path.endsWith('/juntar') && !_OUTBOX_EXCLUIR.some(p=>path.startsWith(p))){
       const q=_outboxGet(); q.push({method,path,body:body!=null?body:null,ts:Date.now()}); _outboxSet(q);
       log('Sin conexión: guardado, se enviará al volver la señal','warn');
       return {__offline:true, ok:true};
@@ -269,6 +269,7 @@ function renderBCList(){
       <div class="pc-top">
         <span class="pc-num">${p.num}${p.prio==='urgente'?' <span class="badge b-red" style="font-size:9px">Urgente</span>':''}</span>
         <div class="pc-acts">
+          ${_esParteSplit(p)?`<button class="ico" style="color:var(--teal)" onclick="event.stopPropagation();juntarPedido('${p.id}')" title="Volver a juntar (deshacer la partición)"><i class="ti ti-arrows-join"></i></button>`:''}
           <button class="ico" onclick="event.stopPropagation();openModal('pedido','${p.id}')" title="Editar"><i class="ti ti-pencil"></i></button>
           <button class="ico del" onclick="event.stopPropagation();confirmDelete('pedido','${p.id}')" title="Eliminar"><i class="ti ti-trash"></i></button>
         </div>
@@ -388,6 +389,7 @@ function renderCargas(){
                 <input type="number" class="order-input" value="${p.orden_carga||''}" placeholder="#" title="Orden en la carga" onchange="setOrden('${p.id}',this.value)" min="1">
                 ${p.estado_prep!=='entregado'?`<button class="mini-rm" style="color:#2E5811;padding:2px 4px" onclick="marcarCargadoReparto('${p.id}')" title="Marcar cargado"><i class="ti ti-checks"></i></button>`:''}
                 ${p.estado_prep!=='entregado'?`<button class="mini-rm" style="color:var(--amber);padding:2px 4px" onclick="abrirFormPartir('${p.id}')" title="Partir en dos viajes (no cabe todo)"><i class="ti ti-cut"></i></button>`:''}
+                ${(p.estado_prep!=='entregado'&&_esParteSplit(p))?`<button class="mini-rm" style="color:var(--teal);padding:2px 4px" onclick="juntarPedido('${p.id}')" title="Volver a juntar (deshacer la partición)"><i class="ti ti-arrows-join"></i></button>`:''}
                 <button class="mini-rm" style="color:var(--blue);padding:2px 4px" onclick="openModal('pedido','${p.id}')" title="Editar"><i class="ti ti-pencil"></i></button>
                 <button class="mini-rm" onclick="removeFromCarga('${p.id}')" title="Quitar de la carga"><i class="ti ti-x"></i></button>
               </div>
@@ -1103,6 +1105,21 @@ async function confirmarPartir(pid){
   }catch(e){
     if(_esFalloRed(e)) log('Partir necesita conexión (no se encola sin red)','warn');
     else log('No se pudo partir: '+e.message,'warn');
+  }
+}
+// ¿este pedido es parte de una partición? (es un resto, o tiene restos colgando)
+function _esParteSplit(p){ return !!p.partido_de || pedidos.some(x=>String(x.partido_de)===String(p.id)); }
+// volver a juntar: esta parte sobrevive y absorbe las demás de su familia
+async function juntarPedido(pid){
+  const p=pedidos.find(x=>String(x.id)===String(pid)); if(!p) return;
+  if(!confirm('¿Volver a juntar este pedido?\nLas partes se unirán en este ('+(p.num||'')+') con el total de cantidades, kg y porte. Se borrarán las demás partes.')) return;
+  try{
+    const r=await api('POST','/pedidos/'+pid+'/juntar',{});
+    log('Pedido juntado de nuevo ('+(r.partes_unidas||'')+' partes)','ok');
+    await loadAll();
+  }catch(e){
+    if(_esFalloRed(e)) log('Juntar necesita conexión (no se encola sin red)','warn');
+    else log('No se pudo juntar: '+e.message,'warn');
   }
 }
 
@@ -3644,7 +3661,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 49;
+const NEEDS_API = 50;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
