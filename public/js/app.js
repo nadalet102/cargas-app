@@ -296,8 +296,10 @@ function renderCargas(){
   const filtered=activeCargas.filter(c=>{
     if(filterVal&&c.status!==filterVal) return false;
     const cs=clasifsDe(c);
-    if(planClasif==='') return cs.size===0 || cs.has('');   // "Cargas": vacía o con algún pedido sin clasificar
-    return cs.has(planClasif);                               // Agencia / Recogen / categoría
+    // "Cargas" (general) = cargas SIN ninguna categoría; las que tocan una categoría
+    // viven solo en su pestaña, para no duplicarlas
+    if(planClasif==='') return ![...cs].some(k=>k!=='');
+    return cs.has(planClasif);                               // pestaña de una categoría
   });
   const grid=document.getElementById('cargas-grid');
   if(!filtered.length){
