@@ -103,6 +103,7 @@ async function initDB() {
     `ALTER TABLE compras ADD COLUMN IF NOT EXISTS formato TEXT DEFAULT 'granel'`,
     `ALTER TABLE clientes_auto ADD COLUMN IF NOT EXISTS min_bb INTEGER DEFAULT 1`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS entregado_at TIMESTAMPTZ`,
+    `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS partido_de INTEGER`,
     `CREATE TABLE IF NOT EXISTS mant_items (
       id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, periodicidad TEXT DEFAULT 'semanal',
       orden INTEGER DEFAULT 0, activo BOOLEAN DEFAULT true

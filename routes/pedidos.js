@@ -127,6 +127,53 @@ router.patch('/api/pedidos/:id/agencia', async (req, res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
+// PARTIR un pedido en dos (entrega parcial por capacidad de camión).
+// Crea un pedido "resto" en libres con las cantidades que no caben este viaje y
+// reparte kg/porte entre las dos partes (clave: que los KPIs no dupliquen). Todo
+// en UNA transacción → seguro para la cola offline (una sola acción).
+router.post('/api/pedidos/:id/partir', async (req, res) => {
+  const b = req.body || {};
+  const kg1 = Number(b.kg1)||0, porte1 = Number(b.porte1)||0;
+  const kg2 = Number(b.kg2)||0, porte2 = Number(b.porte2)||0;
+  const resto = Array.isArray(b.lineasResto) ? b.lineasResto.filter(l=>l && l.id!=null && Number(l.cantidad)>0) : [];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const p = (await client.query('SELECT * FROM pedidos WHERE id=$1',[req.params.id])).rows[0];
+    if (!p) { await client.query('ROLLBACK'); return res.status(404).json({error:'No existe el pedido'}); }
+    const num2 = (b.num2 && (''+b.num2).trim()) || ((p.num||'')+'-2');
+    // pedido-resto: hereda datos del original, sin carga (va a libres), sin preparar
+    const p2 = (await client.query(
+      `INSERT INTO pedidos (num,cliente,destino,ubicacion,estado_prep,fecha,kg,porte,prio,paradas,obs,carga_id,orden_carga,categoria_id,maps_url,direccion_descarga,comercial,partido_de)
+       VALUES ($1,$2,$3,$4,'sin_preparar',$5,$6,$7,$8,$9,$10,NULL,NULL,$11,$12,$13,$14,$15) RETURNING *`,
+      [num2, p.cliente, p.destino, p.ubicacion, p.fecha, kg2, porte2, p.prio, p.paradas, p.obs,
+       p.categoria_id, p.maps_url, p.direccion_descarga, p.comercial, p.id])).rows[0];
+    // repartir las líneas indicadas: la cantidad-resto se mueve al pedido nuevo
+    for (const r of resto) {
+      const ln = (await client.query('SELECT * FROM pedido_lineas WHERE id=$1 AND pedido_id=$2',[r.id, p.id])).rows[0];
+      if (!ln) continue;
+      const mover = Math.min(Number(r.cantidad)||0, Number(ln.cantidad)||0);
+      if (mover <= 0) continue;
+      const kgsMover = (Number(ln.cantidad)>0 && ln.kgs!=null) ? Math.round((Number(ln.kgs)*mover/Number(ln.cantidad))*100)/100 : null;
+      await client.query(
+        `INSERT INTO pedido_lineas(pedido_id,referencia,descripcion,cantidad,preparada,observaciones,orden,embalaje,kgs,falta)
+         VALUES($1,$2,$3,$4,false,$5,$6,$7,$8,0)`,
+        [p2.id, ln.referencia, ln.descripcion, mover, ln.observaciones, ln.orden, ln.embalaje, kgsMover]);
+      if (mover >= Number(ln.cantidad)) {
+        await client.query('DELETE FROM pedido_lineas WHERE id=$1',[ln.id]);   // se va entera
+      } else {
+        const kgsResta = (ln.kgs!=null && kgsMover!=null) ? Math.round((Number(ln.kgs)-kgsMover)*100)/100 : ln.kgs;
+        await client.query('UPDATE pedido_lineas SET cantidad=$1, kgs=$2 WHERE id=$3',[Number(ln.cantidad)-mover, kgsResta, ln.id]);
+      }
+    }
+    // el pedido original se queda con lo de este viaje (kg/porte reducidos)
+    await client.query('UPDATE pedidos SET kg=$1, porte=$2 WHERE id=$3',[kg1, porte1, p.id]);
+    await client.query('COMMIT');
+    res.json({ ok:true, original_id:p.id, resto:p2 });
+  } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
+  finally { client.release(); }
+});
+
 // ── LÍNEAS DE PEDIDO (preparación) ────────────────────────────────────────────
 
 // GET líneas de un pedido

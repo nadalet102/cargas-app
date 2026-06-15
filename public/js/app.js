@@ -112,7 +112,7 @@ async function api(method,path,body){
     return r.json();
   }catch(e){
     // sin red y es una acción (no lectura): a la cola y la app sigue
-    if(method!=='GET' && _esFalloRed(e) && !_OUTBOX_EXCLUIR.some(p=>path.startsWith(p))){
+    if(method!=='GET' && _esFalloRed(e) && !path.endsWith('/partir') && !_OUTBOX_EXCLUIR.some(p=>path.startsWith(p))){
       const q=_outboxGet(); q.push({method,path,body:body!=null?body:null,ts:Date.now()}); _outboxSet(q);
       log('Sin conexión: guardado, se enviará al volver la señal','warn');
       return {__offline:true, ok:true};
@@ -346,7 +346,7 @@ function renderCargas(){
               <div class="mini-order">${p.orden_carga||idx+1}</div>
               <div class="mini-body">
                 <div class="mini-client">${p.cliente}${p.prio==='urgente'?' <span class="badge b-red" style="font-size:9px">U</span>':''}${p.estado_prep==='entregado'?' <span class="badge b-green" style="font-size:9px"><i class="ti ti-check" style="font-size:9px"></i> Cargado</span>':''}</div>
-                ${p.num?`<div style="font-size:10px;color:var(--blue-d);font-weight:600;font-family:monospace;margin-top:1px">${p.num}</div>`:''}
+                ${p.num?`<div style="font-size:10px;color:var(--blue-d);font-weight:600;font-family:monospace;margin-top:1px">${p.num}${p.partido_de?' <span style="background:var(--amber-l);color:var(--amber);font-family:DM Sans,sans-serif;font-weight:700;padding:0 5px;border-radius:6px"><i class="ti ti-cut" style="font-size:9px"></i> resto</span>':''}</div>`:''}
                 ${p.ubicacion?`<div class="mini-ubic"><i class="ti ti-box" style="font-size:10px"></i>${p.ubicacion}</div>`:''}
                 <div class="mini-meta"><span>${p.destino.split(',')[0]}</span><span>·</span><span>${fmtN(p.kg)} kg</span><span>·</span><span style="color:var(--green)">${fmtN(p.porte)} €</span>${p.categoria_nombre?`<span>·</span><span style="background:${p.categoria_color}22;color:${p.categoria_color};font-size:9px;padding:1px 5px;border-radius:6px;font-weight:600">${p.categoria_nombre}</span>`:''}</div>
                 ${p.obs?`<div style="font-size:10px;color:var(--text2);margin-top:2px"><i class="ti ti-message" style="font-size:9px"></i> ${p.obs}</div>`:''}
@@ -354,6 +354,7 @@ function renderCargas(){
               <div class="mini-acts">
                 <input type="number" class="order-input" value="${p.orden_carga||''}" placeholder="#" title="Orden en la carga" onchange="setOrden('${p.id}',this.value)" min="1">
                 ${p.estado_prep!=='entregado'?`<button class="mini-rm" style="color:#2E5811;padding:2px 4px" onclick="marcarCargadoReparto('${p.id}')" title="Marcar cargado"><i class="ti ti-checks"></i></button>`:''}
+                ${p.estado_prep!=='entregado'?`<button class="mini-rm" style="color:var(--amber);padding:2px 4px" onclick="abrirFormPartir('${p.id}')" title="Partir en dos viajes (no cabe todo)"><i class="ti ti-cut"></i></button>`:''}
                 <button class="mini-rm" style="color:var(--blue);padding:2px 4px" onclick="openModal('pedido','${p.id}')" title="Editar"><i class="ti ti-pencil"></i></button>
                 <button class="mini-rm" onclick="removeFromCarga('${p.id}')" title="Quitar de la carga"><i class="ti ti-x"></i></button>
               </div>
@@ -941,6 +942,80 @@ async function removeFromCarga(pid){
     if(p){p.carga_id=null;p.orden_carga=null;}
     renderAll();log('Pedido devuelto a BC');
   }catch(e){log('Error','warn');}
+}
+
+// ── PARTIR PEDIDO (entrega parcial: no cabe todo en el camión) ─────────────────
+let _partirLineas=[], _partirPed=null;
+async function abrirFormPartir(pid){
+  const p=pedidos.find(x=>String(x.id)===String(pid)); if(!p){ log('Pedido no encontrado','warn'); return; }
+  _partirPed=p;
+  try{ _partirLineas=await api('GET','/pedidos/'+pid+'/lineas'); }catch(e){ _partirLineas=[]; }
+  const esc=s=>(''+(s||'')).replace(/</g,'&lt;');
+  const ov=document.createElement('div'); ov.id='partir-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10060;display:flex;align-items:flex-end;justify-content:center';
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  const inp='font-size:14px;padding:7px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);box-sizing:border-box';
+  const filas=_partirLineas.length
+    ? _partirLineas.map((l,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--border)">
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${esc(l.descripcion||l.referencia||'(línea)')}</div>
+          <div style="font-size:11px;color:var(--text3)">pedido: ${fmtN(l.cantidad)}${l.embalaje?(' · '+esc(l.embalaje)):''}</div></div>
+        <label style="font-size:10px;color:var(--text3);text-align:right">2º viaje<input type="number" min="0" max="${Number(l.cantidad)||0}" value="0" data-lid="${l.id}" data-cant="${Number(l.cantidad)||0}" oninput="_partirRecalc()" style="${inp};width:78px;display:block;margin-top:2px"></label>
+      </div>`).join('')
+    : `<div style="font-size:12px;color:var(--text2);padding:8px 0;border-top:1px solid var(--border)">Este pedido no tiene líneas detalladas. Reparte solo el peso y el porte.</div>`;
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:18px;max-height:92vh;overflow-y:auto">
+    <b style="font-size:15px"><i class="ti ti-cut"></i> Partir pedido</b>
+    <div style="font-size:12px;color:var(--text2);margin:2px 0 4px">${esc(p.num||'')} · ${esc(p.cliente||'')} · ${fmtN(p.kg)} kg</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Indica lo que va en el <b>2º viaje</b> (lo que no cabe ahora). Se creará un pedido aparte con ese resto, listo para arrastrar a otra carga.</div>
+    ${_partirLineas.length?'<div style="font-weight:700;font-size:12px;margin-bottom:2px">Reparto de líneas</div>':''}
+    ${filas}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
+      <label style="font-size:11px;color:var(--text2)">Kg este viaje<input id="pt-kg1" type="number" value="${Number(p.kg)||0}" oninput="_partirKgManual=true" style="${inp};width:100%;margin-top:3px"></label>
+      <label style="font-size:11px;color:var(--text2)">Kg 2º viaje<input id="pt-kg2" type="number" value="0" oninput="_partirKgManual=true" style="${inp};width:100%;margin-top:3px"></label>
+      <label style="font-size:11px;color:var(--text2)">Porte este viaje (€)<input id="pt-porte1" type="number" value="${Number(p.porte)||0}" style="${inp};width:100%;margin-top:3px"></label>
+      <label style="font-size:11px;color:var(--text2)">Porte 2º viaje (€)<input id="pt-porte2" type="number" value="0" style="${inp};width:100%;margin-top:3px"></label>
+    </div>
+    <div id="pt-aviso" style="font-size:11px;color:var(--text3);margin-top:8px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button class="btn-sec" onclick="document.getElementById('partir-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarPartir('${p.id}')" style="font-size:13px;padding:10px 18px;background:var(--amber)"><i class="ti ti-cut"></i> Partir</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  _partirKgManual=false; _partirRecalc();
+}
+let _partirKgManual=false;
+function _partirRecalc(){
+  const p=_partirPed; if(!p) return;
+  const totUd=_partirLineas.reduce((s,l)=>s+(Number(l.cantidad)||0),0);
+  let movUd=0; document.querySelectorAll('#partir-ov input[data-lid]').forEach(i=>{ const c=Math.min(Number(i.value)||0,Number(i.dataset.cant)||0); movUd+=c; });
+  // sugerir kg proporcional a las unidades movidas (si el usuario no lo tocó a mano)
+  if(!_partirKgManual && totUd>0){
+    const kgTot=Number(p.kg)||0; const kg2=Math.round(kgTot*movUd/totUd);
+    const e1=document.getElementById('pt-kg1'), e2=document.getElementById('pt-kg2');
+    if(e1&&e2){ e2.value=kg2; e1.value=kgTot-kg2; }
+  }
+  const av=document.getElementById('pt-aviso'); if(av){
+    if(_partirLineas.length) av.textContent = movUd<=0 ? '⚠ Marca al menos 1 unidad para el 2º viaje.' : (movUd>=totUd ? '⚠ No puede ir todo al 2º viaje (algo tiene que ir ahora).' : `Este viaje: ${fmtN(totUd-movUd)} ud · 2º viaje: ${fmtN(movUd)} ud`);
+    else av.textContent='Sin líneas: se parte solo por peso/porte.';
+  }
+}
+async function confirmarPartir(pid){
+  const p=_partirPed; if(!p) return;
+  const totUd=_partirLineas.reduce((s,l)=>s+(Number(l.cantidad)||0),0);
+  const lineasResto=[]; let movUd=0;
+  document.querySelectorAll('#partir-ov input[data-lid]').forEach(i=>{ const c=Math.min(Number(i.value)||0,Number(i.dataset.cant)||0); if(c>0){ lineasResto.push({id:Number(i.dataset.lid),cantidad:c}); movUd+=c; } });
+  if(_partirLineas.length && (movUd<=0 || movUd>=totUd)){ log('Reparte alguna unidad dejando parte en este viaje','warn'); return; }
+  const kg1=Number(document.getElementById('pt-kg1').value)||0, kg2=Number(document.getElementById('pt-kg2').value)||0;
+  const porte1=Number(document.getElementById('pt-porte1').value)||0, porte2=Number(document.getElementById('pt-porte2').value)||0;
+  if(!_partirLineas.length && kg2<=0){ log('Indica los kg del 2º viaje','warn'); return; }
+  try{
+    await api('POST','/pedidos/'+pid+'/partir',{kg1,porte1,kg2,porte2,lineasResto});
+    document.getElementById('partir-ov')?.remove();
+    log('Pedido partido: el resto está en la bandeja para otra carga','ok');
+    await loadAll();
+  }catch(e){
+    if(_esFalloRed(e)) log('Partir necesita conexión (no se encola sin red)','warn');
+    else log('No se pudo partir: '+e.message,'warn');
+  }
 }
 
 function confirmDelete(type,id){
@@ -3481,7 +3556,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 45;
+const NEEDS_API = 46;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
