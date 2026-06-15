@@ -39,17 +39,12 @@ const fmtDate=d=>{if(!d)return'';const s=String(d).substring(0,10);const[y,m,dd]
 const cargaPs=id=>pedidos.filter(p=>String(p.carga_id)===String(id));
 const cargaKg=id=>cargaPs(id).reduce((s,p)=>s+(+p.kg||0),0);
 const cargaPortes=id=>cargaPs(id).reduce((s,p)=>s+(+p.porte||0),0);
-// pestaña a la que pertenece un pedido (prioridad: agencia > recogen > categoría > Cargas)
-const PLAN_AGENCIA='__agencia__', PLAN_RECOGEN='__recogen__';
-function _tabKeyPed(p){
-  if(p.es_agencia) return PLAN_AGENCIA;
-  if(p.recogen) return PLAN_RECOGEN;
-  return p.categoria_id ? String(p.categoria_id) : '';
-}
+// pestaña a la que pertenece un pedido: su categoría, o '' (Cargas) si no tiene
+function _tabKeyPed(p){ return p.categoria_id ? String(p.categoria_id) : ''; }
 const freePs=()=>pedidos.filter(p=>{
   if(p.carga_id) return false;
   if(prepFilter!=='all'&&p.estado_prep!==prepFilter) return false;
-  if(_tabKeyPed(p)!==planClasif) return false;                   // pestaña activa (Cargas/Agencia/Recogen/categoría)
+  if(_tabKeyPed(p)!==planClasif) return false;                   // pestaña activa (Cargas o categoría)
   if(searchQ&&!p.cliente.toLowerCase().includes(searchQ)&&!p.destino.toLowerCase().includes(searchQ)&&!p.num.toLowerCase().includes(searchQ)) return false;
   return true;
 });
@@ -171,10 +166,8 @@ function _renderPlanTabs(){
     const badge=n?`<span style="background:${act?'rgba(255,255,255,.25)':'var(--border2)'};color:${act?'#fff':'var(--text2)'};border-radius:10px;padding:0 6px;font-size:10px;font-weight:700">${n}</span>`:'';
     return `<button onclick="setPlanClasif('${v}')" style="${style}">${dot}${label}${badge}</button>`;
   };
-  // fijas: Cargas (sin clasificar) + Agencia + Recogen ellos (por marca); luego las categorías
+  // "Cargas" (sin categoría) + una pestaña por cada categoría creada
   let html=pill('','<i class="ti ti-stack" style="font-size:13px"></i> Cargas');
-  html+=pill(PLAN_AGENCIA,'<i class="ti ti-truck-delivery" style="font-size:13px"></i> Agencia','var(--amber)');
-  html+=pill(PLAN_RECOGEN,'<i class="ti ti-hand-grab" style="font-size:13px"></i> Recogen ellos','var(--teal)');
   html+=categorias.map(c=>pill(String(c.id), esc(c.nombre), c.color)).join('');
   el.innerHTML=html;
 }
@@ -299,7 +292,7 @@ function renderCargas(){
   // Entregadas siempre van al historial, nunca a la pantalla principal
   const activeCargas=cargas.filter(c=>c.status!=='entregada');
   // pestañas que "tocan" una carga: la de cada uno de sus pedidos + su categoría propia
-  const clasifsDe=c=>{ const s=new Set(); cargaPs(c.id).forEach(p=>s.add(_tabKeyPed(p))); if(c.categoria_id) s.add(String(c.categoria_id)); if(c.clasif) s.add(String(c.clasif)); return s; };
+  const clasifsDe=c=>{ const s=new Set(); cargaPs(c.id).forEach(p=>s.add(_tabKeyPed(p))); if(c.categoria_id) s.add(String(c.categoria_id)); return s; };
   const filtered=activeCargas.filter(c=>{
     if(filterVal&&c.status!==filterVal) return false;
     const cs=clasifsDe(c);
@@ -967,11 +960,10 @@ async function toggleCosteModo(cid){
 
 async function addCarga(){
   cargaN++;
-  // la carga nace en la pestaña activa (Cargas/Agencia/Recogen/categoría) para
-  // que aparezca aquí mismo y se le puedan arrastrar pedidos
+  // la carga nace en la pestaña activa (su categoría) para que aparezca aquí
+  // mismo y se le puedan arrastrar pedidos
   const body={name:'Carga '+cargaN,color_idx:cargas.length%CCOLS.length,status:'pendiente',coste_modo:'pendiente'};
-  if(planClasif){ body.clasif=planClasif;
-    if(planClasif!==PLAN_AGENCIA && planClasif!==PLAN_RECOGEN) body.categoria_id=planClasif; } // es una categoría
+  if(planClasif) body.categoria_id=planClasif;   // pestaña de categoría
   try{
     const c=await api('POST','/cargas',body);
     cargas.unshift(c);renderCargas();updateStats();log('Nueva carga creada','ok');
@@ -2427,10 +2419,6 @@ async function abrirPedidoDetalle(pid){
               <div><div style="font-size:10px;color:var(--text2);margin-bottom:2px">Alto (cm)</div><input type="number" min="0" id="med-alto-${p.id}" value="${medH}" placeholder="Alto" onchange="guardarMedidas('${p.id}')" style="width:90px;font-size:13px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text)"></div>
             </div>
           </div>
-          <label style="display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;cursor:pointer;margin-top:12px">
-            <input type="checkbox" id="recogen-${p.id}" ${p.recogen?'checked':''} onchange="toggleRecogen('${p.id}',this.checked)" style="width:18px;height:18px;cursor:pointer">
-            <i class="ti ti-hand-grab" style="color:var(--teal)"></i> Recogen ellos (lo recoge el cliente)
-          </label>
           <div style="margin-top:18px">
             <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px">Observación para el carretillero</div>
             <textarea id="obsprep-${p.id}" onchange="guardarObsPrep('${p.id}',this.value)" placeholder="Notas de preparación / carga…" style="width:100%;min-height:64px;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical">${(p.obs_prep||'').replace(/</g,'&lt;')}</textarea>
@@ -2554,13 +2542,6 @@ async function toggleAgencia(pid,checked){
   if(box) box.style.display=checked?'':'none';
   try{ await _guardarAgencia(pid); renderAll(); }
   catch(e){ log('Error guardando agencia','warn'); }
-}
-async function toggleRecogen(pid,checked){
-  try{
-    await api('PATCH','/pedidos/'+pid+'/recogen',{recogen:!!checked});
-    const p=pedidos.find(x=>String(x.id)===String(pid)); if(p) p.recogen=!!checked;
-    renderAll();
-  }catch(e){ log('Error guardando','warn'); }
 }
 
 async function guardarMedidas(pid){
