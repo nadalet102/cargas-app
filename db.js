@@ -39,6 +39,7 @@ async function initDB() {
     `ALTER TABLE cargas ADD COLUMN IF NOT EXISTS mat_camion TEXT`,
     `ALTER TABLE cargas ADD COLUMN IF NOT EXISTS mat_remolque TEXT`,
     `ALTER TABLE cargas ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL`,
+    `ALTER TABLE cargas ADD COLUMN IF NOT EXISTS clasif TEXT`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS maps_url TEXT`,
     `ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS direccion_descarga TEXT`,

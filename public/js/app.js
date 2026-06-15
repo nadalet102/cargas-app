@@ -299,7 +299,7 @@ function renderCargas(){
   // Entregadas siempre van al historial, nunca a la pantalla principal
   const activeCargas=cargas.filter(c=>c.status!=='entregada');
   // pestañas que "tocan" una carga: la de cada uno de sus pedidos + su categoría propia
-  const clasifsDe=c=>{ const s=new Set(); cargaPs(c.id).forEach(p=>s.add(_tabKeyPed(p))); if(c.categoria_id) s.add(String(c.categoria_id)); return s; };
+  const clasifsDe=c=>{ const s=new Set(); cargaPs(c.id).forEach(p=>s.add(_tabKeyPed(p))); if(c.categoria_id) s.add(String(c.categoria_id)); if(c.clasif) s.add(String(c.clasif)); return s; };
   const filtered=activeCargas.filter(c=>{
     if(filterVal&&c.status!==filterVal) return false;
     const cs=clasifsDe(c);
@@ -967,8 +967,13 @@ async function toggleCosteModo(cid){
 
 async function addCarga(){
   cargaN++;
+  // la carga nace en la pestaña activa (Cargas/Agencia/Recogen/categoría) para
+  // que aparezca aquí mismo y se le puedan arrastrar pedidos
+  const body={name:'Carga '+cargaN,color_idx:cargas.length%CCOLS.length,status:'pendiente',coste_modo:'pendiente'};
+  if(planClasif){ body.clasif=planClasif;
+    if(planClasif!==PLAN_AGENCIA && planClasif!==PLAN_RECOGEN) body.categoria_id=planClasif; } // es una categoría
   try{
-    const c=await api('POST','/cargas',{name:'Carga '+cargaN,color_idx:cargas.length%CCOLS.length,status:'pendiente',coste_modo:'pendiente'});
+    const c=await api('POST','/cargas',body);
     cargas.unshift(c);renderCargas();updateStats();log('Nueva carga creada','ok');
   }catch(e){log('Error al crear carga','warn');}
 }
@@ -3642,7 +3647,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 47;
+const NEEDS_API = 48;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }
