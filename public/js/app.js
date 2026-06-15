@@ -944,73 +944,110 @@ async function removeFromCarga(pid){
   }catch(e){log('Error','warn');}
 }
 
-// ── PARTIR PEDIDO (entrega parcial: no cabe todo en el camión) ─────────────────
-let _partirLineas=[], _partirPed=null;
+// ── PARTIR PEDIDO en N viajes (entrega parcial: no cabe todo en el camión) ─────
+// Matriz línea × viaje: eliges qué línea (y cuánta) va en cada viaje. Viaje 1 = se
+// queda en el pedido (auto = lo que no muevas); los demás son pedidos nuevos.
+let _partirLineas=[], _partirPed=null, _partirN=2, _partirMove={}, _partirKg=[], _partirKgManual=[], _partirPorte=[];
+const _ptEsc=s=>(''+(s||'')).replace(/</g,'&lt;');
 async function abrirFormPartir(pid){
   const p=pedidos.find(x=>String(x.id)===String(pid)); if(!p){ log('Pedido no encontrado','warn'); return; }
   _partirPed=p;
   try{ _partirLineas=await api('GET','/pedidos/'+pid+'/lineas'); }catch(e){ _partirLineas=[]; }
-  const esc=s=>(''+(s||'')).replace(/</g,'&lt;');
+  _partirN=2;
+  _partirMove={}; _partirLineas.forEach(l=>{ _partirMove[l.id]=[0]; });   // mov a viajes 2..N (long N-1)
+  _partirKg=[Number(p.kg)||0,0]; _partirKgManual=[false,false]; _partirPorte=[Number(p.porte)||0,0];
   const ov=document.createElement('div'); ov.id='partir-ov';
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10060;display:flex;align-items:flex-end;justify-content:center';
   ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
-  const inp='font-size:14px;padding:7px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);box-sizing:border-box';
-  const filas=_partirLineas.length
-    ? _partirLineas.map((l,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--border)">
-        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${esc(l.descripcion||l.referencia||'(línea)')}</div>
-          <div style="font-size:11px;color:var(--text3)">pedido: ${fmtN(l.cantidad)}${l.embalaje?(' · '+esc(l.embalaje)):''}</div></div>
-        <label style="font-size:10px;color:var(--text3);text-align:right">2º viaje<input type="number" min="0" max="${Number(l.cantidad)||0}" value="0" data-lid="${l.id}" data-cant="${Number(l.cantidad)||0}" oninput="_partirRecalc()" style="${inp};width:78px;display:block;margin-top:2px"></label>
-      </div>`).join('')
-    : `<div style="font-size:12px;color:var(--text2);padding:8px 0;border-top:1px solid var(--border)">Este pedido no tiene líneas detalladas. Reparte solo el peso y el porte.</div>`;
-  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:18px;max-height:92vh;overflow-y:auto">
-    <b style="font-size:15px"><i class="ti ti-cut"></i> Partir pedido</b>
-    <div style="font-size:12px;color:var(--text2);margin:2px 0 4px">${esc(p.num||'')} · ${esc(p.cliente||'')} · ${fmtN(p.kg)} kg</div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Indica lo que va en el <b>2º viaje</b> (lo que no cabe ahora). Se creará un pedido aparte con ese resto, listo para arrastrar a otra carga.</div>
-    ${_partirLineas.length?'<div style="font-weight:700;font-size:12px;margin-bottom:2px">Reparto de líneas</div>':''}
-    ${filas}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
-      <label style="font-size:11px;color:var(--text2)">Kg este viaje<input id="pt-kg1" type="number" value="${Number(p.kg)||0}" oninput="_partirKgManual=true" style="${inp};width:100%;margin-top:3px"></label>
-      <label style="font-size:11px;color:var(--text2)">Kg 2º viaje<input id="pt-kg2" type="number" value="0" oninput="_partirKgManual=true" style="${inp};width:100%;margin-top:3px"></label>
-      <label style="font-size:11px;color:var(--text2)">Porte este viaje (€)<input id="pt-porte1" type="number" value="${Number(p.porte)||0}" style="${inp};width:100%;margin-top:3px"></label>
-      <label style="font-size:11px;color:var(--text2)">Porte 2º viaje (€)<input id="pt-porte2" type="number" value="0" style="${inp};width:100%;margin-top:3px"></label>
-    </div>
+  ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:640px;border-radius:16px 16px 0 0;padding:18px;max-height:92vh;overflow-y:auto">
+    <b style="font-size:15px"><i class="ti ti-cut"></i> Partir pedido en viajes</b>
+    <div style="font-size:12px;color:var(--text2);margin:2px 0 4px">${_ptEsc(p.num||'')} · ${_ptEsc(p.cliente||'')} · ${fmtN(p.kg)} kg</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Elige qué va en cada viaje. <b>Viaje 1</b> se queda en este pedido (lo que no muevas). Cada viaje extra crea un pedido nuevo en la bandeja.</div>
+    <div id="partir-body"></div>
     <div id="pt-aviso" style="font-size:11px;color:var(--text3);margin-top:8px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
       <button class="btn-sec" onclick="document.getElementById('partir-ov').remove()" style="font-size:13px;padding:10px 16px">Cancelar</button>
       <button class="btn-primary" onclick="confirmarPartir('${p.id}')" style="font-size:13px;padding:10px 18px;background:var(--amber)"><i class="ti ti-cut"></i> Partir</button></div>
   </div>`;
   document.body.appendChild(ov);
-  _partirKgManual=false; _partirRecalc();
+  _partirRender();
 }
-let _partirKgManual=false;
+function _partirAddViaje(){ if(_partirN>=6) return; _partirN++; _partirLineas.forEach(l=>_partirMove[l.id].push(0)); _partirKg.push(0); _partirKgManual.push(false); _partirPorte.push(0); _partirRender(); }
+function _partirDelViaje(i){ if(_partirN<=2||i<1) return; _partirN--; _partirLineas.forEach(l=>_partirMove[l.id].splice(i-1,1)); _partirKg.splice(i,1); _partirKgManual.splice(i,1); _partirPorte.splice(i,1); _partirRender(); }
+function _partirMv(lid,vi,val){ const max=Number((_partirLineas.find(l=>String(l.id)===String(lid))||{}).cantidad)||0; _partirMove[lid][vi]=Math.max(0,Math.min(Number(val)||0,max)); _partirRecalc(); }
+function _partirKgIn(i,val){ _partirKg[i]=Number(val)||0; _partirKgManual[i]=true; }
+function _partirPorteIn(i,val){ _partirPorte[i]=Number(val)||0; }
+function _partirV1(l){ const mov=(_partirMove[l.id]||[]).reduce((s,x)=>s+(Number(x)||0),0); return (Number(l.cantidad)||0)-mov; }
+function _partirRender(){
+  const body=document.getElementById('partir-body'); if(!body) return;
+  const inp='font-size:13px;padding:5px 6px;border:1px solid var(--border2);border-radius:7px;background:var(--surface);color:var(--text);box-sizing:border-box;width:62px;text-align:center';
+  const viajes=[...Array(_partirN).keys()];   // 0..N-1
+  const cab=`<tr><th style="text-align:left;font-size:10px;color:var(--text3);font-weight:700;padding:4px 6px">LÍNEA</th>${viajes.map(i=>`<th style="font-size:10px;color:${i===0?'var(--blue-d)':'var(--amber)'};font-weight:800;padding:4px 6px;white-space:nowrap">Viaje ${i+1}${i===0?' <span style="font-weight:600;color:var(--text3)">(se queda)</span>':(_partirN>2?` <a onclick="_partirDelViaje(${i})" style="cursor:pointer;color:var(--red)" title="Quitar viaje">×</a>`:'')}</th>`).join('')}</tr>`;
+  let rows;
+  if(_partirLineas.length){
+    rows=_partirLineas.map(l=>{
+      const cels=viajes.map(i=>{
+        if(i===0) return `<td style="padding:3px 6px;text-align:center"><span id="pt-v1-${l.id}" style="font-size:14px;font-weight:800">${fmtN(_partirV1(l))}</span></td>`;
+        return `<td style="padding:3px 6px;text-align:center"><input type="number" min="0" max="${Number(l.cantidad)||0}" value="${_partirMove[l.id][i-1]||0}" oninput="_partirMv('${l.id}',${i-1},this.value)" style="${inp}"></td>`;
+      }).join('');
+      return `<tr style="border-top:1px solid var(--border)"><td style="padding:5px 6px"><div style="font-size:13px;font-weight:600">${_ptEsc(l.descripcion||l.referencia||'(línea)')}</div><div style="font-size:10px;color:var(--text3)">${fmtN(l.cantidad)} ${l.embalaje?_ptEsc(l.embalaje):'ud'}</div></td>${cels}</tr>`;
+    }).join('');
+  } else {
+    rows=`<tr style="border-top:1px solid var(--border)"><td colspan="${_partirN+1}" style="padding:8px 6px;font-size:12px;color:var(--text2)">Sin líneas detalladas: reparte solo por peso y porte.</td></tr>`;
+  }
+  const filaUd=`<tr style="border-top:2px solid var(--border2)"><td style="padding:5px 6px;font-size:10px;color:var(--text3);font-weight:700">UNIDADES</td>${viajes.map(i=>`<td style="padding:5px 6px;text-align:center"><span id="pt-u-${i}" style="font-size:12px;font-weight:700;color:var(--text2)">0</span></td>`).join('')}</tr>`;
+  const filaKg=`<tr><td style="padding:3px 6px;font-size:11px;color:var(--text2)">Kg</td>${viajes.map(i=>`<td style="padding:3px 6px;text-align:center"><input id="pt-kg-${i}" type="number" value="${_partirKg[i]||0}" oninput="_partirKgIn(${i},this.value)" style="${inp};width:74px"></td>`).join('')}</tr>`;
+  const filaPorte=`<tr><td style="padding:3px 6px;font-size:11px;color:var(--text2)">Porte €</td>${viajes.map(i=>`<td style="padding:3px 6px;text-align:center"><input id="pt-porte-${i}" type="number" value="${_partirPorte[i]||0}" oninput="_partirPorteIn(${i},this.value)" style="${inp};width:74px"></td>`).join('')}</tr>`;
+  body.innerHTML=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:${180+_partirN*84}px"><thead>${cab}</thead><tbody>${rows}${filaUd}${filaKg}${filaPorte}</tbody></table></div>
+    <button class="btn-sec" onclick="_partirAddViaje()" style="font-size:12px;padding:6px 11px;margin-top:10px${_partirN>=6?';opacity:.4;pointer-events:none':''}"><i class="ti ti-plus"></i> Añadir viaje</button>`;
+  _partirRecalc();
+}
 function _partirRecalc(){
   const p=_partirPed; if(!p) return;
   const totUd=_partirLineas.reduce((s,l)=>s+(Number(l.cantidad)||0),0);
-  let movUd=0; document.querySelectorAll('#partir-ov input[data-lid]').forEach(i=>{ const c=Math.min(Number(i.value)||0,Number(i.dataset.cant)||0); movUd+=c; });
-  // sugerir kg proporcional a las unidades movidas (si el usuario no lo tocó a mano)
-  if(!_partirKgManual && totUd>0){
-    const kgTot=Number(p.kg)||0; const kg2=Math.round(kgTot*movUd/totUd);
-    const e1=document.getElementById('pt-kg1'), e2=document.getElementById('pt-kg2');
-    if(e1&&e2){ e2.value=kg2; e1.value=kgTot-kg2; }
+  const udViaje=[...Array(_partirN)].map(()=>0);
+  let negativa=false;
+  _partirLineas.forEach(l=>{
+    const v1=_partirV1(l); udViaje[0]+=Math.max(0,v1);
+    const sp=document.getElementById('pt-v1-'+l.id); if(sp){ sp.textContent=fmtN(v1); sp.style.color=v1<0?'var(--red)':'inherit'; }
+    if(v1<0) negativa=true;
+    for(let i=1;i<_partirN;i++) udViaje[i]+=Number(_partirMove[l.id][i-1])||0;
+  });
+  for(let i=0;i<_partirN;i++){ const u=document.getElementById('pt-u-'+i); if(u) u.textContent=fmtN(udViaje[i]); }
+  // kg auto, proporcional a las unidades de cada viaje (salvo los tocados a mano)
+  if(totUd>0){
+    for(let i=0;i<_partirN;i++){ if(_partirKgManual[i]) continue; const kg=Math.round((Number(p.kg)||0)*udViaje[i]/totUd); _partirKg[i]=kg; const e=document.getElementById('pt-kg-'+i); if(e && document.activeElement!==e) e.value=kg; }
   }
   const av=document.getElementById('pt-aviso'); if(av){
-    if(_partirLineas.length) av.textContent = movUd<=0 ? '⚠ Marca al menos 1 unidad para el 2º viaje.' : (movUd>=totUd ? '⚠ No puede ir todo al 2º viaje (algo tiene que ir ahora).' : `Este viaje: ${fmtN(totUd-movUd)} ud · 2º viaje: ${fmtN(movUd)} ud`);
-    else av.textContent='Sin líneas: se parte solo por peso/porte.';
+    if(!_partirLineas.length){ av.textContent='Sin líneas: se parte por peso/porte entre los viajes.'; av.style.color='var(--text3)'; }
+    else if(negativa){ av.textContent='⚠ Estás moviendo más unidades de las que tiene una línea.'; av.style.color='var(--red)'; }
+    else if(udViaje[0]<=0){ av.textContent='⚠ El Viaje 1 no puede quedar vacío (algo tiene que ir en este pedido).'; av.style.color='var(--red)'; }
+    else if(udViaje.slice(1).every(u=>u<=0)){ av.textContent='⚠ Mueve algo a otro viaje para partir.'; av.style.color='var(--amber)'; }
+    else { av.textContent='Reparto: '+udViaje.map((u,i)=>`V${i+1}=${fmtN(u)}ud`).join(' · '); av.style.color='var(--text3)'; }
   }
 }
 async function confirmarPartir(pid){
   const p=_partirPed; if(!p) return;
-  const totUd=_partirLineas.reduce((s,l)=>s+(Number(l.cantidad)||0),0);
-  const lineasResto=[]; let movUd=0;
-  document.querySelectorAll('#partir-ov input[data-lid]').forEach(i=>{ const c=Math.min(Number(i.value)||0,Number(i.dataset.cant)||0); if(c>0){ lineasResto.push({id:Number(i.dataset.lid),cantidad:c}); movUd+=c; } });
-  if(_partirLineas.length && (movUd<=0 || movUd>=totUd)){ log('Reparte alguna unidad dejando parte en este viaje','warn'); return; }
-  const kg1=Number(document.getElementById('pt-kg1').value)||0, kg2=Number(document.getElementById('pt-kg2').value)||0;
-  const porte1=Number(document.getElementById('pt-porte1').value)||0, porte2=Number(document.getElementById('pt-porte2').value)||0;
-  if(!_partirLineas.length && kg2<=0){ log('Indica los kg del 2º viaje','warn'); return; }
+  const hayLineas=_partirLineas.length>0;
+  if(hayLineas){
+    if(_partirLineas.some(l=>_partirV1(l)<0)){ log('Hay una línea con más unidades movidas de las que tiene','warn'); return; }
+    if(_partirLineas.reduce((s,l)=>s+Math.max(0,_partirV1(l)),0)<=0){ log('El Viaje 1 no puede quedar vacío','warn'); return; }
+  }
+  // construir partes
+  const partes=[];
+  for(let i=0;i<_partirN;i++){
+    const lineas=[];
+    _partirLineas.forEach(l=>{ const q = i===0 ? _partirV1(l) : (Number(_partirMove[l.id][i-1])||0); if(q>0) lineas.push({id:Number(l.id),cantidad:q}); });
+    partes.push({ kg:Number(_partirKg[i])||0, porte:Number(_partirPorte[i])||0, lineas });
+  }
+  // descartar viajes extra vacíos (sin líneas y, si no hay líneas, sin kg)
+  const extra=partes.slice(1).filter(pa => hayLineas ? pa.lineas.length>0 : (pa.kg>0));
+  if(!extra.length){ log('Mueve algo a otro viaje para partir','warn'); return; }
+  const envio=[partes[0], ...extra];
   try{
-    await api('POST','/pedidos/'+pid+'/partir',{kg1,porte1,kg2,porte2,lineasResto});
+    await api('POST','/pedidos/'+pid+'/partir',{partes:envio});
     document.getElementById('partir-ov')?.remove();
-    log('Pedido partido: el resto está en la bandeja para otra carga','ok');
+    log('Pedido partido en '+envio.length+' viajes: los nuevos están en la bandeja','ok');
     await loadAll();
   }catch(e){
     if(_esFalloRed(e)) log('Partir necesita conexión (no se encola sin red)','warn');
