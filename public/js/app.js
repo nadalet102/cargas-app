@@ -999,7 +999,7 @@ async function abrirFormPartir(pid){
   ov.innerHTML=`<div style="background:var(--bg);width:100%;max-width:640px;border-radius:16px 16px 0 0;padding:18px;max-height:92vh;overflow-y:auto">
     <b style="font-size:15px"><i class="ti ti-cut"></i> Partir pedido en viajes</b>
     <div style="font-size:12px;color:var(--text2);margin:2px 0 4px">${_ptEsc(p.num||'')} · ${_ptEsc(p.cliente||'')} · ${fmtN(p.kg)} kg</div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Elige qué va en cada viaje. <b>Viaje 1</b> se queda en este pedido (lo que no muevas). Cada viaje extra crea un pedido nuevo en la bandeja.</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Elige qué va en cada viaje. <b>Viaje 1</b> se queda en este pedido (lo que no muevas). Cada viaje extra crea un pedido nuevo en la bandeja. Los nuevos se numeran <b>-1, -2…</b> y el que se queda lleva el <b>último</b> número.</div>
     <div id="partir-body"></div>
     <div id="pt-aviso" style="font-size:11px;color:var(--text3);margin-top:8px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
@@ -1051,8 +1051,22 @@ function _partirRecalc(){
     for(let i=1;i<_partirN;i++) udViaje[i]+=Number(_partirMove[l.id][i-1])||0;
   });
   for(let i=0;i<_partirN;i++){ const u=document.getElementById('pt-u-'+i); if(u) u.textContent=fmtN(udViaje[i]); }
-  // kg auto, proporcional a las unidades de cada viaje (salvo los tocados a mano)
-  if(totUd>0){
+  // kg auto por viaje: si las líneas tienen peso, repartir por el PESO REAL de cada
+  // línea movida (no por nº de unidades, que falla cuando las líneas pesan distinto:
+  // p.ej. big bags de 1000 kg junto a sacos de 25 kg). El Viaje 1 (se queda) absorbe
+  // el resto para que el total del pedido no cambie.
+  const kgPorUd=l=>(Number(l.cantidad)>0 && l.kgs!=null)?Number(l.kgs)/Number(l.cantidad):0;
+  const lineKgKnown=_partirLineas.some(l=>l.kgs!=null && Number(l.kgs)>0);
+  if(_partirLineas.length && lineKgKnown){
+    let movido=0;
+    for(let i=1;i<_partirN;i++){
+      if(_partirKgManual[i]){ movido+=Number(_partirKg[i])||0; continue; }
+      let kg=0; _partirLineas.forEach(l=>{ kg+=kgPorUd(l)*(Number(_partirMove[l.id][i-1])||0); });
+      kg=Math.round(kg); _partirKg[i]=kg; movido+=kg;
+      const e=document.getElementById('pt-kg-'+i); if(e && document.activeElement!==e) e.value=kg;
+    }
+    if(!_partirKgManual[0]){ const kg0=Math.max(0,(Number(p.kg)||0)-movido); _partirKg[0]=kg0; const e=document.getElementById('pt-kg-0'); if(e && document.activeElement!==e) e.value=kg0; }
+  } else if(totUd>0){
     for(let i=0;i<_partirN;i++){ if(_partirKgManual[i]) continue; const kg=Math.round((Number(p.kg)||0)*udViaje[i]/totUd); _partirKg[i]=kg; const e=document.getElementById('pt-kg-'+i); if(e && document.activeElement!==e) e.value=kg; }
   }
   const av=document.getElementById('pt-aviso'); if(av){
@@ -3630,7 +3644,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 48;
+const NEEDS_API = 49;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }

@@ -154,14 +154,22 @@ router.post('/api/pedidos/:id/partir', async (req, res) => {
     if (!p) { await client.query('ROLLBACK'); return res.status(404).json({error:'No existe el pedido'}); }
     const lineas = (await client.query('SELECT * FROM pedido_lineas WHERE pedido_id=$1 ORDER BY orden,id',[p.id])).rows;
     const kgsPorUd = ln => (Number(ln.cantidad)>0 && ln.kgs!=null) ? Number(ln.kgs)/Number(ln.cantidad) : null;
+    // numeración: los viajes NUEVOS (los que se añaden) van -1, -2, -3… consecutivos
+    // y el que se queda (partes[0]) lleva el ÚLTIMO número. Si el pedido ya venía
+    // partido, se continúa desde el índice más alto de su familia.
+    const base = (p.num||'').replace(/-\d+$/,'');
+    const fam = (await client.query(`SELECT num FROM pedidos WHERE num=$1 OR num LIKE $1||'-%'`,[base])).rows;
+    let maxK = 0; for (const r of fam){ const m=(''+(r.num||'')).match(/-(\d+)$/); if(m) maxK=Math.max(maxK, Number(m[1])); }
+    const start = maxK + 1;                          // primer índice nuevo
     const nuevos = [];
-    // partes[1..] → pedidos nuevos en libres
+    // partes[1..] → pedidos nuevos en libres (índices start, start+1, …)
     for (let i = 1; i < partes.length; i++) {
       const parte = partes[i];
+      const numNuevo = base + '-' + (start + (i - 1));
       const p2 = (await client.query(
         `INSERT INTO pedidos (num,cliente,destino,ubicacion,estado_prep,fecha,kg,porte,prio,paradas,obs,carga_id,orden_carga,categoria_id,maps_url,direccion_descarga,comercial,partido_de)
          VALUES ($1,$2,$3,$4,'sin_preparar',$5,$6,$7,$8,$9,$10,NULL,NULL,$11,$12,$13,$14,$15) RETURNING *`,
-        [(p.num||'')+'-'+(i+1), p.cliente, p.destino, p.ubicacion, p.fecha, Number(parte.kg)||0, Number(parte.porte)||0,
+        [numNuevo, p.cliente, p.destino, p.ubicacion, p.fecha, Number(parte.kg)||0, Number(parte.porte)||0,
          p.prio, p.paradas, p.obs, p.categoria_id, p.maps_url, p.direccion_descarga, p.comercial, p.id])).rows[0];
       for (const ln of lineas) {
         const q = cantDe(parte, ln.id);
@@ -183,7 +191,9 @@ router.post('/api/pedidos/:id/partir', async (req, res) => {
       await client.query('UPDATE pedido_lineas SET cantidad=$1, kgs=$2 WHERE id=$3',
         [q, upp!=null?Math.round(upp*q*100)/100:ln.kgs, ln.id]);
     }
-    await client.query('UPDATE pedidos SET kg=$1, porte=$2 WHERE id=$3',[Number(p0.kg)||0, Number(p0.porte)||0, p.id]);
+    // el que se queda lleva el último número de la familia
+    const numQueda = base + '-' + (start + (partes.length - 1));
+    await client.query('UPDATE pedidos SET kg=$1, porte=$2, num=$3 WHERE id=$4',[Number(p0.kg)||0, Number(p0.porte)||0, numQueda, p.id]);
     await client.query('COMMIT');
     res.json({ ok:true, original_id:p.id, nuevos });
   } catch(e) { await client.query('ROLLBACK'); res.status(500).json({error:e.message}); }
