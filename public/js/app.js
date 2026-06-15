@@ -39,11 +39,17 @@ const fmtDate=d=>{if(!d)return'';const s=String(d).substring(0,10);const[y,m,dd]
 const cargaPs=id=>pedidos.filter(p=>String(p.carga_id)===String(id));
 const cargaKg=id=>cargaPs(id).reduce((s,p)=>s+(+p.kg||0),0);
 const cargaPortes=id=>cargaPs(id).reduce((s,p)=>s+(+p.porte||0),0);
+// pestaña a la que pertenece un pedido (prioridad: agencia > recogen > categoría > Cargas)
+const PLAN_AGENCIA='__agencia__', PLAN_RECOGEN='__recogen__';
+function _tabKeyPed(p){
+  if(p.es_agencia) return PLAN_AGENCIA;
+  if(p.recogen) return PLAN_RECOGEN;
+  return p.categoria_id ? String(p.categoria_id) : '';
+}
 const freePs=()=>pedidos.filter(p=>{
   if(p.carga_id) return false;
   if(prepFilter!=='all'&&p.estado_prep!==prepFilter) return false;
-  if(planClasif===''){ if(p.categoria_id) return false; }       // pestaña "Cargas" = sin categoría
-  else if(String(p.categoria_id)!==planClasif) return false;     // pestaña de una categoría
+  if(_tabKeyPed(p)!==planClasif) return false;                   // pestaña activa (Cargas/Agencia/Recogen/categoría)
   if(searchQ&&!p.cliente.toLowerCase().includes(searchQ)&&!p.destino.toLowerCase().includes(searchQ)&&!p.num.toLowerCase().includes(searchQ)) return false;
   return true;
 });
@@ -154,7 +160,7 @@ function _renderPlanTabs(){
   const el=document.getElementById('plan-tabs'); if(!el) return;
   const esc=s=>(''+(s||'')).replace(/</g,'&lt;');
   const libres=pedidos.filter(p=>!p.carga_id);
-  const nDe=v=> v==='' ? libres.filter(p=>!p.categoria_id).length : libres.filter(p=>String(p.categoria_id)===v).length;
+  const nDe=v=> libres.filter(p=>_tabKeyPed(p)===v).length;
   const pill=(v,label,color)=>{
     const act=planClasif===v, n=nDe(v);
     const base='display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;cursor:pointer;white-space:nowrap;border:1px solid ';
@@ -165,7 +171,10 @@ function _renderPlanTabs(){
     const badge=n?`<span style="background:${act?'rgba(255,255,255,.25)':'var(--border2)'};color:${act?'#fff':'var(--text2)'};border-radius:10px;padding:0 6px;font-size:10px;font-weight:700">${n}</span>`:'';
     return `<button onclick="setPlanClasif('${v}')" style="${style}">${dot}${label}${badge}</button>`;
   };
+  // fijas: Cargas (sin clasificar) + Agencia + Recogen ellos (por marca); luego las categorías
   let html=pill('','<i class="ti ti-stack" style="font-size:13px"></i> Cargas');
+  html+=pill(PLAN_AGENCIA,'<i class="ti ti-truck-delivery" style="font-size:13px"></i> Agencia','var(--amber)');
+  html+=pill(PLAN_RECOGEN,'<i class="ti ti-hand-grab" style="font-size:13px"></i> Recogen ellos','var(--teal)');
   html+=categorias.map(c=>pill(String(c.id), esc(c.nombre), c.color)).join('');
   el.innerHTML=html;
 }
@@ -289,13 +298,13 @@ function renderCargas(){
   const filterVal=document.getElementById('filter-status').value;
   // Entregadas siempre van al historial, nunca a la pantalla principal
   const activeCargas=cargas.filter(c=>c.status!=='entregada');
-  // categorías que "tocan" una carga: la suya propia + las de sus pedidos
-  const clasifsDe=c=>{ const s=new Set(); if(c.categoria_id) s.add(String(c.categoria_id)); cargaPs(c.id).forEach(p=>{ if(p.categoria_id) s.add(String(p.categoria_id)); }); return s; };
+  // pestañas que "tocan" una carga: la de cada uno de sus pedidos + su categoría propia
+  const clasifsDe=c=>{ const s=new Set(); cargaPs(c.id).forEach(p=>s.add(_tabKeyPed(p))); if(c.categoria_id) s.add(String(c.categoria_id)); return s; };
   const filtered=activeCargas.filter(c=>{
     if(filterVal&&c.status!==filterVal) return false;
     const cs=clasifsDe(c);
-    if(planClasif==='') return cs.size===0;   // pestaña "Cargas" = cargas sin ninguna categoría
-    return cs.has(planClasif);                 // pestaña de categoría
+    if(planClasif==='') return cs.size===0 || cs.has('');   // "Cargas": vacía o con algún pedido sin clasificar
+    return cs.has(planClasif);                               // Agencia / Recogen / categoría
   });
   const grid=document.getElementById('cargas-grid');
   if(!filtered.length){
@@ -2413,6 +2422,10 @@ async function abrirPedidoDetalle(pid){
               <div><div style="font-size:10px;color:var(--text2);margin-bottom:2px">Alto (cm)</div><input type="number" min="0" id="med-alto-${p.id}" value="${medH}" placeholder="Alto" onchange="guardarMedidas('${p.id}')" style="width:90px;font-size:13px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text)"></div>
             </div>
           </div>
+          <label style="display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;cursor:pointer;margin-top:12px">
+            <input type="checkbox" id="recogen-${p.id}" ${p.recogen?'checked':''} onchange="toggleRecogen('${p.id}',this.checked)" style="width:18px;height:18px;cursor:pointer">
+            <i class="ti ti-hand-grab" style="color:var(--teal)"></i> Recogen ellos (lo recoge el cliente)
+          </label>
           <div style="margin-top:18px">
             <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px">Observación para el carretillero</div>
             <textarea id="obsprep-${p.id}" onchange="guardarObsPrep('${p.id}',this.value)" placeholder="Notas de preparación / carga…" style="width:100%;min-height:64px;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical">${(p.obs_prep||'').replace(/</g,'&lt;')}</textarea>
@@ -2534,8 +2547,15 @@ async function _guardarAgencia(pid){
 async function toggleAgencia(pid,checked){
   const box=document.getElementById('medidas-box-'+pid);
   if(box) box.style.display=checked?'':'none';
-  try{ await _guardarAgencia(pid); }
+  try{ await _guardarAgencia(pid); renderAll(); }
   catch(e){ log('Error guardando agencia','warn'); }
+}
+async function toggleRecogen(pid,checked){
+  try{
+    await api('PATCH','/pedidos/'+pid+'/recogen',{recogen:!!checked});
+    const p=pedidos.find(x=>String(x.id)===String(pid)); if(p) p.recogen=!!checked;
+    renderAll();
+  }catch(e){ log('Error guardando','warn'); }
 }
 
 async function guardarMedidas(pid){
@@ -3622,7 +3642,7 @@ function renderClientesExcluidos(){
 
 // Comprueba que el servidor desplegado está al día (evita fallos silenciosos
 // cuando se sube index.html pero no server.js, o no se reinicia).
-const NEEDS_API = 46;
+const NEEDS_API = 47;
 async function comprobarServidor(){
   let v=0;
   try{ const h=await api('GET','/health'); v=(h&&h.version)||0; }catch(e){ v=0; }

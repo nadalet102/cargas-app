@@ -119,6 +119,14 @@ router.patch('/api/pedidos/:id/obs_prep', async (req, res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
+// PATCH marca "recogen ellos" (el cliente recoge el pedido)
+router.patch('/api/pedidos/:id/recogen', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE pedidos SET recogen=$1 WHERE id=$2 RETURNING *',[!!req.body.recogen, req.params.id]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
+
 // PATCH marca de agencia + medidas (largo x ancho x alto)
 router.patch('/api/pedidos/:id/agencia', async (req, res) => {
   try {
