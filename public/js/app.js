@@ -26,6 +26,9 @@ const TRANS_COLORS=['#185FA5','#0F6E56','#854F0B','#712B13','#534AB7','#A32D2D']
 let pedidos=[],cargas=[],transportistas=[],categorias=[],preparadoresList=[],comercialesList=[];
 let pdfImportLineas=null;  // líneas del último PDF importado en el modal de planificación
 let dragId=null,searchQ='',prepFilter='all',catFilter='',editId=null,modalType=null,cargaN=0;
+// clasificación activa de la planificación (pestañas del recuadro de cargas):
+// '' = pestaña "Cargas" (pedidos/cargas SIN categoría); id = esa categoría.
+let planClasif=(()=>{try{return localStorage.getItem('planClasif')||'';}catch(e){return'';}})();
 let calY=new Date().getFullYear(),calM=new Date().getMonth();
 // Cargas plegadas (solo nombre + resumen). Persistente entre sesiones.
 let cargasColapsadas=new Set();
@@ -39,7 +42,8 @@ const cargaPortes=id=>cargaPs(id).reduce((s,p)=>s+(+p.porte||0),0);
 const freePs=()=>pedidos.filter(p=>{
   if(p.carga_id) return false;
   if(prepFilter!=='all'&&p.estado_prep!==prepFilter) return false;
-  if(catFilter&&String(p.categoria_id)!==catFilter) return false;
+  if(planClasif===''){ if(p.categoria_id) return false; }       // pestaña "Cargas" = sin categoría
+  else if(String(p.categoria_id)!==planClasif) return false;     // pestaña de una categoría
   if(searchQ&&!p.cliente.toLowerCase().includes(searchQ)&&!p.destino.toLowerCase().includes(searchQ)&&!p.num.toLowerCase().includes(searchQ)) return false;
   return true;
 });
@@ -141,7 +145,30 @@ function updateCatDropdowns(){
     if(el){const cur=el.value;el.innerHTML=opts;el.value=cur;}
   });
 }
-function renderAll(){renderBCList();renderCargas();updateStats();updateCatDropdowns();}
+function renderAll(){renderBCList();renderCargas();updateStats();updateCatDropdowns();_renderPlanTabs();}
+
+// Pestañas de clasificación de la planificación (recuadro de cargas): "Cargas"
+// (sin categoría) + una por cada categoría existente. Filtran ambas columnas.
+function setPlanClasif(v){ planClasif=v; try{localStorage.setItem('planClasif',v);}catch(e){} renderBCList(); renderCargas(); _renderPlanTabs(); }
+function _renderPlanTabs(){
+  const el=document.getElementById('plan-tabs'); if(!el) return;
+  const esc=s=>(''+(s||'')).replace(/</g,'&lt;');
+  const libres=pedidos.filter(p=>!p.carga_id);
+  const nDe=v=> v==='' ? libres.filter(p=>!p.categoria_id).length : libres.filter(p=>String(p.categoria_id)===v).length;
+  const pill=(v,label,color)=>{
+    const act=planClasif===v, n=nDe(v);
+    const base='display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;cursor:pointer;white-space:nowrap;border:1px solid ';
+    const style=act
+      ? base+`${color||'var(--blue)'};background:${color||'var(--blue)'};color:#fff`
+      : base+`var(--border2);background:var(--surface);color:var(--text2)`;
+    const dot=(!act&&color)?`<span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block"></span>`:'';
+    const badge=n?`<span style="background:${act?'rgba(255,255,255,.25)':'var(--border2)'};color:${act?'#fff':'var(--text2)'};border-radius:10px;padding:0 6px;font-size:10px;font-weight:700">${n}</span>`:'';
+    return `<button onclick="setPlanClasif('${v}')" style="${style}">${dot}${label}${badge}</button>`;
+  };
+  let html=pill('','<i class="ti ti-stack" style="font-size:13px"></i> Cargas');
+  html+=categorias.map(c=>pill(String(c.id), esc(c.nombre), c.color)).join('');
+  el.innerHTML=html;
+}
 
 const NAV_GROUPS = {
   reparto:     { subs:[['plan','Planificación'],['bc','Bandeja BC'],['cal','Calendario'],['hist','Historial']] },
@@ -229,7 +256,7 @@ function renderBCList(){
   document.getElementById('bc-count').textContent=allFree.length;
   const el=document.getElementById('bc-list');
   if(!fp.length){
-    el.innerHTML=`<div class="empty-state"><i class="ti ti-check-circle"></i>${searchQ||prepFilter!=='all'||catFilter?'Sin resultados':'Todos los pedidos asignados'}</div>`;
+    el.innerHTML=`<div class="empty-state"><i class="ti ti-check-circle"></i>${searchQ||prepFilter!=='all'||planClasif?'Sin resultados':'Todos los pedidos asignados'}</div>`;
     return;
   }
   el.innerHTML=fp.map(p=>{
@@ -262,17 +289,19 @@ function renderCargas(){
   const filterVal=document.getElementById('filter-status').value;
   // Entregadas siempre van al historial, nunca a la pantalla principal
   const activeCargas=cargas.filter(c=>c.status!=='entregada');
+  // categorías que "tocan" una carga: la suya propia + las de sus pedidos
+  const clasifsDe=c=>{ const s=new Set(); if(c.categoria_id) s.add(String(c.categoria_id)); cargaPs(c.id).forEach(p=>{ if(p.categoria_id) s.add(String(p.categoria_id)); }); return s; };
   const filtered=activeCargas.filter(c=>{
     if(filterVal&&c.status!==filterVal) return false;
-    if(!catFilter) return true;
-    // Show if carga has the category assigned
-    if(String(c.categoria_id)===catFilter) return true;
-    // Also show if any pedido inside the carga has the category
-    return cargaPs(c.id).some(p=>String(p.categoria_id)===catFilter);
+    const cs=clasifsDe(c);
+    if(planClasif==='') return cs.size===0;   // pestaña "Cargas" = cargas sin ninguna categoría
+    return cs.has(planClasif);                 // pestaña de categoría
   });
   const grid=document.getElementById('cargas-grid');
-  if(!filtered.length&&!filterVal){
-    grid.innerHTML=`<button class="new-carga-btn" onclick="addCarga()"><i class="ti ti-plus" style="font-size:22px;opacity:.4"></i><span>Crear primera carga</span></button>`;
+  if(!filtered.length){
+    grid.innerHTML=activeCargas.length
+      ? `<div class="empty-state"><i class="ti ti-stack"></i>No hay cargas en esta clasificación</div>`
+      : `<button class="new-carga-btn" onclick="addCarga()"><i class="ti ti-plus" style="font-size:22px;opacity:.4"></i><span>Crear primera carga</span></button>`;
     return;
   }
   grid.innerHTML=filtered.map(c=>{

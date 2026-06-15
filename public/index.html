@@ -99,16 +99,12 @@ document.addEventListener('DOMContentLoaded', _pintarBotonTema);
         <button class="filter-btn" id="fb-prep" onclick="setFilter('preparado')"><i class="ti ti-check" style="font-size:10px"></i> Preparados</button>
         <button class="filter-btn" id="fb-noprep" onclick="setFilter('sin_preparar')"><i class="ti ti-clock" style="font-size:10px"></i> Sin preparar</button>
       </div>
-      <div style="padding:5px 8px;border-bottom:1px solid var(--border)">
-        <select id="filter-cat-ped" onchange="catFilter=this.value;renderBCList();renderCargas()" style="width:100%;font-size:11px;padding:4px 7px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text)">
-          <option value="">Todas las categorías</option>
-        </select>
-      </div>
       <div class="panel-list" id="bc-list"><div class="loading">Cargando...</div></div>
     </div>
     <div>
+      <div id="plan-tabs" style="display:flex;gap:7px;overflow-x:auto;padding:2px 0 10px;align-items:center"></div>
       <div class="cargas-hdr">
-        <div class="cargas-title"><i class="ti ti-stack"></i> Cargas</div>
+        <div class="cargas-title" style="font-size:13px;color:var(--text2)"><i class="ti ti-stack"></i> Planificación</div>
         <div style="display:flex;gap:7px;align-items:center">
           <select id="filter-status" onchange="renderCargas()" style="font-size:11px;padding:5px 8px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--surface);color:var(--text)">
             <option value="">Todos los estados</option>
